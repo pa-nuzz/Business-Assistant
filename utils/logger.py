@@ -5,6 +5,9 @@ In production on Render, logs are sent to the dashboard automatically.
 import logging
 import structlog
 
+# Default logger for direct import
+logger = structlog.get_logger("business_assistant")
+
 
 def get_logger(name: str):
     """Get a structured logger for a module."""

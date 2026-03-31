@@ -173,6 +173,11 @@ export const chat = {
     const response = await api.get(`/conversations/${id}/`);
     return response.data;
   },
+
+  deleteConversation: async (id: string) => {
+    const response = await api.delete(`/conversations/${id}/delete/`);
+    return response.data;
+  },
 };
 
 // Documents API
@@ -182,7 +187,10 @@ export const documents = {
     formData.append('file', file);
     
     const response = await api.post('/documents/upload/', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: {
+        // Must delete Content-Type to let browser set multipart boundary automatically
+        'Content-Type': undefined,
+      },
       onUploadProgress: (progressEvent) => {
         if (onProgress && progressEvent.total) {
           const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -208,6 +216,14 @@ export const profile = {
   
   update: async (data: any) => {
     const response = await api.post('/profile/', data);
+    return response.data;
+  },
+};
+
+// Analytics API
+export const analytics = {
+  get: async () => {
+    const response = await api.get('/analytics/');
     return response.data;
   },
 };
