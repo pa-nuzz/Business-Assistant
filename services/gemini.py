@@ -4,7 +4,7 @@ Uses google-generativeai SDK with function calling.
 Free tier: 1M tokens/day on gemini-1.5-flash (very generous).
 """
 import logging
-import signal
+import concurrent.futures
 from typing import Optional
 from django.conf import settings
 
@@ -39,6 +39,16 @@ def _build_gemini_tools(tool_definitions: list) -> list:
             )
         )
     return [Tool(function_declarations=declarations)]
+
+
+def _call_with_timeout(fn, timeout):
+    """Execute function with timeout using ThreadPoolExecutor (cross-platform)."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(fn)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(f"Gemini call timed out after {timeout}s")
 
 
 def call(
@@ -83,21 +93,12 @@ def call(
 
     chat = model.start_chat(history=gemini_history)
 
-    # Use timeout via signal (works on Linux/Mac)
-    def _timeout_handler(signum, frame):
-        raise TimeoutError(f"Gemini timed out after {timeout}s")
-
-    signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(timeout)
-
     try:
         last_msg = messages[-1]["content"]
-        response = chat.send_message(last_msg)
-        signal.alarm(0)  # cancel alarm
+        response = _call_with_timeout(lambda: chat.send_message(last_msg), timeout)
     except TimeoutError:
         raise
     except Exception as e:
-        signal.alarm(0)
         raise
 
     # Parse response
@@ -163,20 +164,10 @@ def call_stream(
     chat = model.start_chat(history=gemini_history)
     last_msg = messages[-1]["content"]
 
-    # Use timeout via signal
-    def _timeout_handler(signum, frame):
-        raise TimeoutError(f"Gemini timed out after {timeout}s")
-
-    signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(timeout)
-
     try:
-        response = chat.send_message(last_msg, stream=True)
+        response = _call_with_timeout(lambda: chat.send_message(last_msg, stream=True), timeout)
         
         for chunk in response:
-            signal.alarm(0)  # reset alarm on first chunk
-            signal.alarm(timeout)  # reset for next chunk
-            
             if hasattr(chunk, 'text') and chunk.text:
                 yield {"token": chunk.text}
             
@@ -190,11 +181,34 @@ def call_stream(
                             yield {"error": "Tool calls detected during streaming - use non-streaming endpoint"}
                             return
         
-        signal.alarm(0)
         yield {"done": True}
         
     except TimeoutError:
         yield {"error": "Stream timed out"}
     except Exception as e:
-        signal.alarm(0)
         yield {"error": str(e)}
+
+
+# Simple wrappers for Model Abstraction Layer
+def call_gemini(system_prompt: str, user_message: str) -> str:
+    """Simple non-streaming call for Model Layer."""
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
+    result = call(messages, system_prompt, [])
+    return result.get("text", "")
+
+
+def call_gemini_stream(system_prompt: str, user_message: str):
+    """Streaming generator for Model Layer."""
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
+    for chunk in call_stream(messages, system_prompt, []):
+        if "token" in chunk:
+            yield chunk["token"]
+        elif "error" in chunk:
+            yield f"[Error: {chunk['error']}]"
+            break

@@ -86,3 +86,55 @@ def call(
         "model": f"openrouter/{cfg['model']}",
         "stop_reason": "tool_use" if tool_calls else "end_turn",
     }
+
+
+# Simple wrappers for Model Abstraction Layer
+def call_openrouter(system_prompt: str, user_message: str) -> str:
+    """Simple non-streaming call for Model Layer."""
+    messages = [{"role": "user", "content": user_message}]
+    result = call(messages, system_prompt, [])
+    return result.get("text", "")
+
+
+def call_openrouter_stream(system_prompt: str, user_message: str):
+    """Streaming generator for Model Layer."""
+    cfg = settings.AI_CONFIG["openrouter"]
+    timeout = cfg["timeout"]
+    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
+    
+    payload = {
+        "model": cfg["model"],
+        "messages": messages,
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "stream": True,
+    }
+    
+    with httpx.Client(timeout=timeout) as client:
+        with client.stream(
+            "POST",
+            f"{cfg['base_url']}/chat/completions",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {cfg['api_key']}",
+                "HTTP-Referer": "https://your-app.onrender.com",
+                "X-Title": "Business Assistant",
+                "Content-Type": "application/json",
+            },
+        ) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if line.startswith("data: "):
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        if chunk["choices"][0]["delta"].get("content"):
+                            yield chunk["choices"][0]["delta"]["content"]
+                    except:
+                        pass
