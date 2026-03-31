@@ -1,0 +1,31 @@
+# render.yaml — Deploy to Render free tier
+# Docs: https://render.com/docs/blueprint-spec
+# Free web services spin down after 15min inactivity (upgrade to $7/mo to prevent)
+# Database: use Supabase free tier (render postgres free tier has limits)
+
+services:
+  - type: web
+    name: business-assistant-api
+    runtime: python
+    plan: free                          # Free tier — spins down after inactivity
+    buildCommand: pip install -r requirements.txt && python manage.py migrate --settings=config.settings.prod && python manage.py collectstatic --noinput --settings=config.settings.prod
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: SECRET_KEY
+        generateValue: true             # Render auto-generates this
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: DATABASE_URL
+        sync: false                     # Set manually in dashboard (use Supabase URL)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
