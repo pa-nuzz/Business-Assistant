@@ -7,6 +7,7 @@ urlpatterns = [
 
     # Auth
     path("auth/register/", views.register, name="register"),
+    path("auth/forgot-password/", views.forgot_password, name="forgot-password"),
 
     # Chat
     path("chat/", views.chat, name="chat"),
@@ -23,4 +24,5 @@ urlpatterns = [
 
     # Business Profile
     path("profile/", views.business_profile, name="business-profile"),
+    path("analytics/", views.business_analytics, name="analytics"),
 ]

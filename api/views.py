@@ -14,13 +14,35 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from core.models import Conversation, Message, Document, BusinessProfile
-from agents import agent
+from agents import orchestrator
 from services.tasks import process_document_task
 
 logger = logging.getLogger(__name__)
 
 
 # ─── Authentication ───────────────────────────────────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def forgot_password(request):
+    """
+    Request password reset email.
+    Request: {"email": "..."}
+    """
+    email = request.data.get("email", "").strip()
+    
+    if not email:
+        return Response(
+            {"error": "Email is required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # In production, send actual email
+    # For now, just return success
+    return Response({
+        "message": "If an account with that email exists, a password reset link has been sent."
+    })
+
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -122,7 +144,7 @@ def chat(request):
 
     # ── Run agent ──────────────────────────────────────────────────────────
     try:
-        result = agent.run(
+        result = orchestrator.run(
             user_message=user_message,
             user_id=request.user.id,
             conversation_history=history,
@@ -156,7 +178,8 @@ def chat(request):
         "reply": result.text,
         "conversation_id": str(conversation.id),
         "model_used": result.model,
-        "tools_used": result.tool_calls_made,
+        "tools_used": result.tools_used,
+        "intent": result.intent,
     })
 
 
@@ -213,7 +236,7 @@ def chat_stream(request):
         full_response = []
         
         # Run streaming agent
-        for sse_data in agent.run_stream(
+        for sse_data in orchestrator.run_stream(
             user_message=user_message,
             user_id=request.user.id,
             conversation_history=history,
@@ -329,14 +352,24 @@ def upload_document(request):
         status="pending",
     )
 
-    # Process asynchronously via Celery
-    process_document_task.delay(str(doc.id))
+    # Process synchronously for development (use Celery in production)
+    try:
+        from services.document import process_document
+        success = process_document(str(doc.id))
+        if success:
+            doc.refresh_from_db()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Document processing failed: {e}")
+        doc.status = "failed"
+        doc.save()
 
     return Response({
         "id": str(doc.id),
         "title": doc.title,
-        "status": "pending",
-        "message": "Document uploaded and processing started. Poll /api/v1/documents/<id>/status/ for updates.",
+        "status": doc.status,
+        "message": "Document uploaded and processed." if doc.status == "ready" else "Document uploaded but processing failed.",
     }, status=202)
 
 
@@ -409,6 +442,26 @@ def business_profile(request):
         profile.key_metrics = data.get("key_metrics", profile.key_metrics)
         profile.save()
         return Response({"message": "Profile updated successfully."})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def business_analytics(request):
+    """
+    Returns structured analytics data for the dashboard.
+    Pulls from BusinessProfile.key_metrics + conversation stats.
+    """
+    from mcp.tools import get_business_profile, get_conversation_insights, get_followup_items
+
+    profile_data  = get_business_profile(user_id=request.user.id)
+    insights_data = get_conversation_insights(user_id=request.user.id, limit=20)
+    followup_data = get_followup_items(user_id=request.user.id)
+
+    return Response({
+        "profile":   profile_data.get("result", {}),
+        "insights":  insights_data.get("result", {}),
+        "followups": followup_data.get("result", {}),
+    })
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────
