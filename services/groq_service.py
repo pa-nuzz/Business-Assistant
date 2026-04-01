@@ -86,3 +86,42 @@ def call(
         "model": f"groq/{cfg['model']}",
         "stop_reason": "tool_use" if tool_calls else "end_turn",
     }
+
+
+def call_stream(
+    messages: list[dict],
+    system_prompt: str,
+    tool_definitions: list,
+    timeout: int = None,
+):
+    """Streaming call using Groq. Yields token strings."""
+    from groq import Groq, Stream
+    cfg = settings.AI_CONFIG["groq"]
+    client = _get_client()
+    
+    groq_messages = [{"role": "system", "content": system_prompt}] + messages
+    timeout = timeout or cfg["timeout"]
+    
+    try:
+        response = client.chat.completions.create(
+            model=cfg["model"],
+            messages=groq_messages,
+            temperature=0.3,
+            max_tokens=2048,
+            timeout=timeout,
+            stream=True,
+        )
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                yield delta.content
+    except Exception as e:
+        logger.error(f"Groq streaming failed: {e}")
+        raise
+
+
+def call_simple(system_prompt: str, user_message: str) -> str:
+    """Simple single-turn call returning text string."""
+    messages = [{"role": "user", "content": user_message}]
+    result = call(messages, system_prompt, [])
+    return result.get("text", "") or ""

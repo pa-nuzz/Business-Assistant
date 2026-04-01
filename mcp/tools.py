@@ -186,8 +186,8 @@ TOOL_DEFINITIONS = [
     {
         "name": "search_documents",
         "description": (
-            "Searches document chunks for relevant content using keyword matching. "
-            "Returns the most relevant sections — NOT the full document. "
+            "Keyword-based search across document titles and content chunks. "
+            "Splits query into keywords and finds matches in both titles and content. "
             "Use this for specific questions about document content."
         ),
         "parameters": {
@@ -518,33 +518,60 @@ def get_document_summary(doc_id: str, user_id: int) -> dict:
 
 def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
     """
-    Keyword-based chunk search. Simple but effective — no embeddings needed.
-    Splits query into keywords and finds chunks containing most of them.
+    Keyword-based search across document titles and content chunks.
+    Splits query into keywords and finds matches in both titles and content.
     """
     try:
         from core.models import DocumentChunk, Document
-        keywords = [w.lower().strip() for w in query.split() if len(w) > 3]
+        keywords = [w.lower().strip() for w in query.split() if len(w) > 2]
 
+        # First, search document titles
+        title_matches = []
+        docs_qs = Document.objects.filter(user_id=user_id, status="ready")
+        if doc_id:
+            docs_qs = docs_qs.filter(id=doc_id)
+        
+        for doc in docs_qs:
+            doc_title_lower = doc.title.lower()
+            # Check if any keyword matches the title (exact or partial)
+            title_score = sum(2 for kw in keywords if kw in doc_title_lower)
+            # Also check for common document name patterns
+            if any(term in doc_title_lower for term in ['cv', 'resume', 'curriculum', 'portfolio']):
+                title_score += 3
+            if title_score > 0:
+                title_matches.append({
+                    "score": title_score,
+                    "doc_title": doc.title,
+                    "doc_id": str(doc.id),
+                    "content": f"Document title: {doc.title}. This is a {doc.file_type} file with {doc.page_count or 'unknown'} pages.",
+                    "page": 1,
+                    "match_type": "title"
+                })
+
+        # Then search content chunks
         qs = DocumentChunk.objects.filter(document__user_id=user_id, document__status="ready")
         if doc_id:
             qs = qs.filter(document_id=doc_id)
 
         # Score chunks by keyword overlap
-        results = []
-        for chunk in qs.select_related("document")[:200]:  # scan up to 200 chunks
+        content_results = []
+        for chunk in qs.select_related("document")[:200]:
             content_lower = chunk.content.lower()
             score = sum(1 for kw in keywords if kw in content_lower)
             if score > 0:
-                results.append({
+                content_results.append({
                     "score": score,
                     "doc_title": chunk.document.title,
                     "doc_id": str(chunk.document.id),
-                    "content": chunk.content[:800],  # trim for token efficiency
+                    "content": chunk.content[:800],
                     "page": chunk.page_number,
+                    "match_type": "content"
                 })
 
-        results.sort(key=lambda x: x["score"], reverse=True)
-        top = results[:5]  # return top 5 chunks
+        # Combine and sort results - title matches get priority
+        all_results = title_matches + content_results
+        all_results.sort(key=lambda x: x["score"], reverse=True)
+        top = all_results[:5]
 
         if not top:
             return {"result": "No relevant content found in documents for this query."}
@@ -614,6 +641,364 @@ def brave_search(query: str, num_results: int = 3) -> dict:
         return {"error": f"Search failed: {str(e)}"}
 
 
+# ─── Task Management Tools ──────────────────────────────────────────────────
+
+def create_task(user_id: int, title: str, description: str = "", 
+                priority: str = "medium", due_date: str = None,
+                assignee_id: int = None, tags: list = None) -> dict:
+    """
+    Create a new task for the user.
+    
+    Args:
+        user_id: The user creating the task
+        title: Task title (required)
+        description: Task description (optional)
+        priority: low, medium, high, or urgent (default: medium)
+        due_date: ISO format date string (optional)
+        assignee_id: User ID to assign task to (optional, defaults to creator)
+        tags: List of tag strings (optional)
+    """
+    try:
+        from core.models import Task, TaskTag, BusinessProfile
+        from django.contrib.auth.models import User
+        
+        # Get or create business profile
+        try:
+            business_profile = BusinessProfile.objects.get(user_id=user_id)
+        except BusinessProfile.DoesNotExist:
+            from django.contrib.auth.models import User
+            user = User.objects.get(id=user_id)
+            business_profile = BusinessProfile.objects.create(user=user)
+        
+        # Set assignee (default to creator if not specified)
+        if assignee_id is None:
+            assignee_id = user_id
+        
+        # Parse due_date if provided
+        parsed_due_date = None
+        if due_date:
+            from datetime import datetime
+            try:
+                parsed_due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+            except:
+                pass
+        
+        # Create task
+        task = Task.objects.create(
+            user_id=user_id,
+            created_by_id=user_id,
+            business_profile=business_profile,
+            title=title,
+            description=description,
+            priority=priority,
+            due_date=parsed_due_date,
+            assignee_id=assignee_id,
+        )
+        
+        # Add tags
+        if tags:
+            for tag in tags:
+                TaskTag.objects.create(task=task, tag=tag.lower().strip())
+        
+        return {
+            "result": {
+                "id": str(task.id),
+                "title": task.title,
+                "status": task.status,
+                "priority": task.priority,
+                "message": "Task created successfully"
+            }
+        }
+    except Exception as e:
+        logger.exception("create_task error")
+        return {"error": str(e)}
+
+
+def list_tasks(user_id: int, status: str = None, priority: str = None,
+               assignee_id: int = None, limit: int = 50) -> dict:
+    """
+    List tasks for a user with optional filters.
+    
+    Args:
+        user_id: The user requesting tasks
+        status: Filter by status (optional)
+        priority: Filter by priority (optional)
+        assignee_id: Filter by assignee (optional)
+        limit: Maximum number of results (default: 50)
+    """
+    try:
+        from core.models import Task
+        from django.db.models import Q
+        
+        # Get tasks created by user OR assigned to user
+        tasks = Task.objects.filter(
+            Q(created_by_id=user_id) | Q(assignee_id=user_id) | Q(user_id=user_id)
+        ).exclude(status="archived")
+        
+        # Apply filters
+        if status:
+            tasks = tasks.filter(status=status)
+        if priority:
+            tasks = tasks.filter(priority=priority)
+        if assignee_id:
+            tasks = tasks.filter(assignee_id=assignee_id)
+        
+        tasks = tasks.order_by("-created_at")[:limit]
+        
+        results = []
+        for task in tasks:
+            results.append({
+                "id": str(task.id),
+                "title": task.title,
+                "status": task.status,
+                "priority": task.priority,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "assignee": task.assignee.username if task.assignee else None,
+                "tags": [tag.tag for tag in task.tags.all()],
+            })
+        
+        return {"result": results}
+    except Exception as e:
+        logger.exception("list_tasks error")
+        return {"error": str(e)}
+
+
+def update_task_status(task_id: str, user_id: int, status: str) -> dict:
+    """
+    Update task status.
+    
+    Args:
+        task_id: UUID of the task
+        user_id: User making the update
+        status: New status (todo, in_progress, review, done, archived)
+    """
+    try:
+        from core.models import Task, TaskActivity
+        from datetime import datetime
+        
+        task = Task.objects.get(id=task_id)
+        
+        # Check permissions
+        if task.created_by_id != user_id and task.assignee_id != user_id:
+            return {"error": "Permission denied"}
+        
+        old_status = task.status
+        task.status = status
+        
+        # Update completed_at if marking as done
+        if status == "done" and old_status != "done":
+            task.completed_at = datetime.now()
+        elif status != "done":
+            task.completed_at = None
+        
+        task.save()
+        
+        # Log activity
+        TaskActivity.objects.create(
+            task=task,
+            user_id=user_id,
+            activity_type="status_changed",
+            old_value=old_status,
+            new_value=status
+        )
+        
+        return {
+            "result": {
+                "id": str(task.id),
+                "status": task.status,
+                "message": f"Task status updated to {status}"
+            }
+        }
+    except Task.DoesNotExist:
+        return {"error": "Task not found"}
+    except Exception as e:
+        logger.exception("update_task_status error")
+        return {"error": str(e)}
+
+
+def get_task_details(task_id: str, user_id: int) -> dict:
+    """
+    Get detailed information about a specific task.
+    
+    Args:
+        task_id: UUID of the task
+        user_id: User requesting the details
+    """
+    try:
+        from core.models import Task
+        from django.db.models import Q
+        
+        task = Task.objects.get(
+            Q(id=task_id),
+            Q(created_by_id=user_id) | Q(assignee_id=user_id) | Q(user_id=user_id)
+        )
+        
+        # Get subtasks
+        subtasks = []
+        for subtask in task.subtasks.all():
+            subtasks.append({
+                "id": str(subtask.id),
+                "title": subtask.title,
+                "status": subtask.status,
+            })
+        
+        # Get comments
+        comments = []
+        for comment in task.comments.order_by("-created_at")[:10]:
+            comments.append({
+                "id": str(comment.id),
+                "content": comment.content,
+                "user": comment.user.username,
+                "created_at": comment.created_at.isoformat(),
+            })
+        
+        return {
+            "result": {
+                "id": str(task.id),
+                "title": task.title,
+                "description": task.description,
+                "status": task.status,
+                "priority": task.priority,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "created_by": task.created_by.username,
+                "assignee": task.assignee.username if task.assignee else None,
+                "tags": [tag.tag for tag in task.tags.all()],
+                "subtasks": subtasks,
+                "comments": comments,
+                "created_at": task.created_at.isoformat(),
+            }
+        }
+    except Task.DoesNotExist:
+        return {"error": "Task not found"}
+    except Exception as e:
+        logger.exception("get_task_details error")
+        return {"error": str(e)}
+
+
+def get_task_insights(user_id: int) -> dict:
+    """
+    Get productivity insights for the user.
+    
+    Args:
+        user_id: The user to get insights for
+    """
+    try:
+        from core.models import Task
+        from django.db.models import Q, Count
+        from datetime import datetime, timedelta
+        
+        # Base queryset
+        tasks = Task.objects.filter(
+            Q(created_by_id=user_id) | Q(assignee_id=user_id)
+        )
+        
+        # Status counts
+        status_counts = tasks.values("status").annotate(count=Count("id"))
+        status_data = {item["status"]: item["count"] for item in status_counts}
+        
+        # Completion rate
+        total = tasks.count()
+        completed = tasks.filter(status="done").count()
+        completion_rate = (completed / total * 100) if total > 0 else 0
+        
+        # This week stats
+        week_ago = datetime.now() - timedelta(days=7)
+        created_this_week = tasks.filter(created_at__gte=week_ago).count()
+        completed_this_week = tasks.filter(completed_at__gte=week_ago).count()
+        
+        # Overdue tasks
+        overdue = tasks.filter(
+            due_date__lt=datetime.now(),
+            status__in=["todo", "in_progress", "review"]
+        ).count()
+        
+        return {
+            "result": {
+                "total_tasks": total,
+                "completed_tasks": completed,
+                "completion_rate": round(completion_rate, 1),
+                "created_this_week": created_this_week,
+                "completed_this_week": completed_this_week,
+                "overdue_tasks": overdue,
+                "by_status": status_data,
+            }
+        }
+    except Exception as e:
+        logger.exception("get_task_insights error")
+        return {"error": str(e)}
+
+
+def suggest_tasks_from_context(user_id: int, context: str, source_type: str = "chat") -> dict:
+    """
+    AI suggests tasks based on conversation or document content.
+    
+    Args:
+        user_id: The user to suggest tasks for
+        context: The text content to analyze for task suggestions
+        source_type: The source of the context (chat, document, etc.)
+    """
+    try:
+        from services.model_layer import call_model, TaskType, Priority
+        
+        if not context or len(context.strip()) < 20:
+            return {"result": {"suggestions": [], "message": "Context too short for task extraction"}}
+        
+        # Use AI to extract potential tasks
+        extraction_prompt = f"""Analyze the following text and extract any actionable tasks or to-do items.
+
+Text: "{context[:1000]}"
+
+Extract tasks that:
+1. Are clearly actionable (not vague goals)
+2. Have specific outcomes
+3. Would make sense as a standalone task
+
+Return JSON:
+{{
+  "suggestions": [
+    {{
+      "title": "Concise task title",
+      "description": "Brief description",
+      "priority": "low|medium|high",
+      "reasoning": "Why this should be a task"
+    }}
+  ]
+}}
+
+If no actionable tasks found, return empty suggestions array."""
+
+        result = call_model(
+            user_id=user_id,
+            user_message=extraction_prompt,
+            base_system_prompt="You are a task extraction assistant. Output valid JSON only.",
+            task_type=TaskType.ANALYSIS,
+            priority=Priority.NORMAL,
+            use_cache=False,
+        )
+        
+        # Parse response
+        text = result.text.strip()
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            text = text.split("```")[1].strip()
+        
+        parsed = json.loads(text)
+        suggestions = parsed.get("suggestions", [])
+        
+        return {
+            "result": {
+                "suggestions": suggestions,
+                "count": len(suggestions),
+                "source": source_type,
+            }
+        }
+        
+    except Exception as e:
+        logger.exception("suggest_tasks_from_context error")
+        return {"error": str(e)}
+
+
 # ─── Tool Dispatcher ──────────────────────────────────────────────────────────
 
 TOOL_MAP: dict[str, callable] = {
@@ -628,6 +1013,13 @@ TOOL_MAP: dict[str, callable] = {
     "get_document_summary": get_document_summary,
     "search_documents": search_documents,
     "brave_search": brave_search,
+    # Task management tools
+    "create_task": create_task,
+    "list_tasks": list_tasks,
+    "update_task_status": update_task_status,
+    "get_task_details": get_task_details,
+    "get_task_insights": get_task_insights,
+    "suggest_tasks_from_context": suggest_tasks_from_context,
 }
 
 

@@ -192,23 +192,17 @@ def call_stream(
 # Simple wrappers for Model Abstraction Layer
 def call_gemini(system_prompt: str, user_message: str) -> str:
     """Simple non-streaming call for Model Layer."""
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message}
-    ]
+    messages = [{"role": "user", "content": user_message}]
     result = call(messages, system_prompt, [])
-    return result.get("text", "")
+    return result.get("text", "") or ""
 
 
 def call_gemini_stream(system_prompt: str, user_message: str):
-    """Streaming generator for Model Layer."""
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message}
-    ]
+    """Streaming generator for Model Layer. Yields token strings."""
+    messages = [{"role": "user", "content": user_message}]
     for chunk in call_stream(messages, system_prompt, []):
         if "token" in chunk:
             yield chunk["token"]
         elif "error" in chunk:
-            yield f"[Error: {chunk['error']}]"
+            logger.error(f"Gemini stream error: {chunk['error']}")
             break

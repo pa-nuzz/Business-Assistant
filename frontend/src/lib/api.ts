@@ -68,6 +68,16 @@ export const auth = {
     return response.data;
   },
   
+  forgotPassword: async (email: string) => {
+    const response = await api.post('/auth/forgot-password/', { email });
+    return response.data;
+  },
+  
+  resetPassword: async (uid: string, token: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password/', { uid, token, new_password: newPassword });
+    return response.data;
+  },
+  
   logout: () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
@@ -205,6 +215,19 @@ export const documents = {
     const response = await api.get('/documents/');
     return response.data;
   },
+  
+  getSummary: async (docId: string) => {
+    const response = await api.get(`/documents/${docId}/summary/`);
+    return response.data;
+  },
+  
+  search: async (docId: string, query: string) => {
+    const response = await api.post('/chat/', {
+      message: `Search in document for: ${query}`,
+      doc_id: docId,
+    });
+    return response.data;
+  },
 };
 
 // Profile API
@@ -218,12 +241,146 @@ export const profile = {
     const response = await api.post('/profile/', data);
     return response.data;
   },
+  
+  updateWithAvatar: async (data: any, avatarFile: File) => {
+    const formData = new FormData();
+    
+    // Add all data fields
+    Object.keys(data).forEach(key => {
+      if (data[key] !== undefined && data[key] !== null) {
+        formData.append(key, typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key]);
+      }
+    });
+    
+    // Add avatar file
+    formData.append('avatar', avatarFile);
+    
+    const response = await api.post('/profile/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+};
+
+// User API
+export const user = {
+  getInfo: async () => {
+    const response = await api.get('/user/info/');
+    return response.data;
+  },
+  
+  updateUsername: async (username: string) => {
+    const response = await api.post('/user/update-username/', { username });
+    return response.data;
+  },
+  
+  updatePassword: async (currentPassword: string, newPassword: string) => {
+    const response = await api.post('/user/update-password/', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
 };
 
 // Analytics API
 export const analytics = {
   get: async () => {
     const response = await api.get('/analytics/');
+    return response.data;
+  },
+};
+
+// Tasks API
+export const tasks = {
+  list: async (filters?: { status?: string; priority?: string; search?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.priority) params.append('priority', filters.priority);
+    if (filters?.search) params.append('search', filters.search);
+    const response = await api.get(`/tasks/?${params.toString()}`);
+    return response.data;
+  },
+  
+  create: async (data: {
+    title: string;
+    description?: string;
+    priority?: string;
+    status?: string;
+    due_date?: string;
+    assignee_id?: number;
+    tags?: string[];
+    document_ids?: string[];
+  }) => {
+    const response = await api.post('/tasks/create/', data);
+    return response.data;
+  },
+  
+  get: async (id: string) => {
+    const response = await api.get(`/tasks/${id}/`);
+    return response.data;
+  },
+  
+  update: async (id: string, data: any) => {
+    const response = await api.put(`/tasks/${id}/update/`, data);
+    return response.data;
+  },
+  
+  delete: async (id: string) => {
+    const response = await api.delete(`/tasks/${id}/delete/`);
+    return response.data;
+  },
+  
+  complete: async (id: string, data?: { completion_notes?: string; actual_hours?: number }) => {
+    const response = await api.post(`/tasks/${id}/complete/`, data || {});
+    return response.data;
+  },
+  
+  reopen: async (id: string) => {
+    const response = await api.post(`/tasks/${id}/reopen/`);
+    return response.data;
+  },
+  
+  getDashboard: async () => {
+    const response = await api.get('/tasks/dashboard/');
+    return response.data;
+  },
+  
+  getStats: async () => {
+    const response = await api.get('/tasks/stats/');
+    return response.data;
+  },
+  
+  listComments: async (taskId: string) => {
+    const response = await api.get(`/tasks/${taskId}/comments/`);
+    return response.data;
+  },
+  
+  addComment: async (taskId: string, content: string) => {
+    const response = await api.post(`/tasks/${taskId}/comments/create/`, { content });
+    return response.data;
+  },
+  
+  deleteComment: async (taskId: string, commentId: string) => {
+    const response = await api.delete(`/tasks/${taskId}/comments/${commentId}/delete/`);
+    return response.data;
+  },
+  
+  // AI Task Extraction
+  extractFromText: async (text: string, conversationId?: string) => {
+    const response = await api.post('/tasks/extract/', { text, conversation_id: conversationId });
+    return response.data;
+  },
+  
+  acceptSuggestion: async (suggestionId: string) => {
+    const response = await api.post(`/tasks/suggestions/${suggestionId}/accept/`);
+    return response.data;
+  },
+  
+  rejectSuggestion: async (suggestionId: string) => {
+    const response = await api.post(`/tasks/suggestions/${suggestionId}/reject/`);
     return response.data;
   },
 };

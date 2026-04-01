@@ -125,6 +125,120 @@ def _extract_keywords(text: str, top_n: int = 15) -> list[str]:
 
 # ─── Summary Generation ───────────────────────────────────────────────────────
 
+def extract_business_context(text: str, doc_title: str, user_id: int) -> dict:
+    """
+    Extract business-relevant context from document and save to user memory.
+    Identifies: company info, metrics, goals, projects, contacts, etc.
+    """
+    from agents.router import call_with_fallback
+    from services.model_layer import add_user_memory
+    
+    excerpt = text[:6000]  # First 6000 chars for analysis
+    if len(text) > 6000:
+        excerpt += f"\n\n[Document truncated... {len(text) - 6000} more characters]"
+    
+    messages = [{
+        "role": "user",
+        "content": (
+            f"Analyze this business document titled '{doc_title}' and extract key business context.\n\n"
+            f"Identify and list any of these if present:\n"
+            f"- Company/business name and description\n"
+            f"- Key metrics (revenue, growth, customer count, etc.)\n"
+            f"- Business goals or objectives\n"
+            f"- Projects or initiatives\n"
+            f"- Important contacts or stakeholders\n"
+            f"- Products/services mentioned\n"
+            f"- Market/industry insights\n"
+            f"- Any other business-relevant information\n\n"
+            f"Format each finding as: CATEGORY: specific detail\n"
+            f"If nothing business-relevant is found, say 'NO_BUSINESS_CONTEXT'\n\n"
+            f"Document:\n{excerpt}"
+        ),
+    }]
+    
+    try:
+        response = call_with_fallback(
+            messages=messages,
+            system_prompt="You are a business analyst. Extract factual business information only. Be concise.",
+            tool_definitions=[],
+        )
+        analysis = response.get("text", "")
+        
+        if "NO_BUSINESS_CONTEXT" in analysis or not analysis.strip():
+            return {"found": False, "context": None}
+        
+        # Save to user memory for future context
+        add_user_memory(
+            user_id=user_id,
+            key=f"doc_context_{doc_title.lower().replace(' ', '_')[:30]}",
+            value=f"From document '{doc_title}': {analysis[:1000]}",
+            category="document_insight",
+        )
+        
+        # Also extract specific metrics if mentioned
+        metrics = _extract_metrics_from_text(text)
+        if metrics:
+            for metric_name, metric_value in metrics.items():
+                add_user_memory(
+                    user_id=user_id,
+                    key=f"metric_{metric_name}",
+                    value=f"{metric_value} (from {doc_title})",
+                    category="metric",
+                )
+        
+        return {"found": True, "context": analysis, "metrics": metrics}
+    except Exception as e:
+        logger.warning(f"Business context extraction failed: {e}")
+        return {"found": False, "error": str(e)}
+
+
+def _extract_metrics_from_text(text: str) -> dict:
+    """Extract numeric metrics like revenue, growth rate, etc."""
+    import re
+    metrics = {}
+    
+    # Revenue patterns
+    revenue_patterns = [
+        r'\$([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?\s*(?:USD|dollars?)?',
+        r'revenue\s*(?:of|:|was|is)\s*\$?([\d,]+(?:\.\d+)?)',
+        r'(?:annual|monthly|quarterly)\s+revenue[\s:]*\$?([\d,]+(?:\.\d+)?)',
+    ]
+    
+    # Growth patterns
+    growth_patterns = [
+        r'(\d+(?:\.\d+)?)%\s*(?:growth|increase| YoY|year.over.year)',
+        r'growth\s*(?:rate|of|:)\s*(\d+(?:\.\d+)?)',
+    ]
+    
+    # Customer patterns
+    customer_patterns = [
+        r'(\d+(?:,\d+)*)\s*(?:customers?|clients?|users?)',
+        r'customer\s*(?:base|count|total)[\s:]*(\d+(?:,\d+)*)',
+    ]
+    
+    for pattern in revenue_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            metrics['revenue'] = matches[0] if isinstance(matches[0], str) else matches[0][0]
+            break
+    
+    for pattern in growth_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            metrics['growth_rate'] = f"{matches[0]}%"
+            break
+    
+    for pattern in customer_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            metrics['customer_count'] = matches[0]
+            break
+    
+    return metrics
+
+
+# ─── Summary Generation ───────────────────────────────────────────────────────
+
 def generate_summary(text: str, doc_title: str) -> str:
     """
     Generate a document summary using the primary AI model.
@@ -192,6 +306,14 @@ def process_document(doc_id: str) -> bool:
 
         # 3. Generate summary
         summary = generate_summary(text, doc.title)
+
+        # 3.5. Extract business context (async - don't block on failure)
+        try:
+            context_result = extract_business_context(text, doc.title, doc.user_id)
+            if context_result.get("found"):
+                logger.info(f"Business context extracted from {doc.title}")
+        except Exception as e:
+            logger.warning(f"Business context extraction skipped: {e}")
 
         # 4. Save everything
         # Delete old chunks if reprocessing

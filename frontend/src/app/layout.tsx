@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import LoadingScreen from '@/components/loading-screen';
 import { Geist, Geist_Mono } from 'next/font/google';
 import AuthGuard from '@/components/auth-guard';
 import AppSidebar from '@/components/app-sidebar';
+import { Toaster } from '@/components/toaster';
+import { PageTransition } from '@/components/transitions';
+import { CommandPalette } from '@/components/command-palette';
 import './globals.css';
 
 const geistSans = Geist({
@@ -22,20 +23,21 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [loading, setLoading] = useState(true);
-
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
       <body className="min-h-full flex flex-col bg-[#fafafa]">
-        {loading && <LoadingScreen onComplete={() => setLoading(false)} minDuration={2500} />}
         <AuthGuard>
           <div className="flex h-screen overflow-hidden">
             <AppSidebar />
-            <main className="flex-1 min-w-0 overflow-auto animate-fade-in">
-              {children}
+            <main className="flex-1 min-w-0 overflow-auto transition-all duration-300 ease-out">
+              <PageTransition>
+                {children}
+              </PageTransition>
             </main>
           </div>
         </AuthGuard>
+        <Toaster />
+        <CommandPalette />
       </body>
     </html>
   );

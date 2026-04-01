@@ -19,6 +19,7 @@ class BusinessProfile(models.Model):
     description = models.TextField(blank=True)
     goals = models.JSONField(default=list)          # ["increase revenue", "expand to EU"]
     key_metrics = models.JSONField(default=dict)    # {"monthly_revenue": 50000, "customers": 120}
+    avatar = models.ImageField(upload_to="avatars/%Y/%m/", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -130,3 +131,173 @@ class Message(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+
+# =============================================================================
+# TASK MANAGEMENT MODELS
+# =============================================================================
+
+class Task(models.Model):
+    """
+    Task management for business operations.
+    Supports natural language creation, AI suggestions, and team collaboration.
+    """
+    STATUS_CHOICES = [
+        ("todo", "To Do"),
+        ("in_progress", "In Progress"),
+        ("review", "In Review"),
+        ("done", "Done"),
+        ("archived", "Archived"),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+        ("urgent", "Urgent"),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tasks")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="todo")
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="medium")
+    due_date = models.DateTimeField(null=True, blank=True)
+    
+    # Assignment
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_tasks")
+    assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tasks")
+    
+    # Links to other entities
+    conversation = models.ForeignKey(Conversation, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks")
+    business_profile = models.ForeignKey(BusinessProfile, on_delete=models.CASCADE, related_name="tasks")
+    
+    # Time tracking
+    estimated_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    actual_hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    completion_notes = models.TextField(blank=True)
+    
+    # Hierarchy
+    is_subtask = models.BooleanField(default=False)
+    parent_task = models.ForeignKey("self", on_delete=models.CASCADE, null=True, blank=True, related_name="subtasks")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["user", "priority"]),
+            models.Index(fields=["assignee", "status"]),
+            models.Index(fields=["due_date"]),
+        ]
+    
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+
+class TaskTag(models.Model):
+    """Tags for organizing tasks."""
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="tags")
+    tag = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ("task", "tag")
+    
+    def __str__(self):
+        return self.tag
+
+
+class TaskComment(models.Model):
+    """Comments on tasks for collaboration."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="comments")
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+    
+    def __str__(self):
+        return f"Comment by {self.user.username} on {self.task.title}"
+
+
+class TaskActivity(models.Model):
+    """Audit trail of task changes."""
+    ACTIVITY_TYPES = [
+        ("created", "Created"),
+        ("updated", "Updated"),
+        ("status_changed", "Status Changed"),
+        ("priority_changed", "Priority Changed"),
+        ("assigned", "Assigned"),
+        ("completed", "Completed"),
+        ("commented", "Commented"),
+        ("archived", "Archived"),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="activities")
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    old_value = models.TextField(blank=True)
+    new_value = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+    
+    def __str__(self):
+        return f"{self.activity_type} on {self.task.title}"
+
+
+class TaskAttachment(models.Model):
+    """Links between tasks and documents."""
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="attachments")
+    document = models.ForeignKey(Document, on_delete=models.CASCADE)
+    attached_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ("task", "document")
+    
+    def __str__(self):
+        return f"{self.document.title} attached to {self.task.title}"
+
+
+class TaskAISuggestion(models.Model):
+    """AI-suggested tasks extracted from conversations or documents."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="task_suggestions")
+    
+    # Suggested content
+    suggested_title = models.CharField(max_length=255)
+    suggested_description = models.TextField(blank=True)
+    suggested_priority = models.CharField(max_length=20, choices=Task.PRIORITY_CHOICES, default="medium")
+    suggested_due_date = models.DateTimeField(null=True, blank=True)
+    
+    # Source tracking
+    source_type = models.CharField(max_length=100)  # chat, document, email_pattern
+    source_id = models.CharField(max_length=255, blank=True)  # conversation_id, document_id
+    source_content = models.TextField(blank=True)  # Original text that triggered suggestion
+    
+    # AI metadata
+    confidence_score = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    
+    # User decision
+    was_accepted = models.BooleanField(null=True, blank=True)
+    created_task = models.ForeignKey(Task, on_delete=models.SET_NULL, null=True, blank=True, related_name="ai_suggestion")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+    
+    def __str__(self):
+        return f"AI Suggestion: {self.suggested_title} ({'Accepted' if self.was_accepted else 'Pending'})"

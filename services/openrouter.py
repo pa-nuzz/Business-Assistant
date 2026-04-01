@@ -58,7 +58,7 @@ def call(
             json=payload,
             headers={
                 "Authorization": f"Bearer {cfg['api_key']}",
-                "HTTP-Referer": "https://your-app.onrender.com",  # required by OpenRouter
+                "HTTP-Referer": "https://localhost:3000",  # required by OpenRouter
                 "X-Title": "Business Assistant",
                 "Content-Type": "application/json",
             },
@@ -121,7 +121,7 @@ def call_openrouter_stream(system_prompt: str, user_message: str):
             json=payload,
             headers={
                 "Authorization": f"Bearer {cfg['api_key']}",
-                "HTTP-Referer": "https://your-app.onrender.com",
+                "HTTP-Referer": "https://localhost:3000",
                 "X-Title": "Business Assistant",
                 "Content-Type": "application/json",
             },
