@@ -237,11 +237,35 @@ def chat(request):
         )
 
     # ── Build conversation history (last 20 messages to manage context) ────
-    recent_messages = conversation.messages.order_by("-created_at")[:20]
-    history = [
-        {"role": m.role, "content": m.content}
-        for m in reversed(recent_messages)
-    ]
+    recent_messages = conversation.messages.order_by("-created_at")[:25]
+    
+    # Build history list with last 5 messages first, then remaining reversed
+    last_5 = list(reversed(recent_messages[:5]))
+    remaining = list(reversed(recent_messages[5:20]))
+    
+    # Check if user has a business profile and add system context
+    system_message = None
+    try:
+        profile = request.user.business_profile
+        if profile and profile.company_name:
+            system_content = f"User's business: {profile.company_name}"
+            if profile.industry:
+                system_content += f" in the {profile.industry} industry"
+            system_message = {"role": "system", "content": system_content}
+    except Exception:
+        pass
+    
+    history = []
+    if system_message:
+        history.append(system_message)
+    
+    # Add last 5 messages first (most recent at the end for the model)
+    for m in last_5:
+        history.append({"role": m.role, "content": m.content})
+    
+    # Then add remaining older messages
+    for m in remaining:
+        history.append({"role": m.role, "content": m.content})
 
     # ── Run agent ──────────────────────────────────────────────────────────
     try:
@@ -326,11 +350,35 @@ def chat_stream(request):
         )
 
     # ── Build conversation history ───────────────────────────────────────────
-    recent_messages = conversation.messages.order_by("-created_at")[:20]
-    history = [
-        {"role": m.role, "content": m.content}
-        for m in reversed(recent_messages)
-    ]
+    recent_messages = conversation.messages.order_by("-created_at")[:25]
+    
+    # Build history list with last 5 messages first, then remaining reversed
+    last_5 = list(reversed(recent_messages[:5]))
+    remaining = list(reversed(recent_messages[5:20]))
+    
+    # Check if user has a business profile and add system context
+    system_message = None
+    try:
+        profile = request.user.business_profile
+        if profile and profile.company_name:
+            system_content = f"User's business: {profile.company_name}"
+            if profile.industry:
+                system_content += f" in the {profile.industry} industry"
+            system_message = {"role": "system", "content": system_content}
+    except Exception:
+        pass
+    
+    history = []
+    if system_message:
+        history.append(system_message)
+    
+    # Add last 5 messages first (most recent at the end for the model)
+    for m in last_5:
+        history.append({"role": m.role, "content": m.content})
+    
+    # Then add remaining older messages
+    for m in remaining:
+        history.append({"role": m.role, "content": m.content})
 
     # ── Streaming response generator ────────────────────────────────────────
     model_info = {"used": "unknown"}
@@ -838,74 +886,6 @@ def reject_task_suggestion(request, suggestion_id):
         return Response({"message": "Suggestion rejected"})
     except TaskAISuggestion.DoesNotExist:
         return Response({"error": "Suggestion not found"}, status=404)
-
-
-# ===== TAGS API =====
-
-@api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
-def tags_list_create(request):
-    """List all user tags or create a new tag."""
-    from core.models import TaskTag
-    
-    if request.method == "GET":
-        # Get all unique tag names for the user's tasks
-        user_tasks = Task.objects.filter(
-            Q(user=request.user) | Q(assignee=request.user)
-        )
-        tags = TaskTag.objects.filter(task__in=user_tasks).values('name').distinct()
-        
-        # Add usage counts
-        result = []
-        for tag in tags:
-            count = TaskTag.objects.filter(
-                name=tag['name'],
-                task__in=user_tasks
-            ).count()
-            result.append({
-                'name': tag['name'],
-                'count': count
-            })
-        
-        return Response(result)
-    
-    elif request.method == "POST":
-        name = request.data.get('name', '').strip().lower()
-        if not name:
-            return Response({"error": "Tag name is required"}, status=400)
-        
-        # Tags are created when assigned to tasks
-        return Response({"name": name, "message": "Tag ready for assignment"})
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def tasks_by_tag(request, tag_name):
-    """Get all tasks with a specific tag."""
-    from core.models import TaskTag
-    
-    user_tasks = Task.objects.filter(
-        Q(user=request.user) | Q(assignee=request.user)
-    )
-    
-    task_ids = TaskTag.objects.filter(
-        name=tag_name.lower(),
-        task__in=user_tasks
-    ).values_list('task_id', flat=True)
-    
-    tasks = Task.objects.filter(id__in=task_ids)
-    
-    return Response({
-        "tag": tag_name,
-        "count": tasks.count(),
-        "tasks": [{
-            "id": str(t.id),
-            "title": t.title,
-            "status": t.status,
-            "priority": t.priority,
-            "due_date": t.due_date.isoformat() if t.due_date else None,
-        } for t in tasks]
-    })
 
 
 # ===== TAGS API =====

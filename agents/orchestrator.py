@@ -169,82 +169,67 @@ def classify_intent_advanced(user_message: str, user_id: int) -> QueryIntent:
 
 def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
                            conversation_history: List[Dict]) -> ExecutionPlan:
-    """Build an intelligent execution plan with reasoning chain."""
+    """Build an execution plan using rule-based logic (no AI call)."""
     
-    tool_catalog = {t["name"]: t["description"] for t in TOOL_DEFINITIONS}
-    memory_context = get_user_memory(user_id)
+    tool_calls = []
+    reasoning_chain = []
     
-    planner_prompt = f"""You are an intelligent business assistant planning agent.
-
-USER QUERY: "{user_message}"
-DETECTED INTENT: {intent}
-USER ID: {user_id}
-
-{memory_context}
-
-Available Tools:
-{json.dumps(tool_catalog, indent=2)}
-
-Your task:
-1. Analyze what the user really needs (beyond surface intent)
-2. Plan the optimal tool sequence to fulfill their request
-3. Include reasoning for each step
-
-Rules:
-- Always inject user_id={user_id} into tool args
-- For business questions: combine profile + metrics + web search
-- For document questions: search in user's uploaded documents
-- Maximum 4 tool calls
-
-Output JSON:
-{{
-  "reasoning_chain": ["Step 1...", "Step 2..."],
-  "tool_calls": [{{"name": "tool_name", "args": {{"user_id": {user_id}}}, "reason": "why"}}],
-  "context_summary": "brief summary",
-  "expected_outcome": "what we expect"
-}}"""
-
-    try:
-        result = call_model(
-            user_id=user_id,
-            user_message=planner_prompt,
-            base_system_prompt="You are an expert planning agent. Output valid JSON only.",
-            task_type=TaskType.ANALYSIS,
-            priority=Priority.HIGH,
-            use_cache=False,
-            store_memory=False,
-        )
-        
-        text = result.text.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].strip()
-            if text.startswith("json"):
-                text = text[4:].strip()
-        
-        parsed = json.loads(text)
-        
-        protected_tools = {"get_business_profile", "get_revenue_data", "get_conversation_insights",
-                          "update_business_metrics", "get_followup_items", "get_user_memory",
-                          "save_memory", "list_documents", "get_document_summary", "search_documents"}
-        
-        tool_calls = parsed.get("tool_calls", [])
-        for tc in tool_calls:
-            if tc.get("name") in protected_tools:
-                tc.setdefault("args", {})["user_id"] = user_id
-        
-        return ExecutionPlan(
-            intent=intent,
-            tool_calls=tool_calls,
-            reasoning_chain=parsed.get("reasoning_chain", []),
-            context_summary=parsed.get("context_summary", ""),
-            expected_outcome=parsed.get("expected_outcome", "")
-        )
-        
-    except Exception as e:
-        logger.warning(f"Advanced planner failed: {e}. Using fallback.")
-        return _build_fallback_plan(intent, user_message, user_id)
+    if intent == "document":
+        tool_calls = [
+            {"name": "list_documents", "args": {"user_id": user_id}, "reason": "Check available documents"},
+            {"name": "search_documents", "args": {"query": user_message, "user_id": user_id}, "reason": "Search in documents"}
+        ]
+        reasoning_chain = ["User asked about documents", "List available docs and search within them"]
+    
+    elif intent == "analytics":
+        tool_calls = [
+            {"name": "get_business_profile", "args": {"user_id": user_id}, "reason": "Get business context"},
+            {"name": "get_revenue_data", "args": {"user_id": user_id}, "reason": "Get financial data"},
+            {"name": "get_conversation_insights", "args": {"user_id": user_id, "limit": 20}, "reason": "Get conversation patterns"}
+        ]
+        reasoning_chain = ["User asked for analytics/metrics", "Fetch business profile, revenue, and conversation insights"]
+    
+    elif intent == "search":
+        tool_calls = [
+            {"name": "brave_search", "args": {"query": user_message, "num_results": 5}, "reason": "Search web for current info"}
+        ]
+        reasoning_chain = ["User requested web search", "Execute brave search with the query"]
+    
+    elif intent == "task":
+        tool_calls = [
+            {"name": "list_tasks", "args": {"user_id": user_id, "limit": 10}, "reason": "Check recent tasks"},
+            {"name": "get_task_insights", "args": {"user_id": user_id}, "reason": "Get task productivity insights"}
+        ]
+        reasoning_chain = ["User asked about tasks", "List tasks and get productivity insights"]
+    
+    elif intent == "memory":
+        tool_calls = [
+            {"name": "get_user_memory", "args": {"user_id": user_id}, "reason": "Retrieve user memory/context"},
+            {"name": "get_followup_items", "args": {"user_id": user_id}, "reason": "Check for follow-up items"}
+        ]
+        reasoning_chain = ["User referenced previous context", "Fetch user memory and follow-ups"]
+    
+    elif intent == "chat":
+        tool_calls = [
+            {"name": "get_business_profile", "args": {"user_id": user_id}, "reason": "Get business context for personalization"},
+            {"name": "get_user_memory", "args": {"user_id": user_id}, "reason": "Get user context for continuity"}
+        ]
+        reasoning_chain = ["General chat question", "Load business profile and user memory for context"]
+    
+    else:
+        # Fallback for any other intent
+        tool_calls = [
+            {"name": "get_business_profile", "args": {"user_id": user_id}, "reason": "Get basic context"}
+        ]
+        reasoning_chain = ["Unclear intent, using minimal context"]
+    
+    return ExecutionPlan(
+        intent=intent,
+        tool_calls=tool_calls,
+        reasoning_chain=reasoning_chain,
+        context_summary=f"Rule-based plan for intent: {intent}",
+        expected_outcome="Relevant data for response synthesis"
+    )
 
 def _build_fallback_plan(intent: QueryIntent, user_message: str, user_id: int) -> ExecutionPlan:
     """Build a simple fallback plan when AI planner fails."""
@@ -342,6 +327,40 @@ def synthesize_response(user_message: str, plan: ExecutionPlan, tool_results: Li
     
     system_prompt = get_system_prompt(user_name)
     
+    # --- Fetch user context items (silently skip if fails) ---
+    user_context_parts = []
+    
+    try:
+        profile_result = execute_tool("get_business_profile", {"user_id": user_id})
+        if "error" not in profile_result:
+            user_context_parts.append(f"[Business Profile]\n{json.dumps(profile_result.get('result', profile_result), indent=2, default=str)}")
+    except Exception:
+        pass
+    
+    try:
+        memory_result = execute_tool("get_user_memory", {"user_id": user_id, "category": "all"})
+        if "error" not in memory_result:
+            user_context_parts.append(f"[User Memory]\n{json.dumps(memory_result.get('result', memory_result), indent=2, default=str)}")
+    except Exception:
+        pass
+    
+    # If intent is document, also fetch list of documents
+    if plan.intent == "document":
+        try:
+            docs_result = execute_tool("list_documents", {"user_id": user_id})
+            if "error" not in docs_result:
+                docs_data = docs_result.get('result', docs_result)
+                # Extract just document titles for context
+                if isinstance(docs_data, list):
+                    doc_titles = [d.get('title', 'Untitled') for d in docs_data]
+                    user_context_parts.append(f"[Available Documents]\n{json.dumps(doc_titles, indent=2, default=str)}")
+                else:
+                    user_context_parts.append(f"[Available Documents]\n{json.dumps(docs_data, indent=2, default=str)}")
+        except Exception:
+            pass
+    
+    user_context_block = "\n\n".join(user_context_parts) if user_context_parts else ""
+    
     successful_results = [r for r in tool_results if r.get("success", True)]
     failed_results = [r for r in tool_results if not r.get("success", True)]
     
@@ -352,19 +371,28 @@ def synthesize_response(user_message: str, plan: ExecutionPlan, tool_results: Li
     if failed_results:
         failure_note = f"\n\nNote: Some data sources were unavailable ({len(failed_results)} tools failed)."
     
+    # Build synthesis prompt with user context at the top
+    user_context_section = f"""
+User Context (the user's background and what they have):
+{user_context_block}
+
+""" if user_context_block else ""
+    
     synthesis_prompt = f"""The user asked: "{user_message}"
 
-Here's what I found:
+{user_context_section}Here's what I found from tools:
 {context_block}
+{failure_note}
 
-Instructions for Tatiti:
+Instructions for AEIOU AI:
 1. Respond conversationally, like a helpful colleague
-2. Reference specific data points naturally in your response
+2. Reference specific data points naturally in your response (document titles, numbers, company name)
 3. Be concise - 2-4 sentences max for simple questions
 4. Don't use numbered lists or structured formats unless asked
 5. If the user just created a task or document, acknowledge it
 6. Answer their specific question directly
 7. No generic "action steps" or "best practices" advice
+8. USE the User Context above - reference their company name, documents, and history
 
 Just give a natural, helpful response:"""
 

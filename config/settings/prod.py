@@ -8,21 +8,15 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SECURE_HSTS_SECONDS = 31536000
 
-# Structured JSON logging for Render/Railway
+# Simple console logging for production
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "formatters": {
-        "json": {
-            "()": "structlog.stdlib.ProcessorFormatter",
-            "processors": [structlog.stdlib.render_to_log_kwargs],
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "json",
-        }
-    },
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        "agents": {"level": "INFO"},
+        "mcp": {"level": "INFO"},
+        "services": {"level": "INFO"},
+    },
 }
