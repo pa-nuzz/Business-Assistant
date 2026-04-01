@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { auth } from '@/lib/api';
+import LoadingScreen from './loading-screen';
 
 const publicPaths = ['/login', '/register', '/forgot-password'];
 
@@ -56,16 +57,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router]);
 
-  // Show loading indicator while checking auth instead of white screen
+  // Show loading screen with animated logo while checking auth
   if (!isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
-        <div className="flex items-center gap-2 text-gray-400">
-          <div className="w-5 h-5 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
-          <span className="text-sm">Loading...</span>
-        </div>
-      </div>
-    );
+    return <LoadingScreen minDuration={2500} onComplete={() => {}} />;
   }
 
   return <>{children}</>;

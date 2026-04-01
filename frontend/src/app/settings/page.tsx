@@ -6,8 +6,9 @@ import { toast } from 'sonner';
 import { profile, auth, user } from '@/lib/api';
 import { 
   User, Building2, Save, Loader2, ArrowLeft, LogOut, 
-  Camera, Lock, UserCircle 
+  Camera, Lock, UserCircle, Volume2, VolumeX, Settings2
 } from 'lucide-react';
+import { getSoundEffects } from '@/components/sound-effects';
 
 interface UserProfile {
   username?: string;
@@ -30,7 +31,7 @@ export default function SettingsPage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'profile' | 'business' | 'security'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'business' | 'security' | 'preferences'>('profile');
   
   const [profileData, setProfileData] = useState<UserProfile>({});
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -44,9 +45,27 @@ export default function SettingsPage() {
     confirmPassword: '',
   });
 
+  // Sound effects preference
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
   useEffect(() => {
     fetchProfile();
+    // Load sound preference from localStorage
+    const savedSound = localStorage.getItem('sound-effects-enabled');
+    if (savedSound !== null) {
+      const enabled = savedSound === 'true';
+      setSoundEnabled(enabled);
+      getSoundEffects().setEnabled(enabled);
+    }
   }, []);
+
+  const toggleSoundEffects = () => {
+    const newValue = !soundEnabled;
+    setSoundEnabled(newValue);
+    localStorage.setItem('sound-effects-enabled', String(newValue));
+    getSoundEffects().setEnabled(newValue);
+    toast.success(newValue ? 'Sound effects enabled' : 'Sound effects disabled');
+  };
 
   const fetchProfile = async () => {
     try {
@@ -257,6 +276,19 @@ export default function SettingsPage() {
               Security
             </span>
           </button>
+          <button
+            onClick={() => setActiveTab('preferences')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-all ${
+              activeTab === 'preferences'
+                ? 'border-black text-black'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              Preferences
+            </span>
+          </button>
         </nav>
       </div>
 
@@ -373,6 +405,45 @@ export default function SettingsPage() {
               <LogOut className="h-4 w-4" />
               Sign out
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Preferences Tab */}
+      {activeTab === 'preferences' && (
+        <div className="space-y-6">
+          {/* Sound Effects */}
+          <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Sound Effects</h3>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${soundEnabled ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  {soundEnabled ? (
+                    <Volume2 className="w-5 h-5 text-blue-600" />
+                  ) : (
+                    <VolumeX className="w-5 h-5 text-gray-500" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">UI Sound Effects</p>
+                  <p className="text-xs text-gray-500">
+                    Play sounds for messages, notifications, and interactions
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={toggleSoundEffects}
+                className={`relative w-14 h-8 rounded-full transition-colors ${
+                  soundEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${
+                    soundEnabled ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       )}

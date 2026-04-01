@@ -8,9 +8,13 @@ import {
   Circle, 
   Clock, 
   AlertCircle,
-  Check
+  Check,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { KanbanBoard } from '@/components/kanban-board';
+import { toast } from 'sonner';
 
 interface Task {
   id: string;
@@ -33,12 +37,23 @@ interface DashboardData {
   upcoming: Task[];
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  todo: 'To Do',
+  in_progress: 'In Progress',
+  review: 'In Review',
+  done: 'Done',
+};
+
+const STATUS_ORDER = ['todo', 'in_progress', 'review', 'done'];
+
 export default function TasksPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState('medium');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
 
   useEffect(() => {
     fetchDashboard();
@@ -46,8 +61,12 @@ export default function TasksPage() {
 
   const fetchDashboard = async () => {
     try {
-      const data = await tasks.getDashboard();
-      setDashboardData(data);
+      const [dashboard, tasksList] = await Promise.all([
+        tasks.getDashboard(),
+        tasks.list()
+      ]);
+      setDashboardData(dashboard);
+      setAllTasks(tasksList.results || tasksList || []);
     } catch (err) {
       console.error('Failed to fetch dashboard:', err);
     } finally {
@@ -63,11 +82,13 @@ export default function TasksPage() {
         title: newTaskTitle,
         priority: newTaskPriority,
       });
+      toast.success('Task created successfully');
       setNewTaskTitle('');
       setShowNewTaskModal(false);
       fetchDashboard();
     } catch (err) {
       console.error('Failed to create task:', err);
+      toast.error('Failed to create task');
     }
   };
 
@@ -121,15 +142,42 @@ export default function TasksPage() {
             <h1 className="text-2xl font-bold text-foreground mb-1">Tasks</h1>
             <p className="text-sm text-muted-foreground">Manage your work and stay organized</p>
           </div>
-          <motion.button
-            onClick={() => setShowNewTaskModal(true)}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-all duration-200 shadow-sm"
-          >
-            <Plus size={18} />
-            New Task
-          </motion.button>
+          <div className="flex items-center gap-3">
+            {/* View Toggle */}
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  viewMode === 'list' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <List size={16} />
+                <span className="hidden sm:inline">List</span>
+              </button>
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  viewMode === 'kanban' 
+                    ? 'bg-white text-gray-900 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <LayoutGrid size={16} />
+                <span className="hidden sm:inline">Board</span>
+              </button>
+            </div>
+            <motion.button
+              onClick={() => setShowNewTaskModal(true)}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-all duration-200 shadow-sm"
+            >
+              <Plus size={18} />
+              <span className="hidden sm:inline">New Task</span>
+            </motion.button>
+          </div>
         </div>
 
         {/* Stats Overview */}
@@ -181,54 +229,95 @@ export default function TasksPage() {
           </div>
         )}
 
-        {/* Overdue Tasks */}
-        {dashboardData?.overdue && dashboardData.overdue.length > 0 && (
+        {/* Tasks Content - List or Kanban View */}
+        {viewMode === 'kanban' ? (
           <div className="mb-8">
-            <h2 className="text-lg font-semibold text-red-600 mb-4 flex items-center gap-2">
-              <AlertCircle size={20} />
-              Overdue ({dashboardData.overdue.length})
-            </h2>
-            <div className="space-y-2">
-              {dashboardData.overdue.map((task) => (
-                <motion.div
-                  key={task.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex items-center p-4 bg-red-50 border border-red-100 rounded-xl"
-                >
-                  {getStatusIcon(task.status)}
-                  <span className="ml-3 flex-1 text-sm text-foreground">{task.title}</span>
-                  <span className="text-xs text-red-600 font-medium">
-                    {task.days_overdue} days overdue
-                  </span>
-                </motion.div>
-              ))}
-            </div>
+            <KanbanBoard tasks={allTasks} onUpdate={fetchDashboard} />
           </div>
-        )}
+        ) : (
+          <>
+            {/* Overdue Tasks */}
+            {dashboardData?.overdue && dashboardData.overdue.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold text-red-600 mb-4 flex items-center gap-2">
+                  <AlertCircle size={20} />
+                  Overdue ({dashboardData.overdue.length})
+                </h2>
+                <div className="space-y-2">
+                  {dashboardData.overdue.map((task) => (
+                    <motion.div
+                      key={task.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-center p-4 bg-red-50 border border-red-100 rounded-xl"
+                    >
+                      {getStatusIcon(task.status)}
+                      <span className="ml-3 flex-1 text-sm text-foreground">{task.title}</span>
+                      <span className="text-xs text-red-600 font-medium">
+                        {task.days_overdue} days overdue
+                      </span>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        {/* Today's Tasks */}
-        {dashboardData?.today && dashboardData.today.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Today</h2>
-            <div className="space-y-2">
-              {dashboardData.today.map((task) => (
-                <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
-              ))}
-            </div>
-          </div>
-        )}
+            {/* Today's Tasks */}
+            {dashboardData?.today && dashboardData.today.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold text-foreground mb-4">Today</h2>
+                <div className="space-y-2">
+                  {dashboardData.today.map((task) => (
+                    <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
+                  ))}
+                </div>
+              </div>
+            )}
 
-        {/* Upcoming Tasks */}
-        {dashboardData?.upcoming && dashboardData.upcoming.length > 0 && (
-          <div>
-            <h2 className="text-lg font-semibold text-foreground mb-4">Upcoming</h2>
-            <div className="space-y-2">
-              {dashboardData.upcoming.map((task) => (
-                <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
-              ))}
-            </div>
-          </div>
+            {/* Upcoming Tasks */}
+            {dashboardData?.upcoming && dashboardData.upcoming.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold text-foreground mb-4">Upcoming</h2>
+                <div className="space-y-2">
+                  {dashboardData.upcoming.map((task) => (
+                    <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* All Tasks Grouped by Status */}
+            {allTasks.length > 0 && (
+              <div className="mt-8">
+                <h2 className="text-lg font-semibold text-foreground mb-4">All Tasks</h2>
+                <div className="space-y-6">
+                  {STATUS_ORDER.map((status) => {
+                    const statusTasks = allTasks.filter((t) => t.status === status);
+                    if (statusTasks.length === 0) return null;
+                    return (
+                      <div key={status}>
+                        <h3 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">
+                          {STATUS_LABELS[status]} ({statusTasks.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {statusTasks.map((task) => (
+                            <TaskCard 
+                              key={task.id} 
+                              task={task} 
+                              getPriorityColor={getPriorityColor} 
+                              getPriorityBg={getPriorityBg} 
+                              getStatusIcon={getStatusIcon} 
+                              onUpdate={fetchDashboard} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Empty State */}
@@ -356,9 +445,11 @@ function TaskCard({
     setIsCompleting(true);
     try {
       await tasks.complete(task.id);
+      toast.success('Task completed!');
       onUpdate();
     } catch (err) {
       console.error('Failed to complete task:', err);
+      toast.error('Failed to complete task');
     } finally {
       setIsCompleting(false);
     }

@@ -10,12 +10,13 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
     <AnimatePresence mode="wait">
       <motion.div
         key={pathname}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
         transition={{ 
-          duration: 0.2, 
-          ease: [0.25, 0.1, 0.25, 1] 
+          duration: 0.3, 
+          ease: [0.25, 0.1, 0.25, 1],
+          opacity: { duration: 0.2 }
         }}
       >
         {children}
@@ -37,6 +38,42 @@ export function FadeIn({
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ 
+        duration: 0.4, 
+        delay,
+        ease: [0.25, 0.1, 0.25, 1] 
+      }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+export function SlideIn({ 
+  children, 
+  direction = 'up',
+  delay = 0,
+  className = '' 
+}: { 
+  children: React.ReactNode; 
+  direction?: 'up' | 'down' | 'left' | 'right';
+  delay?: number;
+  className?: string;
+}) {
+  const directions = {
+    up: { y: 30, x: 0 },
+    down: { y: -30, x: 0 },
+    left: { x: 30, y: 0 },
+    right: { x: -30, y: 0 },
+  };
+  
+  const { x, y } = directions[direction];
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, x, y }}
+      animate={{ opacity: 1, x: 0, y: 0 }}
       transition={{ 
         duration: 0.4, 
         delay,

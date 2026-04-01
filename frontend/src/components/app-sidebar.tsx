@@ -5,14 +5,28 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MessageSquare, FileText, BarChart2, Plus, LogOut, X, User, Menu,
-  CheckSquare
+  CheckSquare, Trash2
 } from 'lucide-react';
 import { chat, auth, user } from '@/lib/api';
+import { toast } from 'sonner';
+
+// Helper function to fetch conversations
+const fetchConversations = async (setConversations: (c: any[]) => void) => {
+  try {
+    const data = await chat.getConversations();
+    // Filter out conversations with no messages
+    const filtered = (data || []).filter((conv: any) => conv.message_count > 0 || conv.title !== 'Untitled conversation');
+    setConversations(filtered.slice(0, 20));
+  } catch {
+    // Silently fail
+  }
+};
 
 interface Conversation {
   id: string;
   title: string;
   updated_at: string;
+  message_count?: number;
 }
 
 export default function AppSidebar() {
@@ -31,9 +45,7 @@ export default function AppSidebar() {
 
   useEffect(() => {
     if (token) {
-      chat.getConversations().then((data) => {
-        setConversations(data.slice(0, 20));
-      }).catch(() => {});
+      fetchConversations(setConversations);
 
       user.getInfo().then((data) => {
         setUsername(data.username || 'User');
@@ -48,9 +60,18 @@ export default function AppSidebar() {
       });
     }
     setIsLoading(false);
-  }, []);
+  }, [token]);
 
-  // Close mobile menu on route change
+  // Listen for refresh-conversations custom event
+  useEffect(() => {
+    const handleRefresh = () => {
+      if (token) {
+        fetchConversations(setConversations);
+      }
+    };
+    window.addEventListener('refresh-conversations', handleRefresh);
+    return () => window.removeEventListener('refresh-conversations', handleRefresh);
+  }, [token]);
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
@@ -59,7 +80,8 @@ export default function AppSidebar() {
   useEffect(() => {
     if (token && pathname === '/chat') {
       chat.getConversations().then((data) => {
-        setConversations(data.slice(0, 20));
+        const filtered = (data || []).filter((conv: any) => conv.message_count > 0 || conv.title !== 'Untitled conversation');
+        setConversations(filtered.slice(0, 20));
       }).catch(() => {});
     }
   }, [pathname, token]);
@@ -98,19 +120,56 @@ export default function AppSidebar() {
     setIsMobileMenuOpen(false);
   };
 
-  const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
+  const handleConversationClick = (convId: string) => {
+    if (!isAuthenticated) {
+      triggerShakeAndRedirect();
+      return;
+    }
+    router.push(`/chat?id=${convId}`);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleDeleteConversation = async (e: React.MouseEvent, id: string, title: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm('Delete this conversation?')) return;
-    setDeletingId(id);
-    try {
-      await chat.deleteConversation(id);
-      setConversations(prev => prev.filter(c => c.id !== id));
-    } catch (err) {
-      alert('Failed to delete conversation');
-    } finally {
-      setDeletingId(null);
-    }
+    
+    toast.custom((t) => (
+      <div className="flex items-center gap-4 px-1">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Delete conversation?</p>
+          <p className="text-xs text-muted-foreground truncate max-w-[180px]">{title || 'Untitled'}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => toast.dismiss(t)}
+            className="px-3 py-1.5 text-xs font-medium hover:bg-muted rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => {
+              toast.dismiss(t);
+              setDeletingId(id);
+              try {
+                await chat.deleteConversation(id);
+                setConversations(prev => prev.filter(c => c.id !== id));
+                toast.success('Conversation deleted');
+              } catch (err) {
+                toast.error('Failed to delete conversation');
+              } finally {
+                setDeletingId(null);
+              }
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    ), { 
+      duration: 5000,
+      className: 'bg-card border border-border shadow-lg rounded-xl p-4'
+    });
   };
 
   const navItems = [
@@ -137,8 +196,8 @@ export default function AppSidebar() {
       {/* Header */}
       <div className="h-14 flex items-center justify-between px-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center">
-            <MessageSquare size={16} className="text-white" />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+            <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
           </div>
           <span className="text-sm font-semibold text-foreground">
             AEIOU AI
@@ -196,10 +255,9 @@ export default function AppSidebar() {
                   animate={{ opacity: 1, x: 0 }}
                   className="conversation-item flex items-center group"
                 >
-                  <a
-                    href={`/chat?id=${conv.id}`}
-                    onClick={(e) => handleNavClick(e, `/chat?id=${conv.id}`)}
-                    className={`block flex-1 px-3 py-2 text-sm rounded-lg no-underline truncate cursor-pointer transition-all ${
+                  <button
+                    onClick={() => handleConversationClick(conv.id)}
+                    className={`block flex-1 px-3 py-2 text-sm rounded-lg text-left truncate cursor-pointer transition-all border-0 bg-transparent ${
                       active 
                         ? 'text-foreground bg-blue-50 font-medium' 
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -207,14 +265,14 @@ export default function AppSidebar() {
                     title={conv.title}
                   >
                     {conv.title || 'Untitled conversation'}
-                  </a>
+                  </button>
                   <button
-                    onClick={(e) => handleDeleteConversation(e, conv.id)}
+                    onClick={(e) => handleDeleteConversation(e, conv.id, conv.title)}
                     disabled={deletingId === conv.id}
                     className="flex items-center justify-center w-7 h-7 rounded-md bg-transparent border-none cursor-pointer text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
                     title="Delete"
                   >
-                    {deletingId === conv.id ? <span className="text-[10px]">...</span> : <X size={14} />}
+                    {deletingId === conv.id ? <span className="text-[10px]">...</span> : <Trash2 size={14} />}
                   </button>
                 </motion.div>
               );
