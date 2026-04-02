@@ -58,3 +58,63 @@ def log_tool_call(tool_name: str, user_id: int, success: bool, error: str = None
         success=success,
         error=error,
     )
+
+
+def log_api_request(
+    user_id: int,
+    endpoint: str,
+    method: str,
+    status_code: int,
+    latency_ms: float = None,
+    error: str = None,
+):
+    """Log API request with structured data."""
+    logger = get_logger("api.request")
+    level = "info" if status_code < 400 else "warning" if status_code < 500 else "error"
+    getattr(logger, level)(
+        "api_request",
+        user_id=user_id,
+        endpoint=endpoint,
+        method=method,
+        status_code=status_code,
+        latency_ms=latency_ms,
+        error=error,
+    )
+
+
+def log_security_event(
+    event_type: str,
+    user_id: int = None,
+    ip_address: str = None,
+    details: dict = None,
+):
+    """Log security-related events."""
+    logger = get_logger("security.event")
+    logger.warning(
+        "security_event",
+        event_type=event_type,
+        user_id=user_id,
+        ip_address=ip_address,
+        details=details or {},
+    )
+
+
+def log_db_query(
+    model_name: str,
+    operation: str,
+    duration_ms: float,
+    row_count: int = None,
+    slow_threshold_ms: float = 100.0,
+):
+    """Log database queries for performance monitoring."""
+    logger = get_logger("db.query")
+    is_slow = duration_ms > slow_threshold_ms
+    level = "warning" if is_slow else "debug"
+    getattr(logger, level)(
+        "db_query",
+        model_name=model_name,
+        operation=operation,
+        duration_ms=duration_ms,
+        row_count=row_count,
+        is_slow=is_slow,
+    )

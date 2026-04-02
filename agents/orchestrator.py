@@ -168,11 +168,24 @@ def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
         reasoning_chain = ["User requested web search", "Execute brave search with the query"]
     
     elif intent == "task":
-        tool_calls = [
-            {"name": "list_tasks", "args": {"user_id": user_id, "limit": 10}, "reason": "Check recent tasks"},
-            {"name": "get_task_insights", "args": {"user_id": user_id}, "reason": "Get task productivity insights"}
-        ]
-        reasoning_chain = ["User asked about tasks", "List tasks and get productivity insights"]
+        # Check if this is a task creation request vs just querying tasks
+        creation_signals = ["create", "add", "new", "make", "remind", "schedule", "plan to", "need to", "should"]
+        is_creating = any(sig in user_message.lower() for sig in creation_signals)
+        
+        if is_creating:
+            # Auto-extract and create tasks from the message
+            tool_calls = [
+                {"name": "suggest_tasks_from_context", "args": {"text": user_message, "user_id": user_id, "source_type": "chat"}, "reason": "Extract actionable tasks from user message"},
+                {"name": "list_tasks", "args": {"user_id": user_id, "limit": 5, "status": "todo"}, "reason": "Show updated task list"}
+            ]
+            reasoning_chain = ["User wants to create a task", "Extract tasks from their message", "Show updated task list"]
+        else:
+            # Just querying existing tasks
+            tool_calls = [
+                {"name": "list_tasks", "args": {"user_id": user_id, "limit": 10}, "reason": "Check recent tasks"},
+                {"name": "get_task_insights", "args": {"user_id": user_id}, "reason": "Get task productivity insights"}
+            ]
+            reasoning_chain = ["User asked about tasks", "List tasks and get productivity insights"]
     
     elif intent == "memory":
         tool_calls = [
@@ -324,6 +337,12 @@ Instructions for AEIOU AI:
 6. Answer their specific question directly
 7. No generic "action steps" or "best practices" advice
 8. USE the User Context above - reference their company name, documents, and history
+9. CRITICAL - DO NOT HALLUCINATE:
+   - If a tool result is empty or missing, say "I don't have that information" or "I don't see any [tasks/documents/data] for you yet"
+   - Never make up numbers, dates, or facts that aren't in the tool results
+   - Never reference documents or tasks that don't appear in the tool results
+   - If you need to search for something not found, say "I couldn't find that - would you like me to search differently?"
+10. If the data shows "No [items] found", clearly state that rather than being vague
 
 Just give a natural, helpful response:"""
 

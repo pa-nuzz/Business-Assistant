@@ -119,6 +119,12 @@ class Document(models.Model):
     page_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "status", "-created_at"]),
+            models.Index(fields=["user", "file_type"]),
+        ]
+
     def __str__(self):
         return f"{self.title} ({self.status})"
 
@@ -152,6 +158,7 @@ class Conversation(models.Model):
 
     class Meta:
         ordering = ["-updated_at"]
+        indexes = [models.Index(fields=["user", "-updated_at"])]
 
     def __str__(self):
         return f"Conv {self.id} — {self.user.username}"
@@ -231,10 +238,15 @@ class Task(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["user", "status"]),
-            models.Index(fields=["user", "priority"]),
-            models.Index(fields=["assignee", "status"]),
-            models.Index(fields=["due_date"]),
+            # Core lookups
+            models.Index(fields=["user", "status", "-created_at"]),
+            models.Index(fields=["user", "priority", "-created_at"]),
+            # Assignment queries
+            models.Index(fields=["assignee", "status", "-created_at"]),
+            # Due date queries (for overdue detection)
+            models.Index(fields=["due_date", "status"]),
+            # Status-specific with priority for dashboard
+            models.Index(fields=["status", "priority", "-created_at"]),
         ]
     
     def __str__(self):

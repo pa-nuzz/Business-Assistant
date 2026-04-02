@@ -267,6 +267,13 @@ def save_memory(user_id: int, key: str, value: str, category: str) -> dict:
     """Upsert a memory fact."""
     try:
         from core.models import UserMemory
+        from utils.sanitization import sanitize_plain_text, sanitize_rich_text
+        
+        # Sanitize inputs
+        key = sanitize_plain_text(key, max_length=200)
+        value = sanitize_rich_text(value, max_length=10000)
+        category = sanitize_plain_text(category, max_length=50)
+        
         obj, created = UserMemory.objects.update_or_create(
             user_id=user_id,
             key=key,
@@ -661,6 +668,15 @@ def create_task(user_id: int, title: str, description: str = "",
     try:
         from core.models import Task, TaskTag, BusinessProfile
         from django.contrib.auth.models import User
+        from utils.sanitization import sanitize_plain_text, sanitize_rich_text
+        
+        # Sanitize inputs
+        title = sanitize_plain_text(title, max_length=255)
+        description = sanitize_rich_text(description, max_length=5000)
+        
+        # Validate required fields
+        if not title:
+            return {"error": "Task title is required"}
         
         # Get or create business profile
         try:
@@ -695,10 +711,12 @@ def create_task(user_id: int, title: str, description: str = "",
             assignee_id=assignee_id,
         )
         
-        # Add tags
+        # Add tags (sanitized)
         if tags:
             for tag in tags:
-                TaskTag.objects.create(task=task, tag=tag.lower().strip())
+                clean_tag = sanitize_plain_text(tag, max_length=100)
+                if clean_tag:
+                    TaskTag.objects.create(task=task, tag=clean_tag.lower())
         
         return {
             "result": {
@@ -999,6 +1017,45 @@ If no actionable tasks found, return empty suggestions array."""
         return {"error": str(e)}
 
 
+def delete_task(user_id: int, task_id: str) -> dict:
+    """
+    Delete a task permanently.
+    
+    Args:
+        user_id: The user who owns the task
+        task_id: UUID of the task to delete
+    """
+    try:
+        from core.models import Task, TaskActivity
+        
+        task = Task.objects.get(id=task_id, user_id=user_id)
+        title = task.title
+        
+        # Log the deletion for audit trail
+        TaskActivity.objects.create(
+            task=task,
+            user_id=user_id,
+            activity_type="archived",
+            old_value="active",
+            new_value="deleted"
+        )
+        
+        task.delete()
+        
+        return {
+            "result": {
+                "deleted": True,
+                "task_title": title,
+                "message": f"Task '{title}' deleted successfully"
+            }
+        }
+    except Task.DoesNotExist:
+        return {"error": "Task not found"}
+    except Exception as e:
+        logger.exception("delete_task error")
+        return {"error": str(e)}
+
+
 # ─── Tool Dispatcher ──────────────────────────────────────────────────────────
 
 TOOL_MAP: dict[str, callable] = {
@@ -1020,6 +1077,7 @@ TOOL_MAP: dict[str, callable] = {
     "get_task_details": get_task_details,
     "get_task_insights": get_task_insights,
     "suggest_tasks_from_context": suggest_tasks_from_context,
+    "delete_task": delete_task,
 }
 
 
