@@ -24,7 +24,6 @@ interface CommandItem {
 function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
   const shortcuts = [
     { key: '⌘ K', description: 'Open command palette' },
-    { key: '?', description: 'Show keyboard shortcuts' },
     { key: 'C', description: 'Go to Chat' },
     { key: 'D', description: 'Go to Documents' },
     { key: 'B', description: 'Go to Dashboard' },
@@ -162,14 +161,6 @@ export function CommandPalette() {
       action: () => router.push('/settings'),
     },
     {
-      id: 'shortcuts',
-      label: 'Keyboard Shortcuts',
-      icon: <HelpCircle size={16} />,
-      shortcut: '?',
-      keywords: ['help', 'shortcuts', 'keyboard', 'hotkeys'],
-      action: () => setShowHelp(true),
-    },
-    {
       id: 'logout',
       label: 'Logout',
       icon: <LogOut size={16} />,
@@ -201,13 +192,6 @@ export function CommandPalette() {
       : commands;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // ? to show help
-    if (e.key === '?' && !isOpen && !showHelp) {
-      e.preventDefault();
-      setShowHelp(true);
-      return;
-    }
-    
     // Cmd+K or Ctrl+K to open
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
@@ -343,7 +327,6 @@ export function CommandPalette() {
               {/* Footer */}
               <div className="px-4 py-2.5 bg-gray-50/70 border-t border-gray-200/50 flex items-center justify-between text-xs text-gray-500">
                 <span>Press <kbd className="px-1.5 py-0.5 bg-white rounded border border-gray-200">Enter</kbd> to select</span>
-                <span><kbd className="px-1.5 py-0.5 bg-white rounded border border-gray-200">?</kbd> for shortcuts</span>
               </div>
             </motion.div>
           </>

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_tasks(request):
-    """List tasks for the authenticated user with filtering."""
+    """List tasks for the authenticated user with filtering and pagination."""
     user = request.user
     
     # Get filter parameters
@@ -35,6 +35,11 @@ def list_tasks(request):
     priority_filter = request.query_params.get("priority")
     assignee_id = request.query_params.get("assignee")
     search_query = request.query_params.get("search")
+    
+    # Pagination
+    from django.core.paginator import Paginator
+    page = int(request.GET.get("page", 1))
+    page_size = min(int(request.GET.get("page_size", 20)), 100)
     
     # Base queryset - tasks created by user OR assigned to user
     tasks = Task.objects.filter(
@@ -58,9 +63,13 @@ def list_tasks(request):
     order_by = request.query_params.get("order_by", "-created_at")
     tasks = tasks.order_by(order_by)
     
+    # Paginate
+    paginator = Paginator(tasks, page_size)
+    page_obj = paginator.get_page(page)
+    
     # Serialize
     data = []
-    for task in tasks:
+    for task in page_obj.object_list:
         data.append({
             "id": str(task.id),
             "title": task.title,
@@ -80,7 +89,12 @@ def list_tasks(request):
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         })
     
-    return Response(data)
+    return Response({
+        "results": data,
+        "count": paginator.count,
+        "page": page,
+        "total_pages": paginator.num_pages,
+    })
 
 
 @api_view(["POST"])
@@ -483,6 +497,39 @@ def delete_comment(request, task_id, comment_id):
     
     comment.delete()
     return Response({"message": "Comment deleted"})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_activities(request, task_id):
+    """List activities for a task with timestamps."""
+    task = get_object_or_404(Task, id=task_id)
+    
+    # Check permissions
+    user = request.user
+    if task.user != user and task.assignee != user and task.created_by != user:
+        return Response(
+            {"error": "You don't have permission to view this task"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    activities = task.activities.select_related("user").order_by("-created_at")
+    
+    data = []
+    for activity in activities:
+        data.append({
+            "id": str(activity.id),
+            "activity_type": activity.activity_type,
+            "old_value": activity.old_value,
+            "new_value": activity.new_value,
+            "user": {
+                "id": activity.user.id,
+                "username": activity.user.username,
+            },
+            "created_at": activity.created_at.isoformat(),
+        })
+    
+    return Response(data)
 
 
 # =============================================================================

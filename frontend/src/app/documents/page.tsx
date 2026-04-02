@@ -6,6 +6,7 @@ import { documents } from '@/lib/api';
 import api from '@/lib/api';
 import { FileText, Upload, FileX, Trash2, Search, Loader2, X, MessageSquare, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PageSkeleton } from '@/components/loading-skeletons';
 
 interface Document {
   id: string;
@@ -35,12 +36,21 @@ export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const pageSize = 20;
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Documents | AEIOU AI';
+  }, []);
 
   const fetchDocuments = async () => {
     try {
-      const data = await documents.list();
-      setDocs(data);
+      const data = await documents.list(currentPage, pageSize);
+      setDocs(data.results || []);
+      setTotalPages(data.total_pages || 1);
     } catch (err) {
       console.error('Failed to fetch documents:', err);
     } finally {
@@ -50,7 +60,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     fetchDocuments();
-  }, []);
+  }, [currentPage]);
 
   // Poll document status while processing
   useEffect(() => {
@@ -222,22 +232,22 @@ export default function DocumentsPage() {
       )}
 
       <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground mb-1">Documents</h1>
-            <p className="text-sm text-muted-foreground">Upload and search your business files</p>
-          </div>
-          <motion.button
+        {/* Upload Zone - Always visible at top */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <div
             onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all duration-200 disabled:opacity-50 shadow-sm"
+            className="border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-2xl p-8 text-center cursor-pointer transition-colors bg-gray-50/50 hover:bg-blue-50/30"
           >
-            <Upload size={16} />
-            {isUploading ? 'Uploading...' : 'Upload file'}
-          </motion.button>
+            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
+              <Upload className="w-6 h-6 text-blue-600" />
+            </div>
+            <p className="text-sm font-medium text-foreground mb-1">Click to upload documents</p>
+            <p className="text-xs text-muted-foreground">Drop files here or click to browse</p>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -245,90 +255,125 @@ export default function DocumentsPage() {
             onChange={handleUpload}
             className="hidden"
           />
+        </motion.div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground mb-1">Documents</h1>
+            <p className="text-sm text-muted-foreground">Upload and search your business files</p>
+          </div>
         </div>
 
         {/* Document List */}
         {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 size={32} className="text-muted-foreground animate-spin" />
-          </div>
+          <PageSkeleton type="documents" />
         ) : docs.length === 0 ? (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center py-20"
+            className="text-center py-16"
           >
-            <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-              <FileX size={40} className="text-muted-foreground" />
+            <h2 className="text-xl font-semibold text-foreground mb-2">No documents uploaded</h2>
+            <p className="text-sm text-muted-foreground mb-4">Upload PDF, DOCX, or TXT files and ask AEIOU questions about them</p>
+            <div className="flex items-center justify-center gap-2">
+              <span className="px-3 py-1 text-xs font-medium bg-red-50 text-red-600 rounded-full">PDF</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs font-medium bg-blue-50 text-blue-600 rounded-full">DOCX</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">TXT</span>
             </div>
-            <p className="text-lg font-medium text-foreground mb-1">No documents yet</p>
-            <p className="text-sm text-muted-foreground">Upload a PDF, DOCX, or TXT to get started</p>
           </motion.div>
         ) : (
-          <div className="space-y-3">
-            {docs.map((doc, index) => {
-              const iconColors = getFileIconColor(doc.file_type);
-              return (
-                <motion.div
-                  key={doc.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex items-center p-4 bg-card rounded-xl border border-border hover:border-blue-200 hover:shadow-sm transition-all duration-200"
-                >
-                  {/* File Type Icon */}
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 ${iconColors.bg} border ${iconColors.border}`}>
-                    <FileText size={24} className={iconColors.color} />
-                  </div>
+          <>
+            <div className="space-y-3">
+              {docs.map((doc, index) => {
+                const iconColors = getFileIconColor(doc.file_type);
+                return (
+                  <motion.div
+                    key={doc.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="flex items-center p-4 bg-card rounded-xl border border-border hover:border-blue-200 hover:shadow-sm transition-all duration-200"
+                  >
+                    {/* File Type Icon */}
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 ${iconColors.bg} border ${iconColors.border}`}>
+                      <FileText size={24} className={iconColors.color} />
+                    </div>
 
-                  {/* Document Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">
-                      {doc.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(doc.created_at).toLocaleDateString()}
-                      {doc.page_count > 0 && ` • ${doc.page_count} pages`}
-                    </p>
-                  </div>
+                    {/* Document Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">
+                        {doc.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(doc.created_at).toLocaleDateString()}
+                        {doc.page_count > 0 && ` • ${doc.page_count} pages`}
+                      </p>
+                    </div>
 
-                  {/* Status */}
-                  <div className="mr-4">
-                    {getStatusBadge(doc.status)}
-                  </div>
+                    {/* Status */}
+                    <div className="mr-4">
+                      {getStatusBadge(doc.status)}
+                    </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    {doc.status === 'ready' && (
+                    {/* Actions */}
+                    <div className="flex items-center gap-2">
+                      {doc.status === 'ready' && (
+                        <motion.button
+                          onClick={() => openDocModal(doc)}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                        >
+                          <Eye size={14} />
+                          View
+                        </motion.button>
+                      )}
                       <motion.button
-                        onClick={() => openDocModal(doc)}
+                        onClick={() => handleDelete(doc.id)}
+                        disabled={deletingId === doc.id}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Delete"
                       >
-                        <Eye size={14} />
-                        View
+                        {deletingId === doc.id ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={16} />
+                        )}
                       </motion.button>
-                    )}
-                    <motion.button
-                      onClick={() => handleDelete(doc.id)}
-                      disabled={deletingId === doc.id}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="p-2 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                      title="Delete"
-                    >
-                      {deletingId === doc.id ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={16} />
-                      )}
-                    </motion.button>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Pagination */}
+            <div className="mt-8 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
 

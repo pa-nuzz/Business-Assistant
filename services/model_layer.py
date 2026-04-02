@@ -8,6 +8,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,8 @@ class ModelResponse:
     latency_ms: float = 0.0
 
 
-# ─── Simple in-memory cache ───────────────────────────────────────────────────
-_cache: Dict[str, tuple] = {}
+# ─── Cache TTL ─────────────────────────────────────────────────────────────────
 _CACHE_TTL = 300  # 5 minutes
-
-# ─── User memory (in-memory, per session) ────────────────────────────────────
-_user_memory: Dict[int, list] = {}
 _MAX_MEMORIES = 15
 
 
@@ -55,36 +52,39 @@ def intent_to_task_type(intent: str) -> TaskType:
 
 
 def get_user_memory(user_id: int) -> str:
-    memories = _user_memory.get(user_id, [])
+    cache_key = f"user_mem_{user_id}"
+    memories = cache.get(cache_key) or []
     if not memories:
         return ""
     return "User context:\n" + "\n".join(f"- {m}" for m in memories[-5:])
 
 
 def add_user_memory(user_id: int, memory: str):
-    if user_id not in _user_memory:
-        _user_memory[user_id] = []
-    _user_memory[user_id].append(memory)
-    _user_memory[user_id] = _user_memory[user_id][-_MAX_MEMORIES:]
+    cache_key = f"user_mem_{user_id}"
+    memories = cache.get(cache_key) or []
+    memories.append(memory)
+    memories = memories[-_MAX_MEMORIES:]
+    cache.set(cache_key, memories, timeout=_CACHE_TTL)
 
 
 def _cache_key(user_id: int, query: str, task: str) -> str:
     h = hashlib.md5(f"{task}:{query}".encode()).hexdigest()[:16]
-    return f"{user_id}:{h}"
+    return f"model_layer_{user_id}_{h}"
 
 
 def _from_cache(user_id: int, query: str, task: str) -> Optional[ModelResponse]:
     key = _cache_key(user_id, query, task)
-    if key in _cache:
-        text, ts, model = _cache[key]
+    cached = cache.get(key)
+    if cached:
+        text, ts, model = cached
         if time.time() - ts < _CACHE_TTL:
             return ModelResponse(text=text, model_used=model, cached=True)
-        del _cache[key]
+        cache.delete(key)
     return None
 
 
 def _to_cache(user_id: int, query: str, task: str, text: str, model: str):
-    _cache[_cache_key(user_id, query, task)] = (text, time.time(), model)
+    cache.set(_cache_key(user_id, query, task), (text, time.time(), model), timeout=_CACHE_TTL)
 
 
 def _build_prompt(base: str, user_id: int) -> str:

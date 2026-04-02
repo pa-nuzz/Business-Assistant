@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { tasks } from '@/lib/api';
 import { 
   Plus, 
@@ -15,6 +16,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { KanbanBoard } from '@/components/kanban-board';
 import { toast } from 'sonner';
+import { PageSkeleton } from '@/components/loading-skeletons';
 
 interface Task {
   id: string;
@@ -47,6 +49,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_ORDER = ['todo', 'in_progress', 'review', 'done'];
 
 export default function TasksPage() {
+  const router = useRouter();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,19 +57,28 @@ export default function TasksPage() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState('medium');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const pageSize = 20;
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'Tasks | AEIOU AI';
+  }, []);
 
   useEffect(() => {
     fetchDashboard();
-  }, []);
+  }, [currentPage]);
 
   const fetchDashboard = async () => {
     try {
       const [dashboard, tasksList] = await Promise.all([
         tasks.getDashboard(),
-        tasks.list()
+        tasks.list(undefined, currentPage, pageSize)
       ]);
       setDashboardData(dashboard);
-      setAllTasks(tasksList.results || tasksList || []);
+      setAllTasks(tasksList.results || []);
+      setTotalPages(tasksList.total_pages || 1);
     } catch (err) {
       console.error('Failed to fetch dashboard:', err);
     } finally {
@@ -126,11 +138,7 @@ export default function TasksPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-10 h-10 border-3 border-muted border-t-blue-600 rounded-full animate-spin" />
-      </div>
-    );
+    return <PageSkeleton type="tasks" />;
   }
 
   return (
@@ -320,6 +328,31 @@ export default function TasksPage() {
           </>
         )}
 
+        {/* Pagination */}
+        {allTasks.length > 0 && (
+          <div className="mt-8 flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Page {currentPage} of {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Empty State */}
         {dashboardData && 
          dashboardData.today.length === 0 && 
@@ -330,11 +363,32 @@ export default function TasksPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center py-20"
           >
-            <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 size={40} className="text-muted-foreground" />
+            {/* Animated illustration: 3 empty checkbox outlines */}
+            <div className="relative w-24 h-24 mx-auto mb-6">
+              <div className="absolute top-0 left-4 w-10 h-10 border-2 border-blue-200 rounded-md transform -rotate-6" />
+              <div className="absolute top-3 left-6 w-10 h-10 border-2 border-blue-300 rounded-md transform rotate-3" />
+              <div className="absolute top-6 left-8 w-10 h-10 border-2 border-blue-400 rounded-md transform rotate-12" />
             </div>
-            <p className="text-lg font-medium text-foreground mb-1">No tasks yet</p>
-            <p className="text-sm text-muted-foreground">Create your first task to get started</p>
+            <h2 className="text-xl font-semibold text-foreground mb-2">No tasks yet</h2>
+            <p className="text-sm text-muted-foreground mb-6">Create your first task or let AI extract tasks from your conversations</p>
+            <div className="flex items-center justify-center gap-3">
+              <motion.button
+                onClick={() => setShowNewTaskModal(true)}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm"
+              >
+                Create task
+              </motion.button>
+              <motion.button
+                onClick={() => router.push('/chat')}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="px-4 py-2 border border-gray-300 hover:border-gray-400 text-gray-700 text-sm font-medium rounded-xl transition-colors"
+              >
+                Import from chat
+              </motion.button>
+            </div>
           </motion.div>
         )}
       </div>
@@ -440,11 +494,20 @@ function TaskCard({
   onUpdate: () => void;
 }) {
   const [isCompleting, setIsCompleting] = useState(false);
+  const [localStatus, setLocalStatus] = useState(task.status);
+  
+  // Update local status when task prop changes
+  useEffect(() => {
+    setLocalStatus(task.status);
+  }, [task.status]);
 
   const handleComplete = async () => {
+    if (localStatus === 'done') return;
+    
     setIsCompleting(true);
     try {
       await tasks.complete(task.id);
+      setLocalStatus('done');
       toast.success('Task completed!');
       onUpdate();
     } catch (err) {
@@ -455,25 +518,43 @@ function TaskCard({
     }
   };
 
+  const isDone = localStatus === 'done';
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center p-4 bg-card rounded-xl border border-border hover:border-blue-200 hover:shadow-sm transition-all duration-200"
+      className={`flex items-center p-4 rounded-xl border transition-all duration-200 ${
+        isDone 
+          ? 'bg-green-50/50 border-green-100' 
+          : 'bg-card border-border hover:border-blue-200 hover:shadow-sm'
+      }`}
     >
       <motion.button
         onClick={handleComplete}
-        disabled={isCompleting}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-muted-foreground hover:border-green-500 hover:bg-green-50 transition-all duration-200 disabled:opacity-50 group"
+        disabled={isCompleting || isDone}
+        whileHover={{ scale: isDone ? 1 : 1.1 }}
+        whileTap={{ scale: isDone ? 1 : 0.9 }}
+        className={`flex items-center justify-center w-6 h-6 rounded-full border-2 transition-all duration-200 ${
+          isDone
+            ? 'bg-green-500 border-green-500 cursor-default'
+            : 'border-muted-foreground hover:border-green-500 hover:bg-green-50'
+        }`}
       >
-        <Check size={14} className="text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <Check size={14} className={isDone ? 'text-white' : 'text-green-600 opacity-0 group-hover:opacity-100'} />
       </motion.button>
 
-      <span className="ml-3 flex-1 text-sm text-foreground">{task.title}</span>
+      <span className={`ml-3 flex-1 text-sm ${isDone ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+        {task.title}
+      </span>
+      
+      {isDone && (
+        <span className="mr-2 px-2 py-0.5 text-xs font-medium text-green-600 bg-green-100 rounded-full">
+          Done
+        </span>
+      )}
 
-      {task.tags.length > 0 && (
+      {task.tags.length > 0 && !isDone && (
         <div className="flex gap-1 mr-3">
           {task.tags.slice(0, 3).map((tag) => (
             <span
@@ -486,12 +567,14 @@ function TaskCard({
         </div>
       )}
 
-      <span
-        className={`px-2.5 py-1 text-xs font-medium rounded-md capitalize ${getPriorityBg(task.priority)}`}
-        style={{ color: getPriorityColor(task.priority) }}
-      >
-        {task.priority}
-      </span>
+      {!isDone && (
+        <span
+          className={`px-2.5 py-1 text-xs font-medium rounded-md capitalize ${getPriorityBg(task.priority)}`}
+          style={{ color: getPriorityColor(task.priority) }}
+        >
+          {task.priority}
+        </span>
+      )}
     </motion.div>
   );
 }

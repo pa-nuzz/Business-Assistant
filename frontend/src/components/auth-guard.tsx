@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { auth } from '@/lib/api';
-import LoadingScreen from './loading-screen';
+import { useLoading } from './loading-context';
 
-const publicPaths = ['/login', '/register', '/forgot-password'];
+const publicPaths = ['/login', '/register', '/forgot-password', '/verify-email', '/reset-password'];
 
 function isPublicPath(path: string): boolean {
-  // Normalize path - remove trailing slash
   const normalizedPath = path.replace(/\/$/, '') || '/';
   return publicPaths.some(publicPath => 
     normalizedPath === publicPath || 
@@ -19,48 +18,38 @@ function isPublicPath(path: string): boolean {
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isReady, setIsReady] = useState(false);
-  const isProcessingRef = useRef(false);
+  const { showLoading, hideLoading } = useLoading();
 
   useEffect(() => {
-    // Prevent multiple simultaneous processing
-    if (isProcessingRef.current) return;
-    isProcessingRef.current = true;
-    
-    const checkAuth = () => {
-      const isPublic = isPublicPath(pathname);
-      const isAuth = auth.isAuthenticated();
+    const isPublic = isPublicPath(pathname);
+    const isAuth = auth.isAuthenticated();
 
-      if (!isAuth && !isPublic) {
-        // Not authenticated and on protected route -> redirect to login
-        router.replace('/login');
-        return false;
-      } else if (isAuth && isPublic) {
-        // Authenticated and on public route -> redirect to chat
-        router.replace('/chat');
-        return false;
-      }
-      return true;
-    };
-
-    const shouldRender = checkAuth();
-    
-    if (shouldRender) {
-      // Small delay for smooth transition
-      const timer = setTimeout(() => {
-        setIsReady(true);
-        isProcessingRef.current = false;
-      }, 50);
-      return () => clearTimeout(timer);
-    } else {
-      isProcessingRef.current = false;
+    // Show loading before redirect
+    if ((!isAuth && !isPublic) || (isAuth && isPublic)) {
+      showLoading();
     }
-  }, [pathname, router]);
 
-  // Show loading screen with animated logo while checking auth
-  if (!isReady) {
-    return <LoadingScreen minDuration={2500} onComplete={() => {}} />;
-  }
+    if (!isAuth && !isPublic) {
+      // Not logged in, trying to access protected page
+      // Small delay to let loading screen render before navigation
+      setTimeout(() => {
+        router.replace('/login');
+      }, 100);
+      // Hide loading after redirect completes
+      setTimeout(() => hideLoading(), 700);
+    } else if (isAuth && isPublic) {
+      // Logged in but on public page
+      // Small delay to let loading screen render before navigation
+      setTimeout(() => {
+        router.replace('/chat');
+      }, 100);
+      // Hide loading after redirect completes
+      setTimeout(() => hideLoading(), 700);
+    } else {
+      // No redirect needed
+      hideLoading();
+    }
+  }, [pathname, router, showLoading, hideLoading]);
 
   return <>{children}</>;
 }

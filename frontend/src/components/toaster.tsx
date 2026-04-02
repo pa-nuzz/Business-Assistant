@@ -6,6 +6,9 @@ export function Toaster() {
   return (
     <SonnerToaster
       position="top-right"
+      closeButton
+      richColors
+      duration={4000}
       toastOptions={{
         style: {
           background: 'white',

@@ -5,10 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MessageSquare, FileText, BarChart2, Plus, LogOut, X, User, Menu,
-  CheckSquare, Trash2
+  CheckSquare, Trash2, Search
 } from 'lucide-react';
-import { chat, auth, user } from '@/lib/api';
+import { chat, auth, user, onboarding } from '@/lib/api';
 import { toast } from 'sonner';
+import { useLoading } from '@/components/loading-context';
 
 // Helper function to fetch conversations
 const fetchConversations = async (setConversations: (c: any[]) => void) => {
@@ -35,6 +36,8 @@ export default function AppSidebar() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [username, setUsername] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [onboardingStatus, setOnboardingStatus] = useState<{ completion_pct: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isShaking, setIsShaking] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -42,7 +45,9 @@ export default function AppSidebar() {
   
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
   const isAuthenticated = !!token;
+  const { showLoading, hideLoading } = useLoading();
 
+  // Fetch conversations on mount and when token changes
   useEffect(() => {
     if (token) {
       fetchConversations(setConversations);
@@ -58,8 +63,38 @@ export default function AppSidebar() {
           setUsername('User');
         }
       });
+
+      // Fetch onboarding status
+      onboarding.getStatus().then((status) => {
+        setOnboardingStatus(status);
+      }).catch(() => {
+        // Silently fail
+      });
     }
     setIsLoading(false);
+  }, [token]);
+
+  // Refresh conversations periodically and when window focuses
+  useEffect(() => {
+    if (!token) return;
+    
+    const refresh = () => fetchConversations(setConversations);
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(refresh, 30000);
+    
+    // Refresh when window becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [token]);
 
   // Listen for refresh-conversations custom event
@@ -76,7 +111,17 @@ export default function AppSidebar() {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  // Refresh conversations when pathname changes
+  // Keyboard shortcut for new chat (Cmd/Ctrl + Shift + N)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
+        e.preventDefault();
+        handleNewChat();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAuthenticated]);
   useEffect(() => {
     if (token && pathname === '/chat') {
       chat.getConversations().then((data) => {
@@ -86,10 +131,21 @@ export default function AppSidebar() {
     }
   }, [pathname, token]);
 
-  const handleLogout = () => {
-    auth.logout();
-    router.push('/login');
-    setIsMobileMenuOpen(false);
+  const handleLogout = async () => {
+    try {
+      showLoading();
+      await auth.logout();
+      // Clear chat state on logout
+      sessionStorage.removeItem('chat-state-v1');
+      localStorage.removeItem('chat-draft-input');
+      // Small delay to let loading screen render before navigation
+      setTimeout(() => {
+        router.push('/login');
+      }, 100);
+    } finally {
+      // Hide loading after a short delay to ensure redirect completes
+      setTimeout(() => hideLoading(), 600);
+    }
   };
 
   const handleNewChat = () => {
@@ -209,6 +265,7 @@ export default function AppSidebar() {
         >
           <Plus size={14} />
           New
+          <kbd className="text-[10px] text-muted-foreground bg-muted px-1 rounded border border-border ml-1">⌘⇧N</kbd>
         </button>
       </div>
 
@@ -245,8 +302,22 @@ export default function AppSidebar() {
               Recent
             </span>
           </div>
+          {/* Search input */}
+          <input 
+            placeholder="Search conversations..."
+            className="w-full px-3 py-1.5 text-xs bg-muted rounded-lg border-0 outline-none text-muted-foreground focus:text-foreground focus:bg-background focus:ring-1 focus:ring-blue-300 mb-2"
+            value={searchQuery}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+          />
           <div className="overflow-y-auto flex-1 space-y-1">
-            {conversations.map((conv) => {
+            {conversations.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                No recent conversations yet
+              </div>
+            ) : (
+              conversations
+                .filter((c: Conversation) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map((conv: Conversation) => {
               const active = pathname === `/chat` && conv.id === (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('id') : '');
               return (
                 <motion.div
@@ -267,7 +338,7 @@ export default function AppSidebar() {
                     {conv.title || 'Untitled conversation'}
                   </button>
                   <button
-                    onClick={(e) => handleDeleteConversation(e, conv.id, conv.title)}
+                    onClick={(e: React.MouseEvent) => handleDeleteConversation(e, conv.id, conv.title)}
                     disabled={deletingId === conv.id}
                     className="flex items-center justify-center w-7 h-7 rounded-md bg-transparent border-none cursor-pointer text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
                     title="Delete"
@@ -276,7 +347,24 @@ export default function AppSidebar() {
                   </button>
                 </motion.div>
               );
-            })}
+            })
+          )}
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Progress Badge */}
+      {isAuthenticated && onboardingStatus && onboardingStatus.completion_pct < 100 && (
+        <div className="mx-3 mb-2 p-2 bg-blue-50 rounded-lg border border-blue-100">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-blue-700">Setup progress</span>
+            <span className="text-xs text-blue-600">{onboardingStatus.completion_pct}%</span>
+          </div>
+          <div className="h-1 bg-blue-100 rounded-full">
+            <div 
+              className="h-1 bg-blue-500 rounded-full transition-all" 
+              style={{ width: `${onboardingStatus.completion_pct}%` }} 
+            />
           </div>
         </div>
       )}

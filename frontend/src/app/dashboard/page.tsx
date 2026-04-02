@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { analytics } from '@/lib/api';
 import { Loader2, ArrowRight, MessageSquare, TrendingUp, Target, BarChart3 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { PageSkeleton } from '@/components/loading-skeletons';
 import {
   BarChart,
   Bar,
@@ -63,6 +64,11 @@ export default function DashboardPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Set page title
+  useEffect(() => {
+    document.title = 'Dashboard | AEIOU AI';
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -79,11 +85,7 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
-      </div>
-    );
+    return <PageSkeleton type="dashboard" />;
   }
 
   const profile = data?.profile || {};
@@ -126,7 +128,34 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Charts Grid */}
+        {/* Empty state for new users */}
+        {metricsChartData.length === 0 && topicsChartData.length === 0 && followups.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <BarChart3 className="w-8 h-8 text-blue-600" />
+            </div>
+            <h2 className="text-lg font-semibold mb-2">Your dashboard is empty</h2>
+            <p className="text-sm text-muted-foreground max-w-sm mb-6">
+              Start chatting, upload documents, and create tasks. 
+              AEIOU will surface insights here automatically.
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => router.push('/chat')}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
+              >
+                Start chatting
+              </button>
+              <button 
+                onClick={() => router.push('/documents')}
+                className="px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-xl border border-gray-200 hover:border-gray-300 transition-colors"
+              >
+                Upload document
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Metrics Bar Chart */}
           <motion.div 
@@ -360,6 +389,12 @@ export default function DashboardPage() {
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>
+        {/* Last updated timestamp */}
+        <p className="text-xs text-muted-foreground text-center mt-4">
+          Last updated {new Date().toLocaleString()}
+        </p>
+          </>
+        )}
       </div>
     </div>
   );

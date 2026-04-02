@@ -18,11 +18,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle token refresh on 401
+// Handle token refresh on 401 and network errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    
+    // Handle network errors
+    if (!error.response) {
+      // Network error - backend not reachable
+      if (error.code === 'ECONNABORTED' || error.message?.includes('Network Error')) {
+        console.error('Backend server not reachable. Please ensure Django is running on http://127.0.0.1:8000');
+      }
+      return Promise.reject(error);
+    }
     
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
@@ -44,7 +53,17 @@ api.interceptors.response.use(
           if (typeof window !== 'undefined') {
             window.location.href = '/login';
           }
+          return Promise.reject(refreshError);
         }
+      }
+    }
+    
+    // Handle 401 without refresh token or after refresh failed
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
       }
     }
     
@@ -54,17 +73,33 @@ api.interceptors.response.use(
 
 export default api;
 
-// Auth API
+// Auth API - Premium Auth System with Email Verification
 export const auth = {
   login: async (username: string, password: string) => {
-    const response = await api.post('/auth/token/', { username, password });
-    localStorage.setItem('access_token', response.data.access);
-    localStorage.setItem('refresh_token', response.data.refresh);
+    const response = await api.post('/auth/login/', { username, password });
+    if (response.data.access) {
+      localStorage.setItem('access_token', response.data.access);
+      localStorage.setItem('refresh_token', response.data.refresh);
+    }
     return response.data;
   },
   
-  register: async (username: string, password: string, email?: string) => {
+  register: async (username: string, password: string, email: string) => {
     const response = await api.post('/auth/register/', { username, password, email });
+    return response.data;
+  },
+  
+  verifyEmail: async (username: string, code: string) => {
+    const response = await api.post('/auth/verify-email/', { username, code });
+    if (response.data.access) {
+      localStorage.setItem('access_token', response.data.access);
+      localStorage.setItem('refresh_token', response.data.refresh);
+    }
+    return response.data;
+  },
+  
+  resendVerification: async (username: string) => {
+    const response = await api.post('/auth/resend-verification/', { username });
     return response.data;
   },
   
@@ -73,8 +108,13 @@ export const auth = {
     return response.data;
   },
   
-  resetPassword: async (uid: string, token: string, newPassword: string) => {
-    const response = await api.post('/auth/reset-password/', { uid, token, new_password: newPassword });
+  verifyResetCode: async (email: string, code: string) => {
+    const response = await api.post('/auth/verify-reset-code/', { email, code });
+    return response.data;
+  },
+  
+  resetPassword: async (email: string, code: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password/', { email, code, new_password: newPassword });
     return response.data;
   },
   
@@ -174,8 +214,11 @@ export const chat = {
     }
   },
   
-  getConversations: async () => {
-    const response = await api.get('/conversations/');
+  getConversations: async (page = 1, pageSize = 20) => {
+    const params = new URLSearchParams();
+    params.append('page', String(page));
+    params.append('page_size', String(pageSize));
+    const response = await api.get(`/conversations/?${params.toString()}`);
     return response.data;
   },
   
@@ -211,8 +254,11 @@ export const documents = {
     return response.data;
   },
   
-  list: async () => {
-    const response = await api.get('/documents/');
+  list: async (page = 1, pageSize = 20) => {
+    const params = new URLSearchParams();
+    params.append('page', String(page));
+    params.append('page_size', String(pageSize));
+    const response = await api.get(`/documents/?${params.toString()}`);
     return response.data;
   },
   
@@ -295,8 +341,10 @@ export const analytics = {
 
 // Tasks API
 export const tasks = {
-  list: async (filters?: { status?: string; priority?: string; search?: string }) => {
+  list: async (filters?: { status?: string; priority?: string; search?: string }, page = 1, pageSize = 20) => {
     const params = new URLSearchParams();
+    params.append('page', String(page));
+    params.append('page_size', String(pageSize));
     if (filters?.status) params.append('status', filters.status);
     if (filters?.priority) params.append('priority', filters.priority);
     if (filters?.search) params.append('search', filters.search);
@@ -381,6 +429,18 @@ export const tasks = {
   
   rejectSuggestion: async (suggestionId: string) => {
     const response = await api.post(`/tasks/suggestions/${suggestionId}/reject/`);
+    return response.data;
+  },
+};
+
+// Onboarding API
+export const onboarding = {
+  getStatus: async () => {
+    const response = await api.get('/onboarding/status/');
+    return response.data;
+  },
+  seedDemo: async () => {
+    const response = await api.post('/demo/seed/');
     return response.data;
   },
 };

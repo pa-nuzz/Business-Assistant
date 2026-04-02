@@ -1,144 +1,110 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useLoading } from './loading-context';
 
 interface LoadingScreenProps {
-  onComplete?: () => void;
-  minDuration?: number;
+  children: React.ReactNode;
 }
 
-// Animated equalizer bar component
-const EqualizerBar = ({ delay, height }: { delay: number; height: number }) => (
-  <motion.div
-    className="w-1.5 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-full"
-    initial={{ height: 4 }}
-    animate={{ height: [4, height, 4] }}
-    transition={{
-      duration: 0.6,
-      repeat: Infinity,
-      repeatType: 'reverse',
-      delay: delay,
-      ease: 'easeInOut',
-    }}
-  />
-);
-
-export default function LoadingScreen({ onComplete, minDuration = 2000 }: LoadingScreenProps) {
-  const [hidden, setHidden] = useState(false);
-  const [progress, setProgress] = useState(0);
+export default function LoadingScreen({ children }: LoadingScreenProps) {
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const { isLoading: isAuthLoading } = useLoading();
 
   useEffect(() => {
-    // Animate progress
-    const progressInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(progressInterval);
-          return 100;
-        }
-        return prev + 2;
-      });
-    }, 40);
+    // Check if this is a hard reload using Navigation API
+    // @ts-ignore - navigation is not in all browsers yet
+    const navEntry = window.performance?.getEntriesByType?.('navigation')?.[0] as any;
+    const navigationType = navEntry?.type;
+    
+    // 'reload' in new API, also check legacy performance.navigation.type === 1
+    const isReload = navigationType === 'reload' || 
+                     window.performance?.navigation?.type === 1 ||
+                     !sessionStorage.getItem('app-loaded');
+    
+    if (isReload) {
+      // Mark app as loaded for this session
+      sessionStorage.setItem('app-loaded', 'true');
+      // Show loading for initial load/reload
+      const timer = setTimeout(() => {
+        setIsInitialLoading(false);
+      }, 1200);
+      return () => clearTimeout(timer);
+    } else {
+      // Client-side navigation - skip loading screen immediately
+      setIsInitialLoading(false);
+    }
+  }, []);
 
-    // Hide after min duration
-    const timer = setTimeout(() => {
-      setHidden(true);
-      onComplete?.();
-    }, minDuration);
-
-    return () => {
-      clearTimeout(timer);
-      clearInterval(progressInterval);
-    };
-  }, [minDuration, onComplete]);
-
-  if (hidden) return null;
+  const showLoading = isInitialLoading || isAuthLoading;
 
   return (
-    <motion.div
-      initial={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gradient-to-br from-white via-blue-50/30 to-white"
-    >
-      {/* Logo with glow effect */}
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="relative mb-8"
-      >
-        {/* Outer glow rings */}
-        <motion.div
-          className="absolute inset-0 rounded-full bg-blue-400/20 blur-2xl"
-          animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.6, 0.3] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute inset-2 rounded-full bg-cyan-400/20 blur-xl"
-          animate={{ scale: [1.2, 1, 1.2], opacity: [0.2, 0.5, 0.2] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-        />
-        
-        {/* Logo */}
-        <div className="relative w-24 h-24">
-          <img
-            src="/logos/core.svg"
-            alt="AEIOU AI"
-            className="w-full h-full object-contain drop-shadow-2xl"
-          />
-        </div>
-      </motion.div>
-
-      {/* Energetic equalizer */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.4 }}
-        className="flex items-end gap-1 h-12 mb-6"
-      >
-        <EqualizerBar delay={0} height={32} />
-        <EqualizerBar delay={0.1} height={48} />
-        <EqualizerBar delay={0.2} height={24} />
-        <EqualizerBar delay={0.15} height={40} />
-        <EqualizerBar delay={0.05} height={28} />
-        <EqualizerBar delay={0.25} height={44} />
-        <EqualizerBar delay={0.1} height={36} />
-        <EqualizerBar delay={0.2} height={20} />
-        <EqualizerBar delay={0.05} height={32} />
-        <EqualizerBar delay={0.15} height={48} />
-        <EqualizerBar delay={0.1} height={28} />
-        <EqualizerBar delay={0.2} height={40} />
-      </motion.div>
-
-      {/* Loading text with pulse */}
-      <motion.p
-        className="text-sm font-medium text-blue-600/80 mb-4"
-        animate={{ opacity: [0.5, 1, 0.5] }}
-        transition={{ duration: 2, repeat: Infinity }}
-      >
-        Initializing AEIOU AI...
-      </motion.p>
-
-      {/* Progress bar */}
-      <div className="w-48 h-1 bg-gray-200 rounded-full overflow-hidden">
-        <motion.div
-          className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"
-          initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.1, ease: 'linear' }}
-        />
-      </div>
-
-      {/* Percentage */}
-      <motion.p
-        className="text-xs text-gray-400 mt-2"
+    <>
+      <AnimatePresence mode="wait">
+        {showLoading && (
+          <motion.div
+            key="loader"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #e0f2fe 100%)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ 
+                duration: 0.5, 
+                ease: [0.34, 1.56, 0.64, 1]
+              }}
+              className="relative flex flex-col items-center"
+            >
+              {/* Logo with soft shadow */}
+              <div className="relative">
+                <motion.img
+                  src="/logos/app-logo.svg"
+                  alt="AEIOU AI"
+                  className="w-20 h-20 object-contain drop-shadow-xl"
+                  animate={{
+                    y: [0, -4, 0],
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  }}
+                />
+                {/* Subtle glow effect */}
+                <div 
+                  className="absolute inset-0 -z-10 blur-2xl opacity-40"
+                  style={{ background: 'radial-gradient(circle, #3b82f6 0%, transparent 70%)' }}
+                />
+              </div>
+              
+              {/* App name */}
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                className="mt-5 text-sm font-medium text-slate-600 tracking-wider uppercase"
+              >
+                AEIOU AI
+              </motion.p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <motion.div 
         initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
+        animate={{ opacity: showLoading ? 0 : 1 }}
+        transition={{ duration: 0.3 }}
+        style={{ visibility: showLoading ? 'hidden' : 'visible' }}
       >
-        {progress}%
-      </motion.p>
-    </motion.div>
+        {children}
+      </motion.div>
+    </>
   );
 }

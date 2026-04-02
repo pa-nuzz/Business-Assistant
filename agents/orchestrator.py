@@ -23,41 +23,9 @@ from services.model_layer import (
     intent_to_task_type
 )
 from mcp.tools import TOOL_DEFINITIONS, execute_tool
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
-
-TATITI_SYSTEM_PROMPT = """You are AEIOU AI, an intelligent assistant for the AEIOU AI business management app. You are helpful, friendly, and conversational.
-
-Your personality:
-- Professional but approachable
-- Concise and direct - get to the point quickly
-- Conversational, like talking to a knowledgeable colleague
-- Never robotic or overly formal
-- Use natural language, not structured formats like "1. 2. 3." or bullet points unless specifically asked
-
-CRITICAL - You have access to ALL user data:
-- Documents: All uploaded files, PDFs, and their content
-- Tasks: All tasks with titles, descriptions, priorities, due dates, status
-- Tags: All tags created by the user and which items they're attached to
-- Business Profile: Company name, industry, size, revenue, goals
-- User Data: Username, email, preferences, past conversations
-- Uploads: Everything the user has uploaded to the system
-
-You MUST reference specific data when answering:
-- "I see you have a document called 'Q4 Report.pdf' that mentions..."
-- "You have 3 high-priority tasks due this week: [task names]"
-- "Based on your business profile as a [company type]..."
-- "Looking at your uploaded contract from [date]..."
-
-Key principles:
-1. ALWAYS check and reference the user's actual data before responding
-2. Never give generic advice - use their specific documents, tasks, and profile
-3. Answer directly without unnecessary preamble
-4. Don't over-explain
-5. Keep responses short and actionable
-6. Use everyday language, not business jargon
-
-When the user asks about anything, search their data first and reference it naturally."""
 
 QueryIntent = Literal["chat", "search", "document", "analytics", "memory", "action", "task"]
 
@@ -80,23 +48,24 @@ class OrchestratorResult:
     cached: bool = False
     memory_stored: bool = False
 
-# User context cache for session persistence
-_user_context_cache: Dict[int, Dict] = {}
-
 def _get_cached_context(user_id: int) -> Dict:
-    """Get or initialize user context."""
-    if user_id not in _user_context_cache:
-        _user_context_cache[user_id] = {
+    """Get or initialize user context from Redis cache."""
+    cache_key = f"user_ctx_{user_id}"
+    context = cache.get(cache_key)
+    if context is None:
+        context = {
             "last_topics": [],
             "frequent_queries": [],
             "business_insights": [],
             "conversation_count": 0,
             "last_active": None
         }
-    return _user_context_cache[user_id]
+        cache.set(cache_key, context, timeout=300)
+    return context
 
 def _update_context(user_id: int, query: str, intent: str, tools_used: List[str]):
     """Update user context with new interaction."""
+    cache_key = f"user_ctx_{user_id}"
     ctx = _get_cached_context(user_id)
     ctx["conversation_count"] += 1
     ctx["last_active"] = datetime.now().isoformat()
@@ -110,6 +79,9 @@ def _update_context(user_id: int, query: str, intent: str, tools_used: List[str]
     keywords = _extract_keywords(query)
     ctx["frequent_queries"].insert(0, {"query": query, "keywords": keywords, "intent": intent})
     ctx["frequent_queries"] = ctx["frequent_queries"][:10]
+    
+    # Save back to cache
+    cache.set(cache_key, ctx, timeout=300)
 
 def _extract_keywords(text: str) -> List[str]:
     """Extract business-relevant keywords from text."""
@@ -231,46 +203,18 @@ def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
         expected_outcome="Relevant data for response synthesis"
     )
 
-def _build_fallback_plan(intent: QueryIntent, user_message: str, user_id: int) -> ExecutionPlan:
-    """Build a simple fallback plan when AI planner fails."""
-    tool_calls = []
-    
-    if intent == "document":
-        tool_calls = [
-            {"name": "list_documents", "args": {"user_id": user_id}, "reason": "Check available documents"},
-            {"name": "search_documents", "args": {"query": user_message, "user_id": user_id}, "reason": "Search in documents"}
-        ]
-    elif intent == "analytics":
-        tool_calls = [
-            {"name": "get_business_profile", "args": {"user_id": user_id}, "reason": "Get business context"},
-            {"name": "get_revenue_data", "args": {"user_id": user_id}, "reason": "Get financial data"}
-        ]
-    elif intent == "search":
-        tool_calls = [
-            {"name": "brave_search", "args": {"query": user_message, "num_results": 3}, "reason": "Search web for current info"}
-        ]
-    elif intent == "task":
-        tool_calls = [
-            {"name": "list_tasks", "args": {"user_id": user_id, "limit": 10}, "reason": "Check recent tasks"},
-            {"name": "get_task_insights", "args": {"user_id": user_id}, "reason": "Get task productivity insights"}
-        ]
-    
-    return ExecutionPlan(
-        intent=intent,
-        tool_calls=tool_calls,
-        reasoning_chain=["Using fallback plan due to planning error"],
-        context_summary="Fallback execution",
-        expected_outcome="Basic response"
-    )
-
 def execute_intelligent_plan(plan: ExecutionPlan, user_id: int) -> List[Dict]:
     """Execute plan with self-correction and result enrichment."""
+    from utils.security import enforce_user_id
     results = []
     
     for tc in plan.tool_calls:
         tool_name = tc["name"]
         tool_args = tc.get("args", {})
         reason = tc.get("reason", "No reason provided")
+        
+        # Sanitize tool args to enforce correct user_id
+        tool_args = enforce_user_id(tool_name, tool_args, user_id)
         
         max_retries = 2
         result = None
@@ -327,37 +271,24 @@ def synthesize_response(user_message: str, plan: ExecutionPlan, tool_results: Li
     
     system_prompt = get_system_prompt(user_name)
     
-    # --- Fetch user context items (silently skip if fails) ---
+    # --- Extract user context from already-fetched tool_results ---
     user_context_parts = []
     
-    try:
-        profile_result = execute_tool("get_business_profile", {"user_id": user_id})
-        if "error" not in profile_result:
-            user_context_parts.append(f"[Business Profile]\n{json.dumps(profile_result.get('result', profile_result), indent=2, default=str)}")
-    except Exception:
-        pass
+    # Get business profile from tool_results
+    profile_result = next((r for r in tool_results if r.get("tool") == "get_business_profile"), None)
+    if profile_result and profile_result.get("success", False):
+        user_context_parts.append(f"[Business Profile]\n{profile_result['result']}")
     
-    try:
-        memory_result = execute_tool("get_user_memory", {"user_id": user_id, "category": "all"})
-        if "error" not in memory_result:
-            user_context_parts.append(f"[User Memory]\n{json.dumps(memory_result.get('result', memory_result), indent=2, default=str)}")
-    except Exception:
-        pass
+    # Get user memory from tool_results
+    memory_result = next((r for r in tool_results if r.get("tool") == "get_user_memory"), None)
+    if memory_result and memory_result.get("success", False):
+        user_context_parts.append(f"[User Memory]\n{memory_result['result']}")
     
-    # If intent is document, also fetch list of documents
+    # Get documents list from tool_results (for document intent)
     if plan.intent == "document":
-        try:
-            docs_result = execute_tool("list_documents", {"user_id": user_id})
-            if "error" not in docs_result:
-                docs_data = docs_result.get('result', docs_result)
-                # Extract just document titles for context
-                if isinstance(docs_data, list):
-                    doc_titles = [d.get('title', 'Untitled') for d in docs_data]
-                    user_context_parts.append(f"[Available Documents]\n{json.dumps(doc_titles, indent=2, default=str)}")
-                else:
-                    user_context_parts.append(f"[Available Documents]\n{json.dumps(docs_data, indent=2, default=str)}")
-        except Exception:
-            pass
+        docs_result = next((r for r in tool_results if r.get("tool") == "list_documents"), None)
+        if docs_result and docs_result.get("success", False):
+            user_context_parts.append(f"[Available Documents]\n{docs_result['result']}")
     
     user_context_block = "\n\n".join(user_context_parts) if user_context_parts else ""
     
@@ -400,7 +331,7 @@ Just give a natural, helpful response:"""
         result = call_model(
             user_id=user_id,
             user_message=synthesis_prompt,
-            base_system_prompt=TATITI_SYSTEM_PROMPT,
+            base_system_prompt=system_prompt,
             task_type=TaskType.ANALYSIS,
             priority=Priority.HIGH,
             use_cache=True,

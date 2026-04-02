@@ -172,7 +172,7 @@ def extract_business_context(text: str, doc_title: str, user_id: int) -> dict:
             user_id=user_id,
             key=f"doc_context_{doc_title.lower().replace(' ', '_')[:30]}",
             value=f"From document '{doc_title}': {analysis[:1000]}",
-            category="document_insight",
+            category="context",
         )
         
         # Also extract specific metrics if mentioned
@@ -183,7 +183,7 @@ def extract_business_context(text: str, doc_title: str, user_id: int) -> dict:
                     user_id=user_id,
                     key=f"metric_{metric_name}",
                     value=f"{metric_value} (from {doc_title})",
-                    category="metric",
+                    category="fact",
                 )
         
         return {"found": True, "context": analysis, "metrics": metrics}

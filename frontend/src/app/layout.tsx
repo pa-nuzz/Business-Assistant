@@ -1,10 +1,12 @@
 import { Geist, Geist_Mono } from 'next/font/google';
 import AuthGuard from '@/components/auth-guard';
-import AppSidebar from '@/components/app-sidebar';
+import ConditionalSidebar from '@/components/conditional-sidebar';
 import { Toaster } from '@/components/toaster';
-import { PageTransition } from '@/components/transitions';
 import { CommandPalette as EnhancedCommandPalette } from '@/components/enhanced-command-palette';
 import { ErrorBoundary } from '@/components/error-boundary';
+import LoadingScreen from '@/components/loading-screen';
+import { LoadingProvider } from '@/components/loading-context';
+import { ChatProvider } from '@/components/chat-context';
 import './globals.css';
 
 const geistSans = Geist({
@@ -33,22 +35,29 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
-      <body className="min-h-full flex flex-col bg-[#fafafa]" suppressHydrationWarning>
-        <AuthGuard>
-          <div className="flex h-screen overflow-hidden">
-            <AppSidebar />
-            <main className="flex-1 min-w-0 overflow-auto transition-all duration-300 ease-out">
-              <PageTransition>
-                <ErrorBoundary>
-                  {children}
-                </ErrorBoundary>
-              </PageTransition>
-            </main>
-          </div>
-        </AuthGuard>
-        <Toaster />
-        <EnhancedCommandPalette />
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`} style={{background:'linear-gradient(135deg,#dbeafe 0%,#eff6ff 50%,#e0f2fe 100%)'}}>
+      <head>
+        <style>{`html,body{background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 50%,#e0f2fe 100%) !important}`}</style>
+      </head>
+      <body className="min-h-full flex flex-col" style={{background:'linear-gradient(135deg,#dbeafe 0%,#eff6ff 50%,#e0f2fe 100%)'}} suppressHydrationWarning>
+        <LoadingProvider>
+          <ChatProvider>
+            <LoadingScreen>
+              <AuthGuard>
+                <div className="flex h-screen overflow-hidden">
+                  <ConditionalSidebar />
+                  <main className="flex-1 min-w-0 overflow-auto transition-all duration-300 ease-out">
+                    <ErrorBoundary>
+                      {children}
+                    </ErrorBoundary>
+                  </main>
+                </div>
+                <EnhancedCommandPalette />
+              </AuthGuard>
+              <Toaster />
+            </LoadingScreen>
+          </ChatProvider>
+        </LoadingProvider>
       </body>
     </html>
   );

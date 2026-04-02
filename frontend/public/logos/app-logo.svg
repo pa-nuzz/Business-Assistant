@@ -31,9 +31,4 @@
     <animate attributeName="height" values="30;20;40;30" dur="3.2s" repeatCount="indefinite" />
     <animate attributeName="y" values="50;60;40;50" dur="3.2s" repeatCount="indefinite" />
   </rect>
-  <!-- AI agent dot - pulsing -->
-  <circle cx="54" cy="28" r="3" fill="white">
-    <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite" />
-    <animate attributeName="r" values="3;4;3" dur="1.5s" repeatCount="indefinite" />
-  </circle>
 </svg>

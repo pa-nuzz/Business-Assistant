@@ -5,6 +5,8 @@ djangorestframework-simplejwt==5.3.1
 django-cors-headers==4.4.0
 python-decouple==3.8
 gunicorn==22.0.0
+daphne==4.1.2                # ASGI server for WebSocket support
+channels==4.1.0              # Django Channels for async/WebSocket
 
 # === Database ===
 psycopg2-binary==2.9.9       # PostgreSQL (Supabase free tier)

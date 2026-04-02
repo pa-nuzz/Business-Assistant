@@ -5,6 +5,46 @@ Every model maps to a clear business concept.
 import uuid
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
+
+
+class EmailVerification(models.Model):
+    """Email verification codes for user registration."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="email_verification")
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_verified = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0)
+    
+    class Meta:
+        indexes = [models.Index(fields=["code", "created_at"])]
+    
+    def is_expired(self):
+        """Code expires after 15 minutes."""
+        return (timezone.now() - self.created_at).seconds > 900
+    
+    def __str__(self):
+        return f"Verification for {self.user.email} - {'Verified' if self.is_verified else 'Pending'}"
+
+
+class PasswordResetCode(models.Model):
+    """6-digit password reset codes."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="password_reset_codes")
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0)
+    
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["code", "created_at"])]
+    
+    def is_expired(self):
+        """Code expires after 15 minutes."""
+        return (timezone.now() - self.created_at).seconds > 900
+    
+    def __str__(self):
+        return f"Reset code for {self.user.email}"
 
 
 class BusinessProfile(models.Model):

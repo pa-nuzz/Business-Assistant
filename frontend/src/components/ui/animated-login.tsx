@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, Sparkles } from "lucide-react";
 import { auth } from "@/lib/api";
+import { toast } from "sonner";
+import { useLoading } from "@/components/loading-context";
 
 interface PupilProps {
   size?: number;
@@ -191,6 +193,7 @@ export default function AnimatedLoginPage() {
   const orangeRef = useRef<HTMLDivElement>(null);
 
   const router = useRouter();
+  const { showLoading } = useLoading();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -273,7 +276,7 @@ export default function AnimatedLoginPage() {
     } else {
       setIsPurplePeeking(false);
     }
-  }, [password, showPassword, isPurplePeeking]);
+  }, [password, showPassword]);
 
   const calculatePosition = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (!ref.current) return { faceX: 0, faceY: 0, bodySkew: 0 };
@@ -307,13 +310,26 @@ export default function AnimatedLoginPage() {
 
     try {
       await auth.login(username.trim(), password);
-      router.push('/chat');
+      toast.success('Welcome back! 👋');
+      showLoading(); // Show loading before redirect
+      // Small delay to let loading screen render before navigation
+      setTimeout(() => {
+        router.push('/chat');
+      }, 100);
     } catch (err: any) {
-      const msg = err.response?.data?.detail || '';
-      if (msg.includes('No active account') || msg.includes('credentials')) {
+      const msg = err.response?.data?.error || err.response?.data?.detail || '';
+      const status = err.response?.status;
+      
+      if (status === 403 && msg.includes('verify')) {
+        // Email not verified - redirect to verification page
+        toast.error('Please verify your email first');
+        router.push(`/verify-email?username=${encodeURIComponent(username.trim())}`);
+      } else if (msg.includes('No active account') || msg.includes('credentials') || msg.includes('Invalid')) {
         setError('Invalid username or password. Please try again.');
       } else if (msg.includes('locked') || msg.includes('blocked')) {
         setError('Account temporarily locked. Please try again later.');
+      } else if (msg) {
+        setError(msg);
       } else {
         setError('Login failed. Please check your credentials and try again.');
       }
@@ -328,9 +344,7 @@ export default function AnimatedLoginPage() {
       <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-primary/90 via-primary to-primary/80 p-12 text-primary-foreground">
         <div className="relative z-20">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <div className="size-8 rounded-lg bg-primary-foreground/10 backdrop-blur-sm flex items-center justify-center">
-              <Sparkles className="size-4" />
-            </div>
+            <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-8 h-8" />
             <span>AEIOU AI</span>
           </div>
         </div>
@@ -506,13 +520,9 @@ export default function AnimatedLoginPage() {
           </div>
         </div>
 
-        <div className="relative z-20 flex items-center gap-8 text-sm text-primary-foreground/60">
-          <a href="#" className="hover:text-primary-foreground transition-colors">
-            Privacy Policy
-          </a>
-          <a href="#" className="hover:text-primary-foreground transition-colors">
-            Terms of Service
-          </a>
+        <div className="relative z-20 flex items-center gap-8 text-sm text-white/80">
+          <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+          <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
         </div>
 
         {/* Decorative elements */}
@@ -522,13 +532,11 @@ export default function AnimatedLoginPage() {
       </div>
 
       {/* Right Login Section */}
-      <div className="flex items-center justify-center p-8 bg-background">
+      <div className="flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #e0f2fe 100%)' }}>
         <div className="w-full max-w-[420px]">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-2 text-lg font-semibold mb-12">
-            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Sparkles className="size-4 text-primary" />
-            </div>
+            <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-8 h-8" />
             <span>AEIOU AI</span>
           </div>
 
@@ -592,11 +600,14 @@ export default function AnimatedLoginPage() {
                   Remember for 30 days
                 </Label>
               </div>
+              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                Forgot password?
+              </Link>
             </div>
 
             {error && (
-              <div className="p-3 text-sm text-red-400 bg-red-950/20 border border-red-900/30 rounded-lg">
-                {error}
+              <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
+                {typeof error === 'string' ? error : JSON.stringify(error)}
               </div>
             )}
 

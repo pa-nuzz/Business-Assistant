@@ -2,6 +2,7 @@
 API Views — Keep them thin. Business logic lives in agents/ and services/.
 Views handle: auth, validation, HTTP, persistence of messages.
 """
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -14,9 +15,10 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.http import StreamingHttpResponse
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.response import Response
 
 from core.models import Conversation, Message, Document, BusinessProfile
@@ -197,6 +199,7 @@ def register(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def chat(request):
     """
     Main chat endpoint.
@@ -215,6 +218,7 @@ def chat(request):
             "tools_used": ["get_business_profile", ...]
         }
     """
+    chat.throttle_scope = "chat"
     user_message = request.data.get("message", "").strip()
     if not user_message:
         return Response({"error": "Message cannot be empty."}, status=400)
@@ -237,11 +241,7 @@ def chat(request):
         )
 
     # ── Build conversation history (last 20 messages to manage context) ────
-    recent_messages = conversation.messages.order_by("-created_at")[:25]
-    
-    # Build history list with last 5 messages first, then remaining reversed
-    last_5 = list(reversed(recent_messages[:5]))
-    remaining = list(reversed(recent_messages[5:20]))
+    recent_messages = conversation.messages.order_by("created_at")[:20]
     
     # Check if user has a business profile and add system context
     system_message = None
@@ -258,13 +258,7 @@ def chat(request):
     history = []
     if system_message:
         history.append(system_message)
-    
-    # Add last 5 messages first (most recent at the end for the model)
-    for m in last_5:
-        history.append({"role": m.role, "content": m.content})
-    
-    # Then add remaining older messages
-    for m in remaining:
+    for m in recent_messages:
         history.append({"role": m.role, "content": m.content})
 
     # ── Run agent ──────────────────────────────────────────────────────────
@@ -310,6 +304,7 @@ def chat(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def chat_stream(request):
     """
     Streaming chat endpoint using Server-Sent Events (SSE).
@@ -328,6 +323,7 @@ def chat_stream(request):
         data: {"token": " world"}\n\n
         data: [DONE]\n\n
     """
+    chat_stream.throttle_scope = "chat"
     user_message = request.data.get("message", "").strip()
     if not user_message:
         return Response({"error": "Message cannot be empty."}, status=400)
@@ -350,11 +346,7 @@ def chat_stream(request):
         )
 
     # ── Build conversation history ───────────────────────────────────────────
-    recent_messages = conversation.messages.order_by("-created_at")[:25]
-    
-    # Build history list with last 5 messages first, then remaining reversed
-    last_5 = list(reversed(recent_messages[:5]))
-    remaining = list(reversed(recent_messages[5:20]))
+    recent_messages = conversation.messages.order_by("created_at")[:20]
     
     # Check if user has a business profile and add system context
     system_message = None
@@ -371,13 +363,7 @@ def chat_stream(request):
     history = []
     if system_message:
         history.append(system_message)
-    
-    # Add last 5 messages first (most recent at the end for the model)
-    for m in last_5:
-        history.append({"role": m.role, "content": m.content})
-    
-    # Then add remaining older messages
-    for m in remaining:
+    for m in recent_messages:
         history.append({"role": m.role, "content": m.content})
 
     # ── Streaming response generator ────────────────────────────────────────
@@ -436,11 +422,24 @@ def chat_stream(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def conversation_list(request):
-    """List all conversations for the user."""
-    convos = Conversation.objects.filter(user=request.user).values(
-        "id", "title", "created_at", "updated_at"
-    )[:50]
-    return Response(list(convos))
+    """List all conversations for the user with pagination."""
+    from django.core.paginator import Paginator
+    
+    page = int(request.GET.get("page", 1))
+    page_size = min(int(request.GET.get("page_size", 20)), 100)
+    
+    convos = Conversation.objects.filter(user=request.user).order_by("-updated_at")
+    paginator = Paginator(convos, page_size)
+    page_obj = paginator.get_page(page)
+    
+    results = list(page_obj.object_list.values("id", "title", "created_at", "updated_at"))
+    
+    return Response({
+        "results": results,
+        "count": paginator.count,
+        "page": page,
+        "total_pages": paginator.num_pages,
+    })
 
 
 @api_view(["GET"])
@@ -460,6 +459,42 @@ def conversation_detail(request, conversation_id):
     })
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def export_conversation(request, conversation_id):
+    """
+    Export a conversation with all messages.
+    Returns clean JSON format for download/backup.
+    """
+    try:
+        convo = Conversation.objects.get(id=conversation_id, user=request.user)
+    except Conversation.DoesNotExist:
+        return Response({"error": "Not found."}, status=404)
+
+    messages = convo.messages.order_by("created_at").values(
+        "role", "content", "created_at", "model_used"
+    )
+    
+    export_data = {
+        "conversation_id": str(convo.id),
+        "title": convo.title,
+        "created_at": convo.created_at.isoformat(),
+        "updated_at": convo.updated_at.isoformat(),
+        "message_count": convo.messages.count(),
+        "messages": [
+            {
+                "role": m["role"],
+                "content": m["content"],
+                "created_at": m["created_at"].isoformat() if m["created_at"] else None,
+                "model_used": m["model_used"],
+            }
+            for m in messages
+        ],
+    }
+    
+    return Response(export_data)
+
+
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_conversation(request, conversation_id):
@@ -475,6 +510,7 @@ def delete_conversation(request, conversation_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])
+@throttle_classes([ScopedRateThrottle])
 def upload_document(request):
     """
     Upload a business document (PDF, DOCX, TXT).
@@ -482,6 +518,7 @@ def upload_document(request):
 
     Request: multipart/form-data with 'file' and optional 'title'
     """
+    upload_document.throttle_scope = "upload"
     file = request.FILES.get("file")
     if not file:
         return Response({"error": "No file provided."}, status=400)
@@ -506,35 +543,52 @@ def upload_document(request):
         status="pending",
     )
 
-    # Process synchronously for development (use Celery in production)
+    # Process document - try Celery first, fall back to sync if it fails
     try:
-        from services.document import process_document
-        success = process_document(str(doc.id))
-        if success:
-            doc.refresh_from_db()
+        # Try async Celery processing
+        process_document_task.delay(str(doc.id))
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Document processing failed: {e}")
-        doc.status = "failed"
-        doc.save()
+        # If Celery fails, process synchronously in background thread
+        import threading
+        logger.warning(f"Celery task failed, using threaded processing: {e}")
+        def process_in_thread():
+            from services.document import process_document
+            process_document(str(doc.id))
+        thread = threading.Thread(target=process_in_thread)
+        thread.daemon = True
+        thread.start()
 
     return Response({
         "id": str(doc.id),
         "title": doc.title,
-        "status": doc.status,
-        "message": "Document uploaded and processed." if doc.status == "ready" else "Document uploaded but processing failed.",
+        "status": "pending",
+        "message": "Document uploaded. Processing in background.",
     }, status=202)
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def document_list(request):
-    """List user's documents."""
-    docs = Document.objects.filter(user=request.user).values(
+    """List user's documents with pagination."""
+    from django.core.paginator import Paginator
+    
+    page = int(request.GET.get("page", 1))
+    page_size = min(int(request.GET.get("page_size", 20)), 100)
+    
+    docs = Document.objects.filter(user=request.user).order_by("-created_at")
+    paginator = Paginator(docs, page_size)
+    page_obj = paginator.get_page(page)
+    
+    results = list(page_obj.object_list.values(
         "id", "title", "file_type", "status", "page_count", "created_at"
-    )
-    return Response(list(docs))
+    ))
+    
+    return Response({
+        "results": results,
+        "count": paginator.count,
+        "page": page,
+        "total_pages": paginator.num_pages,
+    })
 
 
 @api_view(["DELETE"])
@@ -901,17 +955,17 @@ def tags_list_create(request):
         user_tasks = Task.objects.filter(
             Q(user=request.user) | Q(assignee=request.user)
         )
-        tags = TaskTag.objects.filter(task__in=user_tasks).values('name').distinct()
+        tags = TaskTag.objects.filter(task__in=user_tasks).values('tag').distinct()
         
         # Add usage counts
         result = []
         for tag in tags:
             count = TaskTag.objects.filter(
-                name=tag['name'],
+                tag=tag['tag'],
                 task__in=user_tasks
             ).count()
             result.append({
-                'name': tag['name'],
+                'tag': tag['tag'],
                 'count': count
             })
         
@@ -937,7 +991,7 @@ def tasks_by_tag(request, tag_name):
     )
     
     task_ids = TaskTag.objects.filter(
-        name=tag_name.lower(),
+        tag=tag_name.lower(),
         task__in=user_tasks
     ).values_list('task_id', flat=True)
     
@@ -976,8 +1030,8 @@ def task_add_tag(request, task_id):
         return Response({"error": "Tag name is required"}, status=400)
     
     # Check if already exists
-    if not TaskTag.objects.filter(task=task, name=tag_name).exists():
-        TaskTag.objects.create(task=task, name=tag_name)
+    if not TaskTag.objects.filter(task=task, tag=tag_name).exists():
+        TaskTag.objects.create(task=task, tag=tag_name)
     
     return Response({
         "task_id": str(task.id),
@@ -1005,10 +1059,438 @@ def task_remove_tag(request, task_id):
     if not tag_name:
         return Response({"error": "Tag name is required"}, status=400)
     
-    TaskTag.objects.filter(task=task, name=tag_name).delete()
+    TaskTag.objects.filter(task=task, tag=tag_name).delete()
     
     return Response({
         "task_id": str(task.id),
         "tag": tag_name,
         "message": "Tag removed"
     })
+
+
+# ─── Onboarding API ───────────────────────────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def onboarding_status(request):
+    """
+    Get onboarding status for the current user.
+    
+    Returns:
+        {
+            "completed": bool,
+            "steps": {
+                "profile_created": bool,
+                "first_document": bool,
+                "first_chat": bool,
+                "first_task": bool,
+            },
+            "completion_pct": int
+        }
+    """
+    from core.models import Task
+    
+    user = request.user
+    
+    # Check profile created (has company_name)
+    profile_created = False
+    try:
+        profile = user.business_profile
+        profile_created = bool(profile and profile.company_name)
+    except Exception:
+        pass
+    
+    # Check first document
+    first_document = Document.objects.filter(user=user).exists()
+    
+    # Check first chat/conversation
+    first_chat = Conversation.objects.filter(user=user).exists()
+    
+    # Check first task
+    first_task = Task.objects.filter(
+        Q(created_by=user) | Q(assignee=user) | Q(user=user)
+    ).exists()
+    
+    steps = {
+        "profile_created": profile_created,
+        "first_document": first_document,
+        "first_chat": first_chat,
+        "first_task": first_task,
+    }
+    
+    completed_count = sum(steps.values())
+    completion_pct = int((completed_count / 4) * 100)
+    completed = completed_count == 4
+    
+    return Response({
+        "completed": completed,
+        "steps": steps,
+        "completion_pct": completion_pct,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def onboarding_complete(request):
+    """
+    Mark onboarding as dismissed/completed by user.
+    Sets UserMemory with key="onboarded" to track this.
+    """
+    from services.model_layer import add_user_memory
+    
+    add_user_memory(
+        user_id=request.user.id,
+        memory="User dismissed onboarding"
+    )
+    
+    return Response({
+        "message": "Onboarding marked as complete",
+        "dismissed": True,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def seed_demo_data(request):
+    """
+    Seed demo data for new users.
+    Only runs if user has zero conversations AND zero documents.
+    
+    Creates:
+        - 1 sample conversation with 2 messages
+        - 3 sample tasks (todo, in_progress, done)
+        - Sets UserMemory with key="onboarded"
+    
+    Returns: {"seeded": true} or {"seeded": false, "reason": "..."}
+    """
+    from core.models import Task
+    from services.model_layer import add_user_memory
+    
+    user = request.user
+    
+    # Check if user already has data
+    has_conversations = Conversation.objects.filter(user=user).exists()
+    has_documents = Document.objects.filter(user=user).exists()
+    
+    if has_conversations or has_documents:
+        return Response({
+            "seeded": False,
+            "reason": "already_has_data"
+        })
+    
+    # Get or create business profile
+    try:
+        profile = user.business_profile
+    except Exception:
+        from core.models import BusinessProfile
+        profile = BusinessProfile.objects.create(user=user)
+    
+    # Create sample conversation
+    conversation = Conversation.objects.create(
+        user=user,
+        title="Getting started with AEIOU AI",
+    )
+    
+    # Add sample messages
+    Message.objects.create(
+        conversation=conversation,
+        role="user",
+        content="What can you help me with?",
+    )
+    
+    sample_response = """Welcome to **AEIOU AI** — your intelligent business assistant! 
+
+I can help you with:
+
+📄 **Documents** — Upload PDFs, DOCX, or TXT files and I'll analyze them, extract insights, and answer questions about their content
+
+✅ **Tasks** — Create, organize, and track your to-dos with priorities and due dates
+
+💬 **Business Chat** — Ask me anything about your business, documents, or general questions
+
+📊 **Analytics** — Get insights about your business data and performance metrics
+
+To get started, try:
+• Upload a business document
+• Create your first task
+• Ask me about business strategies
+
+What would you like to explore first?"""
+    
+    Message.objects.create(
+        conversation=conversation,
+        role="assistant",
+        content=sample_response,
+        model_used="onboarding",
+    )
+    
+    # Create 3 sample tasks
+    now = datetime.now()
+    
+    Task.objects.create(
+        user=user,
+        created_by=user,
+        business_profile=profile,
+        title="Review Q4 strategy",
+        description="Analyze Q4 performance and plan for next quarter",
+        priority="high",
+        status="todo",
+    )
+    
+    Task.objects.create(
+        user=user,
+        created_by=user,
+        business_profile=profile,
+        title="Prepare investor deck",
+        description="Create presentation for upcoming investor meeting",
+        priority="urgent",
+        status="in_progress",
+    )
+    
+    Task.objects.create(
+        user=user,
+        created_by=user,
+        business_profile=profile,
+        title="Set up business profile",
+        description="Complete company information and key metrics",
+        priority="medium",
+        status="done",
+        completed_at=now,
+    )
+    
+    # Set user memory
+    add_user_memory(
+        user_id=user.id,
+        memory="Demo data seeded for new user"
+    )
+    
+    return Response({
+        "seeded": True,
+        "conversation_id": str(conversation.id),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def admin_dashboard(request):
+    """
+    Admin-only dashboard showing system-wide metrics.
+    GET /api/v1/admin/dashboard/
+    """
+    # Only superusers can access admin dashboard
+    if not request.user.is_superuser:
+        return Response(
+            {"error": "Admin access required"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    from django.contrib.auth.models import User
+    from core.models import Task
+    
+    now = datetime.now()
+    day_ago = now - timedelta(days=1)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+    
+    # User stats
+    total_users = User.objects.count()
+    active_today = User.objects.filter(last_login__gte=day_ago).count()
+    active_this_week = User.objects.filter(last_login__gte=week_ago).count()
+    new_this_week = User.objects.filter(date_joined__gte=week_ago).count()
+    
+    # Conversation stats
+    total_conversations = Conversation.objects.count()
+    conversations_today = Conversation.objects.filter(created_at__gte=day_ago).count()
+    messages_today = Message.objects.filter(created_at__gte=day_ago).count()
+    
+    # Document stats
+    total_documents = Document.objects.count()
+    documents_pending = Document.objects.filter(status="pending").count()
+    documents_ready = Document.objects.filter(status="ready").count()
+    documents_failed = Document.objects.filter(status="failed").count()
+    
+    # Task stats
+    total_tasks = Task.objects.count()
+    tasks_completed = Task.objects.filter(status="done").count()
+    tasks_in_progress = Task.objects.filter(status="in_progress").count()
+    tasks_todo = Task.objects.filter(status="todo").count()
+    
+    return Response({
+        "users": {
+            "total": total_users,
+            "active_today": active_today,
+            "active_this_week": active_this_week,
+            "new_this_week": new_this_week,
+        },
+        "conversations": {
+            "total": total_conversations,
+            "created_today": conversations_today,
+            "messages_today": messages_today,
+        },
+        "documents": {
+            "total": total_documents,
+            "pending": documents_pending,
+            "ready": documents_ready,
+            "failed": documents_failed,
+        },
+        "tasks": {
+            "total": total_tasks,
+            "completed": tasks_completed,
+            "in_progress": tasks_in_progress,
+            "todo": tasks_todo,
+        },
+        "generated_at": now.isoformat(),
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def admin_broadcast(request):
+    """
+    Admin-only broadcast message to all users.
+    POST /api/v1/admin/broadcast/
+    Request: {"message": "...", "type": "info|warning|maintenance"}
+    """
+    if not request.user.is_superuser:
+        return Response(
+            {"error": "Admin access required"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    message = request.data.get("message", "").strip()
+    msg_type = request.data.get("type", "info")
+    
+    if not message:
+        return Response(
+            {"error": "Message is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Store broadcast in cache for WebSocket consumers to pick up
+    from django.core.cache import cache
+    broadcast_key = f"admin_broadcast_{int(datetime.now().timestamp())}"
+    cache.set(broadcast_key, {
+        "message": message,
+        "type": msg_type,
+        "sent_at": datetime.now().isoformat(),
+        "sent_by": request.user.username,
+    }, timeout=3600)  # 1 hour
+    
+    return Response({
+        "broadcast": True,
+        "message": message,
+        "type": msg_type,
+        "recipients": "all",
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def admin_reindex_all(request):
+    """
+    Admin-only endpoint to trigger reindexing of all documents.
+    POST /api/v1/admin/reindex-all/
+    """
+    if not request.user.is_superuser:
+        return Response(
+            {"error": "Admin access required"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    from services.tasks import process_document_task
+    
+    # Get all documents that are ready or failed
+    documents = Document.objects.filter(status__in=["ready", "failed"])
+    doc_ids = list(documents.values_list("id", flat=True))
+    
+    # Queue reindex tasks
+    count = 0
+    for doc_id in doc_ids:
+        process_document_task.delay(str(doc_id))
+        count += 1
+    
+    return Response({
+        "queued": True,
+        "document_count": count,
+        "message": f"Reindexing queued for {count} documents",
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def reindex_document(request, doc_id):
+    """
+    Rechunk and reindex a document.
+    Deletes old chunks, reprocesses document, creates new chunks.
+    """
+    from core.models import Document, DocumentChunk
+    from services.document import extract_text, chunk_text, generate_summary
+    from django.conf import settings
+    
+    try:
+        doc = Document.objects.get(id=doc_id, user=request.user)
+    except Document.DoesNotExist:
+        return Response({"error": "Document not found"}, status=404)
+    
+    # Set status to processing
+    doc.status = "processing"
+    doc.save(update_fields=["status"])
+    
+    try:
+        # 1. Delete old chunks
+        old_chunk_count = DocumentChunk.objects.filter(document=doc).count()
+        DocumentChunk.objects.filter(document=doc).delete()
+        
+        # 2. Re-extract text
+        file_path = doc.file.path
+        text, page_count = extract_text(file_path, doc.file_type)
+        
+        if not text.strip():
+            raise ValueError("No text could be extracted from document")
+        
+        # 3. Re-chunk
+        cfg = settings.DOCUMENT_CONFIG
+        chunks_data = chunk_text(
+            text,
+            chunk_size=cfg["chunk_size_chars"],
+            max_chunks=cfg["max_chunks_per_doc"],
+        )
+        
+        # 4. Regenerate summary
+        from services.document import generate_summary
+        summary = generate_summary(text, doc.title)
+        
+        # 5. Save new chunks
+        chunk_objects = [
+            DocumentChunk(
+                document=doc,
+                chunk_index=c["chunk_index"],
+                content=c["content"],
+                keywords=c["keywords"],
+            )
+            for c in chunks_data
+        ]
+        DocumentChunk.objects.bulk_create(chunk_objects)
+        
+        # 6. Update document
+        doc.summary = summary
+        doc.page_count = page_count
+        doc.status = "ready"
+        doc.save(update_fields=["summary", "page_count", "status"])
+        
+        return Response({
+            "reindexed": True,
+            "document_id": str(doc.id),
+            "old_chunks": old_chunk_count,
+            "new_chunks": len(chunks_data),
+            "pages": page_count,
+        })
+        
+    except Exception as e:
+        doc.status = "failed"
+        doc.save(update_fields=["status"])
+        logger.exception(f"Document reindexing failed for {doc_id}")
+        return Response({
+            "reindexed": False,
+            "error": str(e)
+        }, status=500)

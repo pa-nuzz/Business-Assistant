@@ -48,6 +48,11 @@ export default function SettingsPage() {
   // Sound effects preference
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  // Set page title
+  useEffect(() => {
+    document.title = 'Settings | AEIOU AI';
+  }, []);
+
   useEffect(() => {
     fetchProfile();
     // Load sound preference from localStorage

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, Sparkles } from "lucide-react";
 import { auth } from "@/lib/api";
+import { toast } from "sonner";
 
 interface PupilProps {
   size?: number;
@@ -253,6 +254,9 @@ export default function AnimatedSignupPage() {
     }
   }, [isTyping]);
 
+  const isAnyPasswordVisible = (password.length > 0 && showPassword) || (confirmPassword.length > 0 && showConfirmPassword);
+  const isAnyPasswordHidden = (password.length > 0 && !showPassword) || (confirmPassword.length > 0 && !showConfirmPassword);
+
   useEffect(() => {
     if (password.length > 0 && showPassword) {
       const schedulePeek = () => {
@@ -270,7 +274,7 @@ export default function AnimatedSignupPage() {
     } else {
       setIsPurplePeeking(false);
     }
-  }, [password, showPassword, isPurplePeeking]);
+  }, [password, showPassword]);
 
   const calculatePosition = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (!ref.current) return { faceX: 0, faceY: 0, bodySkew: 0 };
@@ -311,21 +315,30 @@ export default function AnimatedSignupPage() {
     setIsLoading(true);
 
     try {
-      await auth.register(username.trim(), password, email);
-      await auth.login(username.trim(), password);
-      router.push('/chat');
+      const response = await auth.register(username.trim(), password, email);
+      // Registration successful - redirect to email verification
+      toast.success('🎉 Registration successful! Please verify your email.');
+      router.push(`/verify-email?username=${encodeURIComponent(response.username)}`);
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.response?.data?.username?.[0] || err.response?.data?.email?.[0] || '';
-      if (msg.includes('username') || msg.includes('already')) {
+      const msg = err.response?.data?.detail || 
+                  err.response?.data?.error || 
+                  err.response?.data?.username?.[0] || 
+                  err.response?.data?.email?.[0] || 
+                  err.message || 
+                  '';
+      
+      if (msg.includes('username') || msg.includes('already taken')) {
         setError('Username already taken. Please choose another one.');
       } else if (msg.includes('email') && msg.includes('already')) {
         setError('Email already registered. Please use another email or try logging in.');
       } else if (msg.includes('weak') || msg.includes('password')) {
-        setError('Password is too weak. Please use at least 8 characters with letters and numbers.');
-      } else if (msg.includes('invalid') || msg.includes('valid')) {
-        setError('Please check your information and try again.');
+        setError('Password is too weak. Please use at least 8 characters.');
+      } else if (msg.includes('required')) {
+        setError('Please fill in all required fields.');
+      } else if (msg) {
+        setError(msg);
       } else {
-        setError('Registration failed. Please check your information and try again.');
+        setError('Registration failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -337,9 +350,7 @@ export default function AnimatedSignupPage() {
       <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-primary/90 via-primary to-primary/80 p-12 text-primary-foreground overflow-hidden">
         <div className="relative z-20">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <div className="size-8 rounded-lg bg-primary-foreground/10 backdrop-blur-sm flex items-center justify-center">
-              <Sparkles className="size-4" />
-            </div>
+            <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-8 h-8" />
             <span>AEIOU AI</span>
           </div>
         </div>
@@ -352,13 +363,13 @@ export default function AnimatedSignupPage() {
               style={{
                 left: '70px',
                 width: '180px',
-                height: (isTyping || (password.length > 0 && !showPassword)) ? '440px' : '400px',
+                height: (isTyping || isAnyPasswordHidden) ? '440px' : '400px',
                 backgroundColor: '#6C3FF5',
                 borderRadius: '10px 10px 0 0',
                 zIndex: 1,
-                transform: (password.length > 0 && showPassword)
+                transform: isAnyPasswordVisible
                   ? 'skewX(0deg)' 
-                  : (isTyping || (password.length > 0 && !showPassword))
+                  : (isTyping || isAnyPasswordHidden)
                     ? `skewX(${(purplePos.bodySkew || 0) - 12}deg) translateX(40px)` 
                     : `skewX(${purplePos.bodySkew || 0}deg)`,
                 transformOrigin: 'bottom center',
@@ -367,8 +378,8 @@ export default function AnimatedSignupPage() {
               <div 
                 className="absolute flex gap-8 transition-all duration-700 ease-in-out"
                 style={{
-                  left: (password.length > 0 && showPassword) ? `${20}px` : isLookingAtEachOther ? `${55}px` : `${45 + purplePos.faceX}px`,
-                  top: (password.length > 0 && showPassword) ? `${35}px` : isLookingAtEachOther ? `${65}px` : `${40 + purplePos.faceY}px`,
+                  left: isAnyPasswordVisible ? `${20}px` : isLookingAtEachOther ? `${55}px` : `${45 + purplePos.faceX}px`,
+                  top: isAnyPasswordVisible ? `${35}px` : isLookingAtEachOther ? `${65}px` : `${40 + purplePos.faceY}px`,
                 }}
               >
                 <EyeBall 
@@ -378,8 +389,8 @@ export default function AnimatedSignupPage() {
                   eyeColor="white" 
                   pupilColor="#2D2D2D" 
                   isBlinking={isPurpleBlinking}
-                  forceLookX={(password.length > 0 && showPassword) ? (isPurplePeeking ? 4 : -4) : isLookingAtEachOther ? 3 : undefined}
-                  forceLookY={(password.length > 0 && showPassword) ? (isPurplePeeking ? 5 : -4) : isLookingAtEachOther ? 4 : undefined}
+                  forceLookX={isAnyPasswordVisible ? (isPurplePeeking ? 4 : -4) : isLookingAtEachOther ? 3 : undefined}
+                  forceLookY={isAnyPasswordVisible ? (isPurplePeeking ? 5 : -4) : isLookingAtEachOther ? 4 : undefined}
                 />
                 <EyeBall 
                   size={18} 
@@ -388,8 +399,8 @@ export default function AnimatedSignupPage() {
                   eyeColor="white" 
                   pupilColor="#2D2D2D" 
                   isBlinking={isPurpleBlinking}
-                  forceLookX={(password.length > 0 && showPassword) ? (isPurplePeeking ? 4 : -4) : isLookingAtEachOther ? 3 : undefined}
-                  forceLookY={(password.length > 0 && showPassword) ? (isPurplePeeking ? 5 : -4) : isLookingAtEachOther ? 4 : undefined}
+                  forceLookX={isAnyPasswordVisible ? (isPurplePeeking ? 4 : -4) : isLookingAtEachOther ? 3 : undefined}
+                  forceLookY={isAnyPasswordVisible ? (isPurplePeeking ? 5 : -4) : isLookingAtEachOther ? 4 : undefined}
                 />
               </div>
             </div>
@@ -404,11 +415,11 @@ export default function AnimatedSignupPage() {
                 backgroundColor: '#2D2D2D',
                 borderRadius: '8px 8px 0 0',
                 zIndex: 2,
-                transform: (password.length > 0 && showPassword)
+                transform: isAnyPasswordVisible
                   ? 'skewX(0deg)' 
                   : isLookingAtEachOther
                     ? `skewX(${(blackPos.bodySkew || 0) * 1.5 + 10}deg) translateX(20px)` 
-                    : (isTyping || (password.length > 0 && !showPassword))
+                    : (isTyping || isAnyPasswordHidden)
                       ? `skewX(${(blackPos.bodySkew || 0) * 1.5}deg)` 
                       : `skewX(${blackPos.bodySkew || 0}deg)`,
                 transformOrigin: 'bottom center',
@@ -417,8 +428,8 @@ export default function AnimatedSignupPage() {
               <div 
                 className="absolute flex gap-6 transition-all duration-700 ease-in-out"
                 style={{
-                  left: (password.length > 0 && showPassword) ? `${10}px` : isLookingAtEachOther ? `${32}px` : `${26 + blackPos.faceX}px`,
-                  top: (password.length > 0 && showPassword) ? `${28}px` : isLookingAtEachOther ? `${12}px` : `${32 + blackPos.faceY}px`,
+                  left: isAnyPasswordVisible ? `${10}px` : isLookingAtEachOther ? `${32}px` : `${26 + blackPos.faceX}px`,
+                  top: isAnyPasswordVisible ? `${28}px` : isLookingAtEachOther ? `${12}px` : `${32 + blackPos.faceY}px`,
                 }}
               >
                 <EyeBall 
@@ -428,8 +439,8 @@ export default function AnimatedSignupPage() {
                   eyeColor="white" 
                   pupilColor="#2D2D2D" 
                   isBlinking={isBlackBlinking}
-                  forceLookX={(password.length > 0 && showPassword) ? -4 : isLookingAtEachOther ? 0 : undefined}
-                  forceLookY={(password.length > 0 && showPassword) ? -4 : isLookingAtEachOther ? -4 : undefined}
+                  forceLookX={isAnyPasswordVisible ? -4 : isLookingAtEachOther ? 0 : undefined}
+                  forceLookY={isAnyPasswordVisible ? -4 : isLookingAtEachOther ? -4 : undefined}
                 />
                 <EyeBall 
                   size={16} 
@@ -438,8 +449,8 @@ export default function AnimatedSignupPage() {
                   eyeColor="white" 
                   pupilColor="#2D2D2D" 
                   isBlinking={isBlackBlinking}
-                  forceLookX={(password.length > 0 && showPassword) ? -4 : isLookingAtEachOther ? 0 : undefined}
-                  forceLookY={(password.length > 0 && showPassword) ? -4 : isLookingAtEachOther ? -4 : undefined}
+                  forceLookX={isAnyPasswordVisible ? -4 : isLookingAtEachOther ? 0 : undefined}
+                  forceLookY={isAnyPasswordVisible ? -4 : isLookingAtEachOther ? -4 : undefined}
                 />
               </div>
             </div>
@@ -454,19 +465,19 @@ export default function AnimatedSignupPage() {
                 zIndex: 3,
                 backgroundColor: '#FF9B6B',
                 borderRadius: '120px 120px 0 0',
-                transform: (password.length > 0 && showPassword) ? 'skewX(0deg)' : `skewX(${orangePos.bodySkew || 0}deg)`,
+                transform: isAnyPasswordVisible ? 'skewX(0deg)' : `skewX(${orangePos.bodySkew || 0}deg)`,
                 transformOrigin: 'bottom center',
               }}
             >
               <div 
                 className="absolute flex gap-8 transition-all duration-200 ease-out"
                 style={{
-                  left: (password.length > 0 && showPassword) ? `${50}px` : `${82 + (orangePos.faceX || 0)}px`,
-                  top: (password.length > 0 && showPassword) ? `${85}px` : `${90 + (orangePos.faceY || 0)}px`,
+                  left: isAnyPasswordVisible ? `${50}px` : `${82 + (orangePos.faceX || 0)}px`,
+                  top: isAnyPasswordVisible ? `${85}px` : `${90 + (orangePos.faceY || 0)}px`,
                 }}
               >
-                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={(password.length > 0 && showPassword) ? -5 : undefined} forceLookY={(password.length > 0 && showPassword) ? -4 : undefined} />
-                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={(password.length > 0 && showPassword) ? -5 : undefined} forceLookY={(password.length > 0 && showPassword) ? -4 : undefined} />
+                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={isAnyPasswordVisible ? -5 : undefined} forceLookY={isAnyPasswordVisible ? -4 : undefined} />
+                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={isAnyPasswordVisible ? -5 : undefined} forceLookY={isAnyPasswordVisible ? -4 : undefined} />
               </div>
             </div>
 
@@ -480,34 +491,34 @@ export default function AnimatedSignupPage() {
                 backgroundColor: '#E8D754',
                 borderRadius: '70px 70px 0 0',
                 zIndex: 4,
-                transform: (password.length > 0 && showPassword) ? 'skewX(0deg)' : `skewX(${yellowPos.bodySkew || 0}deg)`,
+                transform: isAnyPasswordVisible ? 'skewX(0deg)' : `skewX(${yellowPos.bodySkew || 0}deg)`,
                 transformOrigin: 'bottom center',
               }}
             >
               <div 
                 className="absolute flex gap-6 transition-all duration-200 ease-out"
                 style={{
-                  left: (password.length > 0 && showPassword) ? `${20}px` : `${52 + (yellowPos.faceX || 0)}px`,
-                  top: (password.length > 0 && showPassword) ? `${35}px` : `${40 + (yellowPos.faceY || 0)}px`,
+                  left: isAnyPasswordVisible ? `${20}px` : `${52 + (yellowPos.faceX || 0)}px`,
+                  top: isAnyPasswordVisible ? `${35}px` : `${40 + (yellowPos.faceY || 0)}px`,
                 }}
               >
-                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={(password.length > 0 && showPassword) ? -5 : undefined} forceLookY={(password.length > 0 && showPassword) ? -4 : undefined} />
-                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={(password.length > 0 && showPassword) ? -5 : undefined} forceLookY={(password.length > 0 && showPassword) ? -4 : undefined} />
+                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={isAnyPasswordVisible ? -5 : undefined} forceLookY={isAnyPasswordVisible ? -4 : undefined} />
+                <Pupil size={12} maxDistance={5} pupilColor="#2D2D2D" forceLookX={isAnyPasswordVisible ? -5 : undefined} forceLookY={isAnyPasswordVisible ? -4 : undefined} />
               </div>
               <div 
                 className="absolute w-20 h-[4px] bg-[#2D2D2D] rounded-full transition-all duration-200 ease-out"
                 style={{
-                  left: (password.length > 0 && showPassword) ? `${10}px` : `${40 + (yellowPos.faceY || 0)}px`,
-                  top: (password.length > 0 && showPassword) ? `${88}px` : `${88 + (yellowPos.faceY || 0)}px`,
+                  left: isAnyPasswordVisible ? `${10}px` : `${40 + (yellowPos.faceY || 0)}px`,
+                  top: isAnyPasswordVisible ? `${88}px` : `${88 + (yellowPos.faceY || 0)}px`,
                 }}
               />
             </div>
           </div>
         </div>
 
-        <div className="relative z-20 flex items-center gap-8 text-sm text-primary-foreground/60">
-          <a href="#" className="hover:text-primary-foreground transition-colors">Privacy Policy</a>
-          <a href="#" className="hover:text-primary-foreground transition-colors">Terms of Service</a>
+        <div className="relative z-20 flex items-center gap-8 text-sm text-white/80">
+          <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+          <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
         </div>
 
         <div className="absolute inset-0 bg-grid-white/[0.05] bg-[size:20px_20px]" />
@@ -515,12 +526,10 @@ export default function AnimatedSignupPage() {
         <div className="absolute bottom-1/4 left-1/4 size-96 bg-primary-foreground/5 rounded-full blur-3xl" />
       </div>
 
-      <div className="flex items-center justify-center p-8 bg-background">
+      <div className="flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #e0f2fe 100%)' }}>
         <div className="w-full max-w-[420px]">
           <div className="lg:hidden flex items-center justify-center gap-2 text-lg font-semibold mb-12">
-            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Sparkles className="size-4 text-primary" />
-            </div>
+            <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-8 h-8" />
             <span>AEIOU AI</span>
           </div>
 
@@ -620,7 +629,7 @@ export default function AnimatedSignupPage() {
             </div>
 
             {error && (
-              <div className="p-3 text-sm text-red-400 bg-red-950/20 border border-red-900/30 rounded-lg">{error}</div>
+              <div className="p-3 text-sm text-red-400 bg-red-950/20 border border-red-900/30 rounded-lg">{typeof error === 'string' ? error : JSON.stringify(error)}</div>
             )}
 
             <Button type="submit" className="w-full h-12 text-base font-medium" size="lg" disabled={isLoading}>
