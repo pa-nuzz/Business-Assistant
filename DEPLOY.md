@@ -1,29 +1,20 @@
-# AEIOU AI — Production Deployment Guide
+# Deployment Guide
 
-## 🚀 Quick Deploy to Render (Recommended)
+Deploying to Render + Vercel. Takes about 10 minutes.
 
-### Step 1: Prepare Your Repository
-
-```bash
-# Ensure .venv is removed from git (CRITICAL)
-git rm -rf --cached .venv
-git add .gitignore
-git commit -m "Remove .venv from tracking and update gitignore"
-
-# Verify no sensitive files
-git status
-# Should NOT show: .env, .venv, db.sqlite3, *.log, media/
-```
-
-### Step 2: Push to GitHub
+## Before You Start
 
 ```bash
+# Make sure .env and .venv aren't tracked
+git rm -rf --cached .venv 2>/dev/null || true
+git status  # Shouldn't see .env, .venv, db.sqlite3
+
 git add .
-git commit -m "Production-ready: clean code, updated docs"
+git commit -m "Ready for deploy"
 git push origin main
 ```
 
-### Step 3: Deploy on Render
+### Step 1: Deploy on Render
 
 1. **Create Web Service**:
    - Connect your GitHub repo
@@ -49,7 +40,7 @@ git push origin main
 
 4. **Create Redis Instance** (optional, for Celery)
 
-### Step 4: Deploy Frontend (Vercel)
+### Step 2: Deploy Frontend (Vercel)
 
 ```bash
 cd frontend
