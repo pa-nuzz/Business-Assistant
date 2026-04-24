@@ -1,0 +1,201 @@
+/* AEIOU AI - Design Token System */
+/* Dark-first design with Aiden brand colors */
+
+:root {
+  /* ─── Brand Colors ───────────────────────────────────────────────────────── */
+  --brand-primary: #6C63FF;       /* Aiden purple — intelligence, trust */
+  --brand-primary-hover: #5A52E8;
+  --brand-primary-dim: rgba(108, 99, 255, 0.15);
+  --brand-accent: #00E5A0;        /* Mint green — active, positive */
+  --brand-accent-hover: #00CC8F;
+  --brand-accent-dim: rgba(0, 229, 160, 0.12);
+
+  /* ─── Backgrounds — Dark-first ────────────────────────────────────────────── */
+  --bg-base: #0A0A0F;             /* Near-black base */
+  --bg-elevated: #111118;         /* Cards, panels */
+  --bg-overlay: #1A1A24;          /* Modals, dropdowns */
+  --bg-subtle: #1F1F2E;           /* Hover states, subtle fills */
+  --bg-input: #151520;            /* Input fields */
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(108, 99, 255, 0.1);
+
+  /* ─── Text Colors ─────────────────────────────────────────────────────────── */
+  --text-primary: #F0F0F5;        /* Main content */
+  --text-secondary: #8888A8;      /* Subtitles, meta */
+  --text-muted: #4A4A6A;          /* Placeholders, disabled */
+  --text-inverse: #0A0A0F;        /* Text on light/accent bg */
+  --text-link: #6C63FF;           /* Interactive links */
+  --text-link-hover: #8B84FF;
+
+  /* ─── Border Colors ───────────────────────────────────────────────────────── */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --border-focus: #6C63FF;        /* Focus ring */
+  --border-error: #FF4D6A;
+  --border-success: #00E5A0;
+
+  /* ─── Semantic Colors ─────────────────────────────────────────────────────── */
+  --color-success: #00E5A0;
+  --color-success-dim: rgba(0, 229, 160, 0.15);
+  --color-warning: #F5A623;
+  --color-warning-dim: rgba(245, 166, 35, 0.15);
+  --color-error: #FF4D6A;
+  --color-error-dim: rgba(255, 77, 106, 0.15);
+  --color-info: #6C63FF;
+  --color-info-dim: rgba(108, 99, 255, 0.15);
+
+  /* ─── Spacing (8pt Grid) ─────────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ─── Typography ──────────────────────────────────────────────────────────── */
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Font Sizes */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 36px;
+  --text-5xl: 48px;
+
+  /* Font Weights */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  --font-extrabold: 800;
+
+  /* Line Heights */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  /* ─── Border Radius ───────────────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-full: 9999px;
+
+  /* ─── Shadows ──────────────────────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 32px rgba(108, 99, 255, 0.2);
+  --shadow-glow-accent: 0 0 24px rgba(0, 229, 160, 0.15);
+  --shadow-glow-error: 0 0 24px rgba(255, 77, 106, 0.15);
+
+  /* ─── Animation ───────────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  --duration-instant: 50ms;
+  --duration-fast: 120ms;
+  --duration-normal: 220ms;
+  --duration-slow: 400ms;
+  --duration-slower: 600ms;
+
+  /* ─── Z-Index Scale ──────────────────────────────────────────────────────── */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+  --z-tooltip: 500;
+  --z-command: 600;
+}
+
+/* ─── Dark Mode (Default) ─────────────────────────────────────────────────── */
+/* Dark theme is the default (variables already set in :root) */
+
+/* ─── Light Mode Override ──────────────────────────────────────────────────── */
+.light {
+  --bg-base: #FFFFFF;
+  --bg-elevated: #F8F8FC;
+  --bg-overlay: #FFFFFF;
+  --bg-subtle: #F0F0F5;
+  --bg-input: #FFFFFF;
+  --bg-hover: rgba(0, 0, 0, 0.03);
+  --bg-active: rgba(108, 99, 255, 0.08);
+
+  --text-primary: #0A0A0F;
+  --text-secondary: #666680;
+  --text-muted: #A0A0B8;
+  --text-inverse: #FFFFFF;
+
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-default: rgba(0, 0, 0, 0.1);
+  --border-strong: rgba(0, 0, 0, 0.2);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* ─── Utility Classes ──────────────────────────────────────────────────────── */
+/* Use these in components instead of hardcoded values */
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(108, 99, 255, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(108, 99, 255, 0.5); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-subtle);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Selection */
+::selection {
+  background: var(--brand-primary-dim);
+  color: var(--text-primary);
+}
