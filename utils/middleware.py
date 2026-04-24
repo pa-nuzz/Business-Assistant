@@ -87,7 +87,7 @@ class SecurityHeadersMiddleware:
                 f"style-src {getattr(settings, 'CSP_STYLE_SRC', ('\'self\'', 'https://fonts.googleapis.com', '\'unsafe-inline\''))}; "
                 f"font-src {getattr(settings, 'CSP_FONT_SRC', ('\'self\'', 'https://fonts.gstatic.com'))}; "
                 f"img-src {getattr(settings, 'CSP_IMG_SRC', ('\'self\'', 'data:', 'https://*.r2.cloudflarestorage.com', 'https://*.amazonaws.com'))}; "
-                f"connect-src {getattr(settings, 'CSP_CONNECT_SRC', ('\'self\'', 'https://*.render.com', 'https://*.railway.app'))}; "
+                f"connect-src {getattr(settings, 'CSP_CONNECT_SRC', ('\'self\'', 'https://*.render.com'))}; "
                 "frame-ancestors 'none'; "
                 "base-uri 'self'; "
                 "form-action 'self';"

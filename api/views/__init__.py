@@ -18,9 +18,7 @@ from .document_views import (
     upload_document,
     document_status,
     delete_document,
-    document_summary,
     document_download,
-    reindex_document,
 )
 
 # User & Profile
@@ -29,7 +27,6 @@ from .profile_views import (
     update_username,
     update_password,
     business_profile,
-    business_analytics,
 )
 
 # Onboarding
@@ -78,15 +75,12 @@ __all__ = [
     "upload_document",
     "document_status",
     "delete_document",
-    "document_summary",
     "document_download",
-    "reindex_document",
     # User & Profile
     "get_user_info",
     "update_username",
     "update_password",
     "business_profile",
-    "business_analytics",
     # Onboarding
     "onboarding_status",
     "seed_demo_data",

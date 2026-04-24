@@ -44,14 +44,11 @@ urlpatterns = [
     path("documents/", views.document_list, name="document-list"),
     path("documents/upload/", views.upload_document, name="upload-document"),
     path("documents/<uuid:doc_id>/status/", views.document_status, name="document-status"),
-    path("documents/<uuid:doc_id>/delete/", views.delete_document, name="delete-document"),
-    path("documents/<uuid:doc_id>/summary/", views.document_summary, name="document-summary"),
-    path("documents/<uuid:doc_id>/reindex/", views.reindex_document, name="document-reindex"),
+    path("documents/<uuid:doc_id>/delete/", views.delete_document, name="document-delete"),
     path("documents/<uuid:doc_id>/download/", views.document_download, name="document-download"),
 
     # Business Profile
     path("profile/", views.business_profile, name="business-profile"),
-    path("analytics/", views.business_analytics, name="analytics"),
 
     # User Management
     path("user/update-username/", views.update_username, name="update-username"),
