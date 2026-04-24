@@ -6,12 +6,13 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from django.utils import timezone
+from django.core.cache import cache
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.throttling import ScopedRateThrottle
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 
 from core.models import EmailVerification, PasswordResetCode
 from services.email_service import (
@@ -20,8 +21,13 @@ from services.email_service import (
     send_password_reset_email,
     send_welcome_email,
 )
+from utils.audit import log_audit_action
 
 logger = logging.getLogger(__name__)
+
+# Account lockout settings
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION = 900  # 15 minutes in seconds
 
 
 @api_view(["POST"])
@@ -101,7 +107,7 @@ def register(request):
     except Exception as e:
         logger.exception("User registration failed")
         return Response(
-            {"error": f"Registration failed: {str(e)}"},
+            {"error": "Registration failed. Please try again later."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -196,7 +202,7 @@ def verify_email(request):
     except Exception as e:
         logger.exception("Email verification failed")
         return Response(
-            {"error": f"Verification failed: {str(e)}"},
+            {"error": "Verification failed. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -429,7 +435,7 @@ def reset_password(request):
     except Exception as e:
         logger.exception(f"Password reset failed for email: {email}")
         return Response(
-            {"error": f"Failed to reset password: {str(e)}"},
+            {"error": "Failed to reset password. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -452,10 +458,30 @@ def login(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    # SECURITY: Check for account lockout
+    lockout_key = f"lockout_{username}"
+    if cache.get(lockout_key):
+        logger.warning(f"Login attempt on locked account: {username}")
+        return Response(
+            {"error": "Account temporarily locked due to failed attempts. Try again in 15 minutes."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
     # Try to authenticate
     user = authenticate(username=username, password=password)
 
     if user is None:
+        # Track failed login attempts
+        failed_key = f"failed_login_{username}"
+        failed_attempts = cache.get(failed_key, 0) + 1
+        cache.set(failed_key, failed_attempts, timeout=LOCKOUT_DURATION)
+        
+        if failed_attempts >= MAX_FAILED_ATTEMPTS:
+            cache.set(lockout_key, True, timeout=LOCKOUT_DURATION)
+            logger.warning(f"Account locked due to failed attempts: {username}")
+        else:
+            logger.info(f"Failed login attempt {failed_attempts} for user: {username}")
+
         # Check if user exists but is not active
         try:
             user_obj = User.objects.get(username=username)
@@ -474,6 +500,10 @@ def login(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
+    # Clear failed attempts on successful login
+    cache.delete(f"failed_login_{username}")
+    cache.delete(f"lockout_{username}")
+
     # Check if email is verified
     if hasattr(user, 'email_verification') and not user.email_verification.is_verified:
         return Response(
@@ -483,8 +513,6 @@ def login(request):
 
     # Generate tokens
     refresh = RefreshToken.for_user(user)
-
-    # Generate tokens
     access_token = str(refresh.access_token)
     refresh_token = str(refresh)
 
@@ -508,16 +536,32 @@ def login(request):
         max_age=7 * 24 * 60 * 60,  # 7 days
     )
 
+    # Log successful login
+    log_audit_action(user, 'login', 'user', user.id, {'ip': request.META.get('REMOTE_ADDR')})
+
     return response
 
 
 @api_view(["POST"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def logout(request):
     """
-    Logout - clear refresh token cookie.
+    Logout - clear refresh token cookie and blacklist the token.
     Client should also clear access token from memory.
     """
+    try:
+        # Get the refresh token from cookie
+        refresh_token = request.COOKIES.get('refresh_token')
+        if refresh_token:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        
+        # Log the logout
+        log_audit_action(request.user, 'logout', 'user', request.user.id, {'ip': request.META.get('REMOTE_ADDR')})
+    except TokenError:
+        # Token was already invalid/expired
+        pass
+    
     response = Response({"message": "Logged out successfully."})
     response.delete_cookie("refresh_token")
     return response
@@ -562,9 +606,15 @@ def token_refresh(request):
 
         return response
 
-    except Exception as e:
-        logger.warning(f"Token refresh failed: {e}")
+    except TokenError:
+        logger.warning("Token refresh failed: Invalid token")
         return Response(
             {"error": "Invalid refresh token. Please login again."},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    except Exception as e:
+        logger.exception("Token refresh failed")
+        return Response(
+            {"error": "Token refresh failed. Please login again."},
             status=status.HTTP_401_UNAUTHORIZED
         )

@@ -1,5 +1,6 @@
 # Document management views
 import logging
+import os
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -17,8 +18,24 @@ from core.models import Document, DocumentChunk
 from services.document import process_document, extract_text, chunk_text, generate_summary
 from services.tasks import process_document_task
 from utils.sanitization import validate_file_upload, sanitize_filename_strict
+from utils.audit import log_audit_action
 
 logger = logging.getLogger(__name__)
+
+
+def get_safe_file_path(doc):
+    """
+    Ensure file path is within allowed storage directory.
+    Prevents path traversal attacks.
+    """
+    base_path = os.path.normpath(settings.MEDIA_ROOT)
+    file_path = os.path.normpath(doc.file.path)
+    
+    # Ensure the resolved path is within MEDIA_ROOT
+    if not file_path.startswith(base_path):
+        raise ValueError("Invalid file path - path traversal detected")
+    
+    return file_path
 
 
 @api_view(["GET"])
@@ -126,10 +143,24 @@ def document_status(request, doc_id):
 @permission_classes([IsAuthenticated])
 def delete_document(request, doc_id):
     """Delete doc and its chunks."""
-    deleted, _ = Document.objects.filter(id=doc_id, user=request.user).delete()
-    if not deleted:
+    try:
+        doc = Document.objects.get(id=doc_id, user=request.user)
+        doc_title = doc.title
+        doc.delete()
+        
+        # Log the deletion
+        log_audit_action(
+            request.user,
+            'delete',
+            'document',
+            str(doc_id),
+            details={'title': doc_title},
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return Response({"deleted": True})
+    except Document.DoesNotExist:
         return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-    return Response({"deleted": True})
 
 
 @api_view(["GET"])
@@ -192,8 +223,8 @@ def reindex_document(request, doc_id):
         old_chunk_count = DocumentChunk.objects.filter(document=doc).count()
         DocumentChunk.objects.filter(document=doc).delete()
 
-        # Re-extract text
-        file_path = doc.file.path
+        # Re-extract text with path traversal prevention
+        file_path = get_safe_file_path(doc)
         text, page_count = extract_text(file_path, doc.file_type)
 
         if not text.strip():
@@ -236,11 +267,19 @@ def reindex_document(request, doc_id):
             "pages": page_count,
         })
 
+    except ValueError as e:
+        doc.status = "failed"
+        doc.save(update_fields=["status"])
+        logger.error(f"Path traversal attempt or invalid file: {e}")
+        return Response(
+            {"reindexed": False, "error": "Invalid document file"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     except Exception as e:
         doc.status = "failed"
         doc.save(update_fields=["status"])
         logger.exception(f"Document reindexing failed for {doc_id}")
         return Response(
-            {"reindexed": False, "error": str(e)},
+            {"reindexed": False, "error": "Document processing failed"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
