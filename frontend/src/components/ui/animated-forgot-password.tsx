@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Mail, Lock, CheckCircle2, Loader2, ArrowLeft } from "lucide-react";
 import { auth } from "@/lib/api";
 import { toast } from "sonner";
+import { AxiosApiError, getErrorMessage } from "@/types/errors";
 
 interface PupilProps {
   size?: number;
@@ -303,9 +304,9 @@ export default function AnimatedForgotPasswordPage() {
       await auth.forgotPassword(email);
       toast.success("Reset code sent!");
       setStep('code');
-    } catch (err: any) {
-      const msg = err.response?.data?.error || "";
-      setError(msg.includes("not found") ? "No account with this email" : "Failed to send code");
+    } catch (err: unknown) {
+      const msg = (err as AxiosApiError).response?.data?.error || "";
+      setError(msg.includes("not found") ? "No account with this email" : getErrorMessage(err as AxiosApiError));
     } finally { setIsLoading(false); }
   };
 
@@ -332,10 +333,8 @@ export default function AnimatedForgotPasswordPage() {
       const response = await auth.resetPassword(email, code, newPassword);
       toast.success(response.message || "Password updated!");
       setStep('success');
-    } catch (err: any) {
-      let msg = err.response?.data?.error || err.response?.data?.message || "Failed to reset password";
-      if (typeof msg !== 'string') msg = JSON.stringify(msg);
-      setError(msg);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err as AxiosApiError));
     } finally { setIsLoading(false); }
   };
 

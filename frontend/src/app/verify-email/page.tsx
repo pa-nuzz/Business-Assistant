@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { auth } from '@/lib/api';
+import { AxiosApiError, getErrorMessage } from '@/types/errors';
 import { Loader2, Mail, RefreshCw, CheckCircle, ArrowLeft } from 'lucide-react';
 
 export default function VerifyEmailPage() {
@@ -85,8 +86,8 @@ export default function VerifyEmailPage() {
       setTimeout(() => {
         router.push('/chat');
       }, 1500);
-    } catch (err: any) {
-      const msg = err.response?.data?.error || 'Invalid verification code';
+    } catch (err: unknown) {
+      const msg = (err as AxiosApiError).response?.data?.error || getErrorMessage(err as AxiosApiError);
       setError(msg);
       toast.error(msg);
       // Clear code on error
@@ -106,8 +107,8 @@ export default function VerifyEmailPage() {
       toast.success('📧 New verification code sent! Check your inbox.');
       setCode(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to resend code');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err as AxiosApiError));
     } finally {
       setIsResending(false);
     }

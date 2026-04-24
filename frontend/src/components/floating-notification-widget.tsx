@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Bell, X, Check, ArrowRight, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { notifications, auth } from '@/lib/api';
+import { AxiosApiError } from '@/types/errors';
 import { toast } from 'sonner';
 
 interface Notification {
@@ -46,9 +47,10 @@ export function FloatingNotificationWidget({
         setNotificationsList(data.notifications);
         setUnreadCount(data.count || 0);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Silently ignore auth errors (user not logged in)
-      if (err?.response?.status === 401) return;
+      if ((err as AxiosApiError).response?.status === 401) return;
+      // eslint-disable-next-line no-console
       console.error('Failed to fetch notifications:', err);
     }
   }, []);

@@ -31,9 +31,9 @@ interface AnalyticsData {
   insights: {
     top_topics?: string[];
     suggested_focus_areas?: string[];
-    [key: string]: any;
+    [key: string]: unknown;
   };
-  followups: Array<{ key: string; value: string }> | string | { items?: any[]; checklist?: any[]; [key: string]: any };
+  followups: Array<{ key: string; value: string }> | string | { items?: unknown[]; checklist?: unknown[]; [key: string]: unknown };
 }
 
 const METRIC_LABELS: Record<string, string> = {
@@ -93,7 +93,8 @@ export default function DashboardPage() {
   const topTopics: Array<string | { topic: string; frequency?: number }> = Array.isArray(data?.insights?.top_topics) 
     ? data!.insights.top_topics 
     : (Array.isArray(data?.insights?.suggested_focus_areas) ? data!.insights.suggested_focus_areas : []);
-  const followups: Array<{ key: string; value: string } | string> = Array.isArray(data?.followups) 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const followups: any[] = Array.isArray(data?.followups) 
     ? data!.followups 
     : (typeof data?.followups === 'object' && data?.followups !== null 
         ? (data.followups.items || data.followups.checklist || []) 

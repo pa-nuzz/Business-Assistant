@@ -175,7 +175,7 @@ export const chat = {
     message: string,
     conversationId: string | undefined,
     onToken: (token: string) => void,
-    onMetadata: (metadata: any) => void,
+    onMetadata: (metadata: { conversation_id?: string; title?: string; [key: string]: unknown }) => void,
     onDone: () => void,
     onError: (error: string) => void
   ) => {
@@ -316,9 +316,9 @@ export interface ProfileData {
   industry?: string;
   company_size?: string;
   description?: string;
-  goals?: string[];
-  key_metrics?: Record<string, number>;
-  [key: string]: string | string[] | Record<string, number> | undefined;
+  goals?: Array<{ id: string; title: string; target_date?: string; status?: string }>;
+  key_metrics?: Record<string, number | string>;
+  [key: string]: string | string[] | Record<string, number | string> | Array<{ id: string; title: string; target_date?: string; status?: string }> | undefined;
 }
 
 export const profile = {

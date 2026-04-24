@@ -9,6 +9,7 @@ import {
   Camera, Lock, UserCircle, Volume2, VolumeX, Settings2
 } from 'lucide-react';
 import { getSoundEffects } from '@/components/sound-effects';
+import { AxiosApiError, getErrorMessage } from '@/types/errors';
 
 interface UserProfile {
   username?: string;
@@ -133,8 +134,8 @@ export default function SettingsPage() {
       toast.success('Profile picture updated successfully');
       setSelectedFile(null);
       router.refresh();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to upload avatar');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err as AxiosApiError));
     } finally {
       setUploadingAvatar(false);
     }
@@ -152,8 +153,8 @@ export default function SettingsPage() {
       setProfileData(prev => ({ ...prev, username: newUsername.trim() }));
       toast.success('Username updated successfully');
       router.refresh();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to update username');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err as AxiosApiError));
     } finally {
       setSavingUsername(false);
     }
@@ -186,8 +187,8 @@ export default function SettingsPage() {
         auth.logout();
         router.push('/login');
       }, 2000);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to update password');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err as AxiosApiError));
     } finally {
       setSavingPassword(false);
     }
@@ -203,8 +204,8 @@ export default function SettingsPage() {
       });
       toast.success('Business profile saved successfully');
       router.refresh();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to save profile');
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err as AxiosApiError));
     } finally {
       setSavingProfile(false);
     }
