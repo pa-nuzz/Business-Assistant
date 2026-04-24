@@ -93,7 +93,7 @@ export default function SettingsPage() {
       if (userRes.avatar) {
         setAvatarPreview(userRes.avatar);
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to load profile');
     } finally {
       setLoading(false);

@@ -88,7 +88,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
       setUnreadCount(prev => Math.max(0, prev - 1));
       
       toast.success('Marked as read');
-    } catch (err) {
+    } catch {
       toast.error('Failed to mark as read');
     } finally {
       setMarkingRead(null);
@@ -112,7 +112,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
       setUnreadCount(0);
       
       toast.success('All notifications marked as read');
-    } catch (err) {
+    } catch {
       toast.error('Failed to mark all as read');
     } finally {
       setIsLoading(false);

@@ -12,7 +12,8 @@ import { CommandPalette } from '@/components/enhanced-command-palette';
 const publicPaths = ['/login', '/register', '/forgot-password', '/verify-email', '/reset-password'];
 
 // Loading skeleton - matches both collapsed and expanded sidebar states
-function _LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
   return (
     <div className="flex h-screen bg-white overflow-hidden">
       {showSidebar && (
@@ -63,6 +64,7 @@ function _LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [hasError, setHasError] = useState(false);
   const pathname = usePathname();
 

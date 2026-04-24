@@ -42,6 +42,7 @@ type SourceType = "search" | "deep_research" | "reason";
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _conversationId = searchParams.get("id") || undefined;
 
   // Use ChatContext for persistent state
@@ -126,9 +127,10 @@ export default function ChatPage() {
     try {
       const data: Conversation = await chat.getConversation(id);
       // Transform backend messages to our format
-      const formattedMessages: Message[] = data.messages.map((msg: any) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const formattedMessages: Message[] = data.messages.map((msg: any) => ({ 
         id: msg.id,
-        role: msg.role,
+        role: msg.role as "user" | "assistant",
         content: msg.content,
         created_at: msg.created_at,
       }));
@@ -137,7 +139,7 @@ export default function ChatPage() {
         setMessages(formattedMessages);
       }
     } catch (err) {
-      const axiosError = err as any;
+      const axiosError = err as { response?: unknown; message?: string };
       if (!axiosError.response && axiosError.message?.includes('Network Error')) {
         setError("Backend server not reachable. Please ensure Django is running on http://127.0.0.1:8000");
       } else {
@@ -164,7 +166,7 @@ export default function ChatPage() {
         setMessages([]);
         setError(null);
       }
-    } catch (err) {
+    } catch {
       // Silently fail - show empty state
       setMessages([]);
       setError(null);
@@ -471,7 +473,7 @@ export default function ChatPage() {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.4 }}
               >
-                I'm <span className="font-semibold text-indigo-600">Aiden</span>, your AI Business Partner.
+                I&apos;m <span className="font-semibold text-indigo-600">Aiden</span>, your AI Business Partner.
               </motion.p>
               <motion.p 
                 className="text-slate-400 max-w-md mb-8 text-xs"

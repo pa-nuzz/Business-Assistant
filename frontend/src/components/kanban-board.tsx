@@ -51,7 +51,7 @@ export function KanbanBoard({ tasks, onUpdate }: KanbanBoardProps) {
       await tasksApi.update(taskId, { status: newStatus });
       toast.success(`Task moved to ${COLUMNS.find(c => c.id === newStatus)?.label}`);
       onUpdate();
-    } catch (err) {
+    } catch {
       toast.error('Failed to move task');
     }
   };
@@ -63,7 +63,7 @@ export function KanbanBoard({ tasks, onUpdate }: KanbanBoardProps) {
       await tasksApi.delete(taskId);
       toast.success('Task deleted');
       onUpdate();
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete task');
     }
   };
@@ -102,6 +102,7 @@ export function KanbanBoard({ tasks, onUpdate }: KanbanBoardProps) {
                     whileHover={{ y: -2, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                     draggable
                     onDragStart={() => setActiveTask(task.id)}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     onDragEnd={(e: any) => {
                       const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
                       const columnElement = dropTarget?.closest('[data-column-id]');

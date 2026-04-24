@@ -157,6 +157,7 @@ export default function Sidebar() {
     const fetchConversations = async () => {
       try {
         const data = await chat.getConversations();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const filtered = (data?.results || []).filter(
           (conv: any) => conv.message_count > 0 && conv.title !== 'Untitled conversation'
         );

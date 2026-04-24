@@ -12,8 +12,7 @@ import {
   Search,
   Upload,
   Plus,
-  LayoutDashboard,
-  LogOut
+  LayoutDashboard
 } from 'lucide-react';
 
 interface CommandItem {
