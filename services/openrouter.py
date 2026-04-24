@@ -1,9 +1,4 @@
-"""
-OpenRouter Service — Final fallback.
-OpenRouter gives access to many models, including free ones.
-Free models: mistral-7b-instruct:free, llama-3-8b-instruct:free, etc.
-Uses OpenAI-compatible HTTP API.
-"""
+# OpenRouter — backup AI provider. Uses any model including free ones.
 import json
 import logging
 import httpx
@@ -19,10 +14,7 @@ def call(
     tool_definitions: list,
     timeout: Optional[int] = None,
 ) -> dict:
-    """
-    Call OpenRouter via plain HTTP (no SDK needed).
-    OpenAI-compatible, supports function calling.
-    """
+    # Regular HTTP call to OpenRouter. Returns text + tool calls.
     cfg = settings.AI_CONFIG["openrouter"]
     timeout = timeout or cfg["timeout"]
 
@@ -88,16 +80,15 @@ def call(
     }
 
 
-# Simple wrappers for Model Abstraction Layer
 def call_openrouter(system_prompt: str, user_message: str) -> str:
-    """Simple non-streaming call for Model Layer."""
+    # Simple wrapper - no tools, just text
     messages = [{"role": "user", "content": user_message}]
     result = call(messages, system_prompt, [])
     return result.get("text", "")
 
 
 def call_openrouter_stream(system_prompt: str, user_message: str):
-    """Streaming generator for Model Layer."""
+    # Stream tokens from OpenRouter
     cfg = settings.AI_CONFIG["openrouter"]
     timeout = cfg["timeout"]
     

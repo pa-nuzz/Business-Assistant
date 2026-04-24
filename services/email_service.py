@@ -1,7 +1,4 @@
-"""
-Premium Email Service for AEIOU AI
-Handles transactional emails with professional branding.
-"""
+# Send emails with nice templates. Console in dev, SMTP in prod.
 import os
 import secrets
 from typing import Optional
@@ -12,12 +9,12 @@ from django.conf import settings
 
 
 def generate_verification_code() -> str:
-    """Generate a 6-digit verification code using cryptographically secure random."""
+    # 6 digits, actually random (not predictable)
     return str(secrets.randbelow(900000) + 100000)
 
 
 def get_email_branding():
-    """Get consistent email branding."""
+    # Colors, logo, links - consistent across all emails
     return {
         "app_name": "AEIOU AI",
         "logo_url": f"{settings.FRONTEND_URL}/logos/app-logo.svg" if hasattr(settings, 'FRONTEND_URL') else "",
@@ -29,7 +26,7 @@ def get_email_branding():
 
 
 def send_verification_email(email: str, username: str, code: str) -> bool:
-    """Send email verification code with premium branding."""
+    # "Your code is 123456" email with nice styling
     try:
         branding = get_email_branding()
         
@@ -133,7 +130,7 @@ Need help? Contact: {branding['support_email']}
 
 
 def send_password_reset_email(email: str, username: str, code: str) -> bool:
-    """Send password reset code with premium branding."""
+    # Reset password email - orange theme to stand out
     try:
         branding = get_email_branding()
         
@@ -239,7 +236,7 @@ Need help? Contact: {branding['support_email']}
 
 
 def send_welcome_email(email: str, username: str) -> bool:
-    """Send welcome email after verification."""
+    # Welcome! Here's what you can do now
     try:
         branding = get_email_branding()
         

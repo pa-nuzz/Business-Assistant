@@ -1,12 +1,5 @@
-"""
-Document Processing Service.
-
-Pipeline for uploaded files:
-  upload → extract text → chunk → generate summary → store
-
-Key design: we process ONCE, store everything. The agent never
-re-reads the raw file — it reads chunks and summaries.
-"""
+# Document processing: extract → chunk → summarize → store
+# Agent never re-reads raw files, just chunks + summaries
 import logging
 import re
 from typing import Optional
@@ -18,10 +11,7 @@ logger = logging.getLogger(__name__)
 # ─── Text Extraction ──────────────────────────────────────────────────────────
 
 def extract_text(file_path: str, file_type: str) -> tuple[str, int]:
-    """
-    Extract raw text from a document.
-    Returns (text, page_count).
-    """
+    # Pull text from PDF/DOCX/TXT
     if file_type == "pdf":
         return _extract_pdf(file_path)
     elif file_type == "docx":
@@ -55,13 +45,7 @@ def _extract_docx(file_path: str) -> str:
 # ─── Chunking ─────────────────────────────────────────────────────────────────
 
 def chunk_text(text: str, chunk_size: int = None, max_chunks: int = None) -> list[dict]:
-    """
-    Split text into overlapping chunks for retrieval.
-    Returns list of {"content": str, "keywords": list[str], "chunk_index": int}
-
-    Uses simple character-based chunking with sentence boundary awareness.
-    No embeddings, no vector DB — just keyword-indexed chunks.
-    """
+    # Cut text into overlapping chunks with keywords. No embeddings, just text splitting.
     cfg = settings.DOCUMENT_CONFIG
     chunk_size = chunk_size or cfg["chunk_size_chars"]
     max_chunks = max_chunks or cfg["max_chunks_per_doc"]
@@ -103,10 +87,7 @@ def chunk_text(text: str, chunk_size: int = None, max_chunks: int = None) -> lis
 
 
 def _extract_keywords(text: str, top_n: int = 15) -> list[str]:
-    """
-    Simple keyword extraction by frequency.
-    No NLP library needed — just works well enough for retrieval.
-    """
+    # Grab most frequent words (cheap keyword extraction)
     STOPWORDS = {
         "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
         "of", "with", "is", "was", "are", "were", "be", "been", "have", "has",
@@ -126,10 +107,7 @@ def _extract_keywords(text: str, top_n: int = 15) -> list[str]:
 # ─── Summary Generation ───────────────────────────────────────────────────────
 
 def extract_business_context(text: str, doc_title: str, user_id: int) -> dict:
-    """
-    Extract business-relevant context from document and save to user memory.
-    Identifies: company info, metrics, goals, projects, contacts, etc.
-    """
+    # Pull business facts from doc and save to memory
     from agents.router import call_with_fallback
     from services.model_layer import add_user_memory
     
@@ -193,7 +171,7 @@ def extract_business_context(text: str, doc_title: str, user_id: int) -> dict:
 
 
 def _extract_metrics_from_text(text: str) -> dict:
-    """Extract numeric metrics like revenue, growth rate, etc."""
+    # Regex hunt for revenue/growth/customer numbers
     import re
     metrics = {}
     
@@ -240,11 +218,7 @@ def _extract_metrics_from_text(text: str) -> dict:
 # ─── Summary Generation ───────────────────────────────────────────────────────
 
 def generate_summary(text: str, doc_title: str) -> str:
-    """
-    Generate a document summary using the primary AI model.
-    Called once during processing — never again.
-    Truncates to first 8000 chars to stay within token limits.
-    """
+    # Ask AI to summarize. Only first 8k chars (token limit)
     from agents.router import call_with_fallback
 
     # Use first 8000 chars (covers most docs without hitting token limits)
@@ -277,11 +251,7 @@ def generate_summary(text: str, doc_title: str) -> str:
 # ─── Full Processing Pipeline ─────────────────────────────────────────────────
 
 def process_document(doc_id: str) -> bool:
-    """
-    Full pipeline: extract → chunk → summarize → save to DB.
-    Call this from a background task (Celery) or inline for small files.
-    Returns True on success.
-    """
+    # Run the full pipeline. Call from Celery or inline
     from core.models import Document, DocumentChunk
 
     try:

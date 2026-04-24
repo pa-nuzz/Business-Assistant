@@ -325,79 +325,25 @@ coverage report
 
 ## Troubleshooting
 
-### Common Issues
-
-**Migration errors:**
-```bash
-python manage.py makemigrations
-python manage.py migrate
-```
-
-**Static files not loading:**
-```bash
-python manage.py collectstatic
-```
-
-**Rate limit errors (429 Too Many Requests):**
-The API has throttling enabled. Wait a moment and retry:
-- Auth endpoints: 5-10 attempts per hour
-- Chat: 20 requests per minute
-- File uploads: 10 per minute
-
-**File upload rejected:**
-Files are validated by magic bytes (actual content), not just extension:
-- PDF must start with `%PDF`
-- DOCX must be a valid ZIP with `word/document.xml`
-- TXT must be readable text (no scripts)
-- Maximum size: 10MB (configurable in `.env`)
-
-**Redis connection issues (dev):**
-The dev environment uses in-memory cache by default. No Redis needed for local development.
-
-**AI service timeouts:**
-- Check your API keys in `.env`
-- Verify internet connection
-- Increase timeout values in settings (GEMINI_TIMEOUT, GROQ_TIMEOUT, etc.)
-- Check AI provider status pages
-
-**Throttling on authentication:**
-If you hit rate limits during development, restart the server or wait for the throttle window to reset.
-
-**Email not sending in development:**
-By default, emails print to console. Check your terminal output for verification codes.
-
-**Import errors after updating:**
-```bash
-pip install -r requirements.txt
-```
-
-**Next.js image optimization not working:**
-The frontend is configured to allow all remote images. For production, specify exact domains in `next.config.ts`.
+| Issue | Solution |
+|-------|----------|
+| **Migration errors** | `python manage.py makemigrations && python manage.py migrate` |
+| **Rate limit (429)** | Wait and retry. Auth: 5-10/hr, Chat: 20/min, Uploads: 10/min |
+| **File upload rejected** | Check magic bytes: PDF=`%PDF`, DOCX=valid ZIP with `word/document.xml` |
+| **AI timeouts** | Verify API keys in `.env`, check provider status pages |
+| **Import errors** | `pip install -r requirements.txt` |
+| **Email in dev** | Check terminal output — emails print to console by default |
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Recent Security Audit (2026-04-24)
-
-This codebase underwent a comprehensive security audit. All critical issues have been resolved:
-
-✅ **Fixed:** API key rotation required (keys in git history replaced with placeholders)
-✅ **Fixed:** Cryptographically secure random for verification codes
-✅ **Fixed:** Time calculation bug in code expiration (now uses `total_seconds()`)
-✅ **Fixed:** Rate limiting added to all auth endpoints (prevents brute force)
-✅ **Fixed:** SSRF protection in web scraping tool
-✅ **Fixed:** Magic bytes validation for file uploads (prevents extension spoofing)
-✅ **Fixed:** Task management query validation and throttling
-
-**Action Required:** Generate new API keys after pulling this repository.
+MIT License — see LICENSE file
 
 ## Support
 
-For issues or questions:
-1. Check the troubleshooting section above
-2. Review environment variable configuration in `.env`
-3. Verify API keys are valid at provider dashboards
-4. Check application logs: `python manage.py runserver` output
+1. Check troubleshooting above
+2. Review `.env` configuration
+3. Verify API keys at provider dashboards
+4. Check logs: `python manage.py runserver` output
 5. Run tests: `python manage.py test`
-6. Check rate limits if getting 429 errors
+
+**Security fixes documented in:** `SECURITY_FIXES.md`

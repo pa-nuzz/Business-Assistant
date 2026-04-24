@@ -98,11 +98,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(safetyTimer);
   }, [isChecking]);
 
-  return (
-    <>
-      {children}
-      {/* Overlay only shows briefly during auth check */}
-      {isChecking && <AuthLoadingOverlay />}
-    </>
-  );
+  // Don't render children until auth check is complete to prevent flash
+  if (!hasChecked) {
+    return <AuthLoadingOverlay />;
+  }
+
+  return <>{children}</>;
 }

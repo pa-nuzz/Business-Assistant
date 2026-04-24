@@ -1,0 +1,61 @@
+# AEIOU AI — Render.com Deployment Configuration
+# Free tier: Web service + PostgreSQL + Redis
+
+services:
+  # Backend API
+  - type: web
+    name: aeiou-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/v1/health/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aeiou-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aeiou-redis
+          property: connectionString
+
+  # Celery Worker (optional - for background tasks)
+  - type: worker
+    name: aeiou-worker
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A config worker -l info
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aeiou-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aeiou-redis
+          property: connectionString
+
+databases:
+  - name: aeiou-db
+    plan: free
+    databaseName: aeiou
+    user: aeiou
+
+redis:
+  - name: aeiou-redis
+    plan: free
+    ipAllowList: []

@@ -38,6 +38,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework_simplejwt.token_blacklist",
     "channels",  # WebSocket support
+    # "dbbackup",  # Database backups - install package first
+    # "storages",  # S3 storage for backups - install package first
     # Local
     "core",
     "api",
@@ -81,11 +83,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # ─── Database ─────────────────────────────────────────────────────────────────
 DATABASES = {
     "default": dj_database_url.config(
-        default=config("DATABASE_URL", default="sqlite:///db.sqlite3"),
+        default=config("DATABASE_URL"),  # NO FALLBACK - must be set
         conn_max_age=600,
-        conn_health_checks=True,
+        ssl_require=config("DB_SSL", default=False, cast=bool),
     )
 }
+
+# Hard check: SQLite cannot be used in production
+if "sqlite" in DATABASES["default"].get("ENGINE", "") and not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured("SQLite cannot be used in production. Set DATABASE_URL to a PostgreSQL database.")
 
 # Connection pooling for PostgreSQL
 if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
@@ -338,3 +345,16 @@ LOGGING = {
         },
     },
 }
+
+# ─── Backup Configuration (django-dbbackup) ────────────────────────────────────
+DBBACKUP_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+DBBACKUP_STORAGE_OPTIONS = {
+    "access_key": config("AWS_ACCESS_KEY_ID", default=""),
+    "secret_key": config("AWS_SECRET_ACCESS_KEY", default=""),
+    "bucket_name": config("BACKUP_BUCKET", default=""),
+    "default_acl": "private",
+    "region_name": config("AWS_REGION", default="us-east-1"),
+}
+# Backup 3AM daily via cron: 0 3 * * * cd /app && python manage.py dbbackup --clean
+DBBACKUP_CLEANUP_KEEP = 7  # Keep 7 daily backups
+DBBACKUP_CLEANUP_KEEP_MEDIA = 3  # Keep 3 media backups

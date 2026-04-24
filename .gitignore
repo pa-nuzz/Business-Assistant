@@ -1,39 +1,47 @@
-# Environment variables
-.env
+# =============================================
+# AEIOU AI — Production Gitignore
+# =============================================
 
-# Python
+# === ENVIRONMENT VARIABLES (CRITICAL) ===
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.backup
+
+# === PYTHON / DJANGO ===
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments (NEVER commit these)
 venv/
 env/
+ENV/
+.venv/
+.venv.bak/
 
-# Django
+# Django specific
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+db.sqlite3.backup
+*.dump
+*.sql
 media/
 staticfiles/
+static/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Render/Railway (keep these)
-!render.yaml
-!Procfile
-
-# Next.js Frontend
+# === FRONTEND (NEXT.JS) ===
 frontend/node_modules/
 frontend/.next/
 frontend/out/
@@ -42,39 +50,81 @@ frontend/dist/
 frontend/.env*.local
 frontend/next-env.d.ts
 frontend/*.tsbuildinfo
+frontend/.vercel
 
-# Testing
+# === IDE / EDITORS ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+*.code-workspace
+
+# === OS FILES ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# === TESTING / COVERAGE ===
 coverage/
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
+nosetests.xml
 
-# Misc
+# === SECURITY / CERTIFICATES ===
 *.pem
 *.cert
 *.key
-.env.backup
-.env.production
+*.crt
+*.csr
+secrets/
+private/
 
-# Celery
+# === CELERY / BACKGROUND TASKS ===
 celerybeat-schedule
 celerybeat.pid
+celeryev.pid
+*.pid
 
-# Type checking
+# === TYPE CHECKING ===
 .mypy_cache/
 .dmypy.json
+.pytype/
 
-# Profiling
+# === PROFILING ===
 *.prof
 .prof/
 
-# Database dumps
-*.dump
-*.sql
-*.sqlite3.backup
+# === DEPLOYMENT PLATFORMS ===
+.vercel
+.netlify
+.railway
 
-# Local env overrides (if not already covered)
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# === DOCKER (if used) ===
+docker-compose.override.yml
+.dockerignore
+
+# === LOGS ===
+logs/
+*.log
+log/
+
+# === TEMPORARY FILES ===
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+
+# === RENDER / PRODUCTION (keep these) ===
+!render.yaml
+!Procfile
+!runtime.txt

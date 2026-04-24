@@ -11,7 +11,7 @@ import { usePathname } from 'next/navigation';
 // Dynamic imports for code splitting
 const Sidebar = dynamic(() => import('@/components/sidebar-new'), {
   ssr: false,
-  loading: () => <div className="w-[280px] h-screen bg-slate-50 border-r border-slate-200" />
+  loading: () => <div className="w-[72px] h-screen bg-slate-50 border-r border-slate-200 animate-pulse" />
 });
 
 const CommandPalette = dynamic(() => import('@/components/enhanced-command-palette').then(mod => mod.CommandPalette), {
@@ -20,53 +20,50 @@ const CommandPalette = dynamic(() => import('@/components/enhanced-command-palet
 
 const publicPaths = ['/login', '/register', '/forgot-password', '/verify-email', '/reset-password'];
 
-// Loading skeleton component with proper branding
+// Loading skeleton - matches both collapsed and expanded sidebar states
 function LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-white overflow-hidden">
       {showSidebar && (
-        <div className="w-[280px] h-screen bg-slate-50 border-r border-slate-200 flex flex-col">
-          {/* Logo skeleton */}
-          <div className="h-16 flex items-center px-4 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-slate-200 rounded-lg animate-pulse" />
-              <div className="w-24 h-5 bg-slate-200 rounded animate-pulse" />
-            </div>
+        <div className="w-[72px] h-screen bg-slate-50 border-r border-slate-200 flex flex-col flex-shrink-0">
+          {/* Collapsed logo skeleton */}
+          <div className="h-16 flex items-center justify-center border-b border-slate-100">
+            <div className="w-8 h-8 bg-slate-200 rounded-lg animate-pulse" />
           </div>
-          {/* Nav items skeleton */}
-          <div className="p-4 space-y-2">
+          {/* Nav items skeleton - icon only */}
+          <div className="p-3 space-y-2">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+              <div key={i} className="w-12 h-12 mx-auto bg-slate-200 rounded-xl animate-pulse" />
             ))}
           </div>
         </div>
       )}
-      <main className="flex-1 flex items-center justify-center">
+      <main className="flex-1 flex items-center justify-center min-w-0">
         <div className="flex flex-col items-center gap-4">
           {/* Animated logo */}
           <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="20" y="50" width="8" height="30" rx="4" fill="#E2E8F0">
+            <rect x="20" y="50" width="8" height="30" rx="4" fill="#6366F1">
               <animate attributeName="height" values="30;20;35;30" dur="3s" repeatCount="indefinite" />
               <animate attributeName="y" values="50;60;45;50" dur="3s" repeatCount="indefinite" />
             </rect>
-            <rect x="35" y="40" width="8" height="40" rx="4" fill="#CBD5E1">
+            <rect x="35" y="40" width="8" height="40" rx="4" fill="#8B5CF6">
               <animate attributeName="height" values="40;30;45;40" dur="2.5s" repeatCount="indefinite" />
               <animate attributeName="y" values="40;50;35;40" dur="2.5s" repeatCount="indefinite" />
             </rect>
-            <rect x="50" y="30" width="8" height="50" rx="4" fill="#E2E8F0">
+            <rect x="50" y="30" width="8" height="50" rx="4" fill="#6366F1">
               <animate attributeName="height" values="50;35;55;50" dur="2s" repeatCount="indefinite" />
               <animate attributeName="y" values="30;45;25;30" dur="2s" repeatCount="indefinite" />
             </rect>
-            <rect x="65" y="45" width="8" height="35" rx="4" fill="#CBD5E1">
+            <rect x="65" y="45" width="8" height="35" rx="4" fill="#8B5CF6">
               <animate attributeName="height" values="35;25;40;35" dur="2.7s" repeatCount="indefinite" />
               <animate attributeName="y" values="45;55;40;45" dur="2.7s" repeatCount="indefinite" />
             </rect>
-            <rect x="80" y="55" width="8" height="25" rx="4" fill="#E2E8F0">
+            <rect x="80" y="55" width="8" height="25" rx="4" fill="#6366F1">
               <animate attributeName="height" values="25;15;30;25" dur="3.2s" repeatCount="indefinite" />
               <animate attributeName="y" values="55;65;50;55" dur="3.2s" repeatCount="indefinite" />
             </rect>
           </svg>
-          <p className="text-slate-400 text-sm font-medium">Loading AEIOU AI...</p>
+          <p className="text-slate-500 text-sm font-medium">Loading AEIOU AI...</p>
         </div>
       </main>
     </div>
@@ -82,18 +79,22 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   const isPublicPage = pathname ? publicPaths.some((path) => pathname.startsWith(path)) : false;
 
   useEffect(() => {
-    // Mark as mounted after hydration completes
-    setMounted(true);
+    // Mark as mounted immediately on client
+    try {
+      setMounted(true);
+    } catch (e) {
+      console.error('[ClientLayout] Error during mount:', e);
+      setMounted(true); // Force it anyway
+    }
+  }, []);
+
+  // Unblock safety timer - forces render after 2s no matter what
+  useEffect(() => {
+    const unblockTimer = setTimeout(() => {
+      setMounted(true);
+    }, 2000);
     
-    // Safety timeout: force render after 3 seconds even if something is stuck
-    const safetyTimer = setTimeout(() => {
-      if (!mounted) {
-        console.warn('[ClientLayout] Safety timeout triggered - forcing render');
-        setMounted(true);
-      }
-    }, 3000);
-    
-    return () => clearTimeout(safetyTimer);
+    return () => clearTimeout(unblockTimer);
   }, []);
 
   // Error boundary fallback
@@ -114,10 +115,20 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // During SSR/hydration: show skeleton that matches server render
-  // This prevents hydration mismatch by not rendering different content on server vs client
+  // Show loading skeleton only briefly, then force render
+  // If there's a JS error, we still want to show something
   if (!mounted) {
-    return <LoadingSkeleton showSidebar={!isPublicPage} />;
+    return (
+      <div className="flex h-screen bg-white overflow-hidden">
+        <main className="flex-1 flex items-center justify-center min-w-0">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+            <p className="text-slate-500 text-sm font-medium">Loading AEIOU AI...</p>
+            <p className="text-slate-400 text-xs">If this persists, check console for errors</p>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   return (

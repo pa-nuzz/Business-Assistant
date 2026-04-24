@@ -8,6 +8,18 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 
+class SoftDeleteManager(models.Manager):
+    """Manager that excludes soft-deleted records by default."""
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
+class SoftDeleteAllManager(models.Manager):
+    """Manager that includes all records (including soft-deleted)."""
+    def get_queryset(self):
+        return super().get_queryset()
+
+
 class EmailVerification(models.Model):
     """Email verification codes for user registration."""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="email_verification")
@@ -77,15 +89,92 @@ class BusinessProfile(models.Model):
     company_name = models.CharField(max_length=255, blank=True)
     industry = models.CharField(max_length=100, blank=True)
     company_size = models.CharField(max_length=50, blank=True)  # e.g. "10-50"
+    website = models.URLField(max_length=255, blank=True)
     description = models.TextField(blank=True)
-    goals = models.JSONField(default=list)          # ["increase revenue", "expand to EU"]
-    key_metrics = models.JSONField(default=dict)    # {"monthly_revenue": 50000, "customers": 120}
+    # DEPRECATED: Use Goal model with FK to BusinessProfile instead
+    goals = models.JSONField(default=list)
+    # DEPRECATED: Use Metric model with FK to BusinessProfile instead
+    key_metrics = models.JSONField(default=dict)
     avatar = models.ImageField(upload_to="avatars/%Y/%m/", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.company_name} ({self.user.username})"
+
+
+class Goal(models.Model):
+    """
+    Business goals as proper model (replaces JSONField abuse in BusinessProfile).
+    Searchable, filterable, sortable.
+    """
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("completed", "Completed"),
+        ("archived", "Archived"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    business_profile = models.ForeignKey(
+        BusinessProfile,
+        on_delete=models.CASCADE,
+        related_name="goals_proper"
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
+    target_date = models.DateTimeField(null=True, blank=True)
+    priority = models.IntegerField(default=0)  # Higher = more important
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-priority", "-created_at"]
+        indexes = [
+            models.Index(fields=["business_profile", "status"]),
+            models.Index(fields=["business_profile", "target_date"]),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class Metric(models.Model):
+    """
+    Business metrics as proper model (replaces JSONField abuse in BusinessProfile).
+    Track numeric and text metrics with history support.
+    """
+    METRIC_TYPE_CHOICES = [
+        ("number", "Number"),
+        ("currency", "Currency"),
+        ("percentage", "Percentage"),
+        ("text", "Text"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    business_profile = models.ForeignKey(
+        BusinessProfile,
+        on_delete=models.CASCADE,
+        related_name="metrics"
+    )
+    key = models.CharField(max_length=100, db_index=True)
+    name = models.CharField(max_length=255)  # Display name
+    metric_type = models.CharField(max_length=20, choices=METRIC_TYPE_CHOICES, default="number")
+    value_numeric = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    value_text = models.CharField(max_length=255, blank=True)
+    unit = models.CharField(max_length=50, blank=True)  # e.g., "USD", "users", "%"
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["business_profile", "key"]),
+        ]
+        unique_together = ("business_profile", "key")
+
+    def __str__(self):
+        return f"{self.name}: {self.value_numeric or self.value_text}"
 
 
 class UserMemory(models.Model):
@@ -122,6 +211,7 @@ class Document(models.Model):
     """
     Uploaded documents (PDF, DOCX, TXT).
     We store a summary + chunks — never re-read the full file.
+    Supports soft delete - records are marked deleted, not actually removed.
     """
     STATUS_CHOICES = [
         ("pending", "Pending"),
@@ -140,14 +230,41 @@ class Document(models.Model):
     page_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Soft delete fields
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="deleted_documents")
+
+    # Managers
+    objects = SoftDeleteManager()  # Default - excludes soft-deleted
+    all_objects = SoftDeleteAllManager()  # Includes all
+
     class Meta:
         indexes = [
             models.Index(fields=["user", "status", "-created_at"]),
             models.Index(fields=["user", "file_type"]),
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["deleted_at"]),
         ]
 
     def __str__(self):
         return f"{self.title} ({self.status})"
+
+    def soft_delete(self, user=None):
+        """Mark record as deleted without removing from database."""
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.save(update_fields=["deleted_at", "deleted_by"])
+
+    def restore(self):
+        """Restore a soft-deleted record."""
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save(update_fields=["deleted_at", "deleted_by"])
+
+    def hard_delete(self):
+        """Actually remove from database (use with caution)."""
+        super().delete()
 
 
 class DocumentChunk(models.Model):
@@ -173,19 +290,43 @@ class DocumentChunk(models.Model):
 
 
 class Conversation(models.Model):
-    """One conversation session."""
+    """One conversation session. Supports soft delete."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="conversations")
     title = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Soft delete fields
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="deleted_conversations")
+
+    # Managers
+    objects = SoftDeleteManager()
+    all_objects = SoftDeleteAllManager()
+
     class Meta:
         ordering = ["-updated_at"]
-        indexes = [models.Index(fields=["user", "-updated_at"])]
+        indexes = [
+            models.Index(fields=["user", "-updated_at"]),
+            models.Index(fields=["deleted_at"]),
+        ]
 
     def __str__(self):
         return f"Conv {self.id} — {self.user.username}"
+
+    def soft_delete(self, user=None):
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.save(update_fields=["deleted_at", "deleted_by"])
+
+    def restore(self):
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save(update_fields=["deleted_at", "deleted_by"])
+
+    def hard_delete(self):
+        super().delete()
 
 
 class Message(models.Model):
@@ -202,6 +343,9 @@ class Message(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["conversation", "created_at"]),
+        ]
 
 
 # =============================================================================
@@ -211,7 +355,7 @@ class Message(models.Model):
 class Task(models.Model):
     """
     Task management for business operations.
-    Supports natural language creation, AI suggestions, and team collaboration.
+    Supports natural language creation, AI suggestions, team collaboration, and soft delete.
     """
     STATUS_CHOICES = [
         ("todo", "To Do"),
@@ -258,7 +402,15 @@ class Task(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
-    
+
+    # Soft delete fields
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="deleted_tasks")
+
+    # Managers
+    objects = SoftDeleteManager()
+    all_objects = SoftDeleteAllManager()
+
     class Meta:
         ordering = ["-created_at"]
         indexes = [
@@ -271,10 +423,25 @@ class Task(models.Model):
             models.Index(fields=["due_date", "status"]),
             # Status-specific with priority for dashboard
             models.Index(fields=["status", "priority", "-created_at"]),
+            # Soft delete index
+            models.Index(fields=["deleted_at"]),
         ]
-    
+
     def __str__(self):
         return f"{self.title} ({self.status})"
+
+    def soft_delete(self, user=None):
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.save(update_fields=["deleted_at", "deleted_by"])
+
+    def restore(self):
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save(update_fields=["deleted_at", "deleted_by"])
+
+    def hard_delete(self):
+        super().delete()
 
 
 class TaskTag(models.Model):

@@ -162,7 +162,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_error(f"Error processing message: {str(e)}")
 
     async def send_error(self, message):
-        """Send error message to client."""
+        # Send error to websocket client
         await self.send(json.dumps({
             "type": "error",
             "data": message
@@ -170,7 +170,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_or_create_conversation(self, conversation_id, message):
-        """Get existing or create new conversation."""
+        # Find existing chat or start new one
         from core.models import Conversation
         
         if conversation_id:
@@ -228,7 +228,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def update_conversation_timestamp(self, conversation):
-        """Update conversation timestamp to move it to top of list."""
+        # Bump chat to top of sidebar
         from django.utils import timezone
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=['updated_at'])

@@ -1,8 +1,4 @@
-"""
-Gemini Service — Primary AI model.
-Uses google-generativeai SDK with function calling.
-Free tier: 1M tokens/day on gemini-1.5-flash (very generous).
-"""
+# Gemini - main AI. Free tier gives 1M tokens/day which is plenty.
 import logging
 import concurrent.futures
 from typing import Optional
@@ -10,7 +6,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Lazy import to avoid import errors if key not set
+# Don't import until we actually need it - avoids crashes if API key missing
 _gemini_client = None
 
 
@@ -25,7 +21,7 @@ def _get_client():
 
 
 def _build_gemini_tools(tool_definitions: list) -> list:
-    """Convert our tool definitions to Gemini's FunctionDeclaration format."""
+    # Gemini has its own format for tools - convert here
     import google.generativeai as genai
     from google.generativeai.types import FunctionDeclaration, Tool
 
@@ -42,7 +38,7 @@ def _build_gemini_tools(tool_definitions: list) -> list:
 
 
 def _call_with_timeout(fn, timeout):
-    """Execute function with timeout using ThreadPoolExecutor (cross-platform)."""
+    # Kill the call if it hangs - Gemini can be slow sometimes
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(fn)
         try:
@@ -57,17 +53,7 @@ def call(
     tool_definitions: list,
     timeout: Optional[int] = None,
 ) -> dict:
-    """
-    Call Gemini with messages and tool definitions.
-
-    Returns:
-        {
-            "text": str | None,
-            "tool_calls": [{"name": str, "args": dict}] | None,
-            "model": "gemini",
-            "stop_reason": "tool_use" | "end_turn"
-        }
-    """
+    # Main call to Gemini. Returns text + any tool calls the model wants to make
     cfg = settings.AI_CONFIG["gemini"]
     timeout = timeout or cfg["timeout"]
     genai = _get_client()
@@ -101,7 +87,7 @@ def call(
     except Exception as e:
         raise
 
-    # Parse response
+    # Pull out text + any tool calls from the response
     candidate = response.candidates[0]
     tool_calls = []
     text_parts = []
@@ -129,15 +115,7 @@ def call_stream(
     tool_definitions: list,
     timeout: Optional[int] = None,
 ):
-    """
-    Call Gemini with streaming enabled. Yields tokens as they arrive.
-    
-    Only yields the final response tokens (not tool call iterations).
-    Tool calls are handled internally and their results are fed back,
-    then the final response is streamed.
-    
-    Yields: dict with "token" or "done" keys
-    """
+    # Stream tokens as they come in. Note: tool calls break streaming.
     cfg = settings.AI_CONFIG["gemini"]
     timeout = timeout or cfg["timeout"]
     genai = _get_client()

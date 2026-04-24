@@ -33,6 +33,11 @@ vine==5.1.0
 # Database
 psycopg2-binary==2.9.9
 
+# Backup & Storage
+django-dbbackup==4.2.1
+django-storages==1.14.4
+boto3==1.35.0
+
 # AI Services (Gemini, Groq, OpenRouter)
 google-generativeai==0.7.2
 groq==0.9.0

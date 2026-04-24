@@ -1,3 +1,4 @@
+import os
 from .base import *
 from decouple import config
 
@@ -17,26 +18,29 @@ EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="Business Assistant <noreply@localhost>")
 
-# Disable Redis for local development - use local memory instead
-CELERY_BROKER_URL = "memory://"
-CELERY_RESULT_BACKEND = "memory://"
+# Local development settings - uses Postgres via DATABASE_URL
+# Set DATABASE_URL in .env for local dev: postgres://user:pass@localhost:5432/aeiou_dev
+DATABASES = {
+    "default": dj_database_url.config(
+        default=config("DATABASE_URL"),
+        conn_max_age=600,
+    )
+}
+
+# Use Redis if available, fallback to memory for dev
+CELERY_BROKER_URL = os.environ.get("REDIS_URL", "memory://")
+CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "memory://")
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
         "LOCATION": "unique-snowflake",
     }
 }
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
-}
-
-# SQLite for local dev (no Postgres setup needed)
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
 

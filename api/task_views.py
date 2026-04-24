@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 @throttle_classes([ScopedRateThrottle])
 def list_tasks(request):
     list_tasks.throttle_scope = "task"
-    """List tasks for the authenticated user with filtering and pagination."""
+    # Get tasks with filters + pagination
     user = request.user
     
     # Get filter parameters
@@ -112,7 +112,7 @@ def list_tasks(request):
 @throttle_classes([ScopedRateThrottle])
 def create_task(request):
     create_task.throttle_scope = "task_write"
-    """Create a new task."""
+    # Make a new task
     user = request.user
     data = request.data
     
@@ -194,7 +194,7 @@ def create_task(request):
 @throttle_classes([ScopedRateThrottle])
 def get_task(request, task_id):
     get_task.throttle_scope = "task"
-    """Get detailed information about a specific task."""
+    # Get single task details
     user = request.user
     
     task = get_object_or_404(
@@ -266,7 +266,7 @@ def get_task(request, task_id):
 @throttle_classes([ScopedRateThrottle])
 def update_task(request, task_id):
     update_task.throttle_scope = "task_write"
-    """Update an existing task."""
+    # Edit task fields
     user = request.user
     task = get_object_or_404(Task, id=task_id)
     
@@ -369,7 +369,7 @@ def update_task(request, task_id):
 @throttle_classes([ScopedRateThrottle])
 def delete_task(request, task_id):
     delete_task.throttle_scope = "task_write"
-    """Delete (archive) a task."""
+    # Archive/delete task
     user = request.user
     task = get_object_or_404(Task, id=task_id)
     
@@ -474,7 +474,7 @@ def reopen_task(request, task_id):
 @throttle_classes([ScopedRateThrottle])
 def list_comments(request, task_id):
     list_comments.throttle_scope = "task"
-    """List comments for a task."""
+    # Get task comments
     task = get_object_or_404(Task, id=task_id)
     comments = task.comments.select_related("user").order_by("-created_at")
     
@@ -537,7 +537,7 @@ def create_comment(request, task_id):
 @throttle_classes([ScopedRateThrottle])
 def delete_comment(request, task_id, comment_id):
     delete_comment.throttle_scope = "task_write"
-    """Delete a comment."""
+    # Remove comment
     user = request.user
     comment = get_object_or_404(TaskComment, id=comment_id, task_id=task_id)
     
@@ -554,7 +554,7 @@ def delete_comment(request, task_id, comment_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_activities(request, task_id):
-    """List activities for a task with timestamps."""
+    # Task history log
     task = get_object_or_404(Task, id=task_id)
     
     # Check permissions
@@ -593,7 +593,7 @@ def list_activities(request, task_id):
 @throttle_classes([ScopedRateThrottle])
 def task_dashboard(request):
     task_dashboard.throttle_scope = "task"
-    """Get task dashboard data."""
+    # Dashboard: counts by status + upcoming
     user = request.user
     
     # Base queryset
@@ -677,7 +677,7 @@ def task_dashboard(request):
 @throttle_classes([ScopedRateThrottle])
 def task_stats(request):
     task_stats.throttle_scope = "task"
-    """Get task completion statistics."""
+    # Stats: completion rate + trends
     user = request.user
     
     tasks = Task.objects.filter(

@@ -484,12 +484,87 @@ def login(request):
     # Generate tokens
     refresh = RefreshToken.for_user(user)
 
-    return Response({
-        "access": str(refresh.access_token),
-        "refresh": str(refresh),
+    # Generate tokens
+    access_token = str(refresh.access_token)
+    refresh_token = str(refresh)
+
+    # Build response
+    response = Response({
+        "access": access_token,
         "user": {
             "id": user.id,
             "username": user.username,
             "email": user.email,
         }
     }, status=status.HTTP_200_OK)
+
+    # Set refresh token in httpOnly cookie (7 days)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,  # HTTPS only in production
+        samesite="Lax",
+        max_age=7 * 24 * 60 * 60,  # 7 days
+    )
+
+    return response
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def logout(request):
+    """
+    Logout - clear refresh token cookie.
+    Client should also clear access token from memory.
+    """
+    response = Response({"message": "Logged out successfully."})
+    response.delete_cookie("refresh_token")
+    return response
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def token_refresh(request):
+    """
+    Refresh access token using httpOnly cookie.
+    Returns new access token (15 min) and rotates refresh token.
+    """
+    refresh_token = request.COOKIES.get("refresh_token")
+
+    if not refresh_token:
+        return Response(
+            {"error": "Refresh token not found. Please login again."},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    try:
+        from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenClass
+        refresh = RefreshTokenClass(refresh_token)
+
+        # Rotate refresh token for security
+        new_refresh = RefreshTokenClass.for_user(refresh.user)
+        access_token = str(new_refresh.access_token)
+
+        response = Response({
+            "access": access_token,
+        })
+
+        # Set new refresh token in httpOnly cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=str(new_refresh),
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=7 * 24 * 60 * 60,  # 7 days
+        )
+
+        return response
+
+    except Exception as e:
+        logger.warning(f"Token refresh failed: {e}")
+        return Response(
+            {"error": "Invalid refresh token. Please login again."},
+            status=status.HTTP_401_UNAUTHORIZED
+        )

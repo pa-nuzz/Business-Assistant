@@ -339,7 +339,7 @@ export default function ChatPage() {
     {
       icon: FileText,
       title: "Analyze documents",
-      description: "Upload PDFs and ask questions about them",
+      description: "Contracts, reports, financials — I extract insights",
       iconBg: "bg-blue-50",
       iconColor: "text-blue-600",
       prompt: "I have a document I'd like to analyze. Can you help me understand it?",
@@ -485,12 +485,20 @@ export default function ChatPage() {
                 {getGreeting()}{userName ? `, ${userName}` : ""}
               </motion.h1>
               <motion.p 
-                className="text-slate-500 max-w-md mb-8 text-sm"
+                className="text-slate-500 max-w-md mb-2 text-sm"
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.4 }}
               >
-                What can I help you with today?
+                I'm <span className="font-semibold text-indigo-600">Aiden</span>, your AI Business Partner.
+              </motion.p>
+              <motion.p 
+                className="text-slate-400 max-w-md mb-8 text-xs"
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.25, duration: 0.4 }}
+              >
+                I know your documents, tasks, and business context. Ask me anything.
               </motion.p>
               
               {/* Clean capability cards */}
@@ -532,6 +540,12 @@ export default function ChatPage() {
                       message.role === "user" ? "items-end" : "items-start"
                     }`}
                   >
+                    {/* Sender label */}
+                    <div className="flex items-center gap-1 mb-1">
+                      {message.role === "assistant" && (
+                        <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">Aiden</span>
+                      )}
+                    </div>
                     <div className="relative group max-w-[85%] sm:max-w-[75%]">
                       <div
                         className={`${
@@ -588,33 +602,36 @@ export default function ChatPage() {
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-start items-center gap-3"
+                  className="flex flex-col items-start gap-1"
                 >
-                  <div className="w-6 h-6 flex-shrink-0">
-                    <svg width="24" height="24" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="15" y="50" width="10" height="30" rx="5" fill="#6366F1">
-                        <animate attributeName="height" values="30;20;35;30" dur="3s" repeatCount="indefinite" />
-                        <animate attributeName="y" values="50;60;45;50" dur="3s" repeatCount="indefinite" />
-                      </rect>
-                      <rect x="35" y="35" width="10" height="50" rx="5" fill="#8B5CF6">
-                        <animate attributeName="height" values="50;35;55;50" dur="2.5s" repeatCount="indefinite" />
-                        <animate attributeName="y" values="35;50;30;35" dur="2.5s" repeatCount="indefinite" />
-                      </rect>
-                      <rect x="55" y="25" width="10" height="60" rx="5" fill="#6366F1">
-                        <animate attributeName="height" values="60;40;70;60" dur="2s" repeatCount="indefinite" />
-                        <animate attributeName="y" values="25;45;15;25" dur="2s" repeatCount="indefinite" />
-                      </rect>
-                      <rect x="75" y="45" width="10" height="35" rx="5" fill="#8B5CF6">
-                        <animate attributeName="height" values="35;25;40;35" dur="2.7s" repeatCount="indefinite" />
-                        <animate attributeName="y" values="45;55;40;45" dur="2.7s" repeatCount="indefinite" />
-                      </rect>
-                    </svg>
-                  </div>
-                  <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-2.5 flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">Aiden is typing...</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 flex-shrink-0">
+                      <svg width="24" height="24" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="15" y="50" width="10" height="30" rx="5" fill="#6366F1">
+                          <animate attributeName="height" values="30;20;35;30" dur="3s" repeatCount="indefinite" />
+                          <animate attributeName="y" values="50;60;45;50" dur="3s" repeatCount="indefinite" />
+                        </rect>
+                        <rect x="35" y="35" width="10" height="50" rx="5" fill="#8B5CF6">
+                          <animate attributeName="height" values="50;35;55;50" dur="2.5s" repeatCount="indefinite" />
+                          <animate attributeName="y" values="35;50;30;35" dur="2.5s" repeatCount="indefinite" />
+                        </rect>
+                        <rect x="55" y="25" width="10" height="60" rx="5" fill="#6366F1">
+                          <animate attributeName="height" values="60;40;70;60" dur="2s" repeatCount="indefinite" />
+                          <animate attributeName="y" values="25;45;15;25" dur="2s" repeatCount="indefinite" />
+                        </rect>
+                        <rect x="75" y="45" width="10" height="35" rx="5" fill="#8B5CF6">
+                          <animate attributeName="height" values="35;25;40;35" dur="2.7s" repeatCount="indefinite" />
+                          <animate attributeName="y" values="45;55;40;45" dur="2.7s" repeatCount="indefinite" />
+                        </rect>
+                      </svg>
+                    </div>
+                    <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-2.5 flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                       <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
                     </div>
                   </div>
                 </motion.div>
