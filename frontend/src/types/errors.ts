@@ -6,6 +6,11 @@ export interface ApiErrorResponse {
   message?: string;
   detail?: string;
   code?: string;
+  // Field-specific validation errors (Django returns these as arrays)
+  username?: string[];
+  email?: string[];
+  password?: string[];
+  [key: string]: string | string[] | undefined;
 }
 
 // Axios error with our API response structure

@@ -11,6 +11,7 @@ import { Eye, EyeOff, Sparkles } from "lucide-react";
 import { auth } from "@/lib/api";
 import { toast } from "sonner";
 import { useLoading } from "@/components/loading-context";
+import { AxiosApiError, getErrorMessage } from "@/types/errors";
 
 interface PupilProps {
   size?: number;
@@ -316,22 +317,19 @@ export default function AnimatedLoginPage() {
       setTimeout(() => {
         router.push('/chat');
       }, 100);
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.data?.detail || '';
-      const status = err.response?.status;
-      
+    } catch (err: unknown) {
+      const apiError = err as AxiosApiError;
+      const msg = apiError.response?.data?.error || apiError.response?.data?.detail || '';
+      const status = apiError.response?.status;
+
       if (status === 403 && msg.includes('verify')) {
         // Email not verified - redirect to verification page
         toast.error('Please verify your email first');
         router.push(`/verify-email?username=${encodeURIComponent(username.trim())}`);
       } else if (msg.includes('No active account') || msg.includes('credentials') || msg.includes('Invalid')) {
         setError('Invalid username or password. Please try again.');
-      } else if (msg.includes('locked') || msg.includes('blocked')) {
-        setError('Account temporarily locked. Please try again later.');
-      } else if (msg) {
-        setError(msg);
       } else {
-        setError('Login failed. Please check your credentials and try again.');
+        setError(msg || 'Login failed. Please try again.');
       }
     } finally {
       setIsLoading(false);

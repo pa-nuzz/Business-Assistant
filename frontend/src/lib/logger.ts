@@ -40,14 +40,12 @@ function reportToSentry(message: string, error?: unknown) {
 export const logger: Logger = {
   debug: (msg: string, data?: unknown) => {
     if (isDevelopment) {
-      // eslint-disable-next-line no-console
       console.debug(`[AEIOU:DEBUG] ${msg}`, data);
     }
   },
 
   info: (msg: string, data?: unknown) => {
     if (isDevelopment) {
-      // eslint-disable-next-line no-console
       console.info(`[AEIOU:INFO] ${msg}`, data);
     }
     // In production, could send to analytics/monitoring
@@ -55,7 +53,6 @@ export const logger: Logger = {
 
   warn: (msg: string, data?: unknown) => {
     if (isDevelopment) {
-      // eslint-disable-next-line no-console
       console.warn(`[AEIOU:WARN] ${msg}`, data);
     }
     // In production, could send to monitoring
@@ -63,7 +60,6 @@ export const logger: Logger = {
 
   error: (msg: string, error?: unknown) => {
     if (isDevelopment) {
-      // eslint-disable-next-line no-console
       console.error(`[AEIOU:ERROR] ${msg}`, error);
     }
     

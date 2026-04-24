@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Eye, EyeOff, Sparkles } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { auth } from "@/lib/api";
 import { toast } from "sonner";
+import { AxiosApiError } from "@/types/errors";
 
 interface PupilProps {
   size?: number;
@@ -319,26 +320,21 @@ export default function AnimatedSignupPage() {
       // Registration successful - redirect to email verification
       toast.success('🎉 Registration successful! Please verify your email.');
       router.push(`/verify-email?username=${encodeURIComponent(response.username)}`);
-    } catch (err: any) {
-      const msg = err.response?.data?.detail || 
-                  err.response?.data?.error || 
-                  err.response?.data?.username?.[0] || 
-                  err.response?.data?.email?.[0] || 
-                  err.message || 
+    } catch (err: unknown) {
+      const apiError = err as AxiosApiError;
+      const msg = apiError.response?.data?.detail || 
+                  apiError.response?.data?.error || 
+                  apiError.response?.data?.username?.[0] || 
+                  apiError.response?.data?.email?.[0] || 
+                  apiError.message || 
                   '';
-      
+
       if (msg.includes('username') || msg.includes('already taken')) {
         setError('Username already taken. Please choose another one.');
       } else if (msg.includes('email') && msg.includes('already')) {
         setError('Email already registered. Please use another email or try logging in.');
-      } else if (msg.includes('weak') || msg.includes('password')) {
-        setError('Password is too weak. Please use at least 8 characters.');
-      } else if (msg.includes('required')) {
-        setError('Please fill in all required fields.');
-      } else if (msg) {
-        setError(msg);
       } else {
-        setError('Registration failed. Please try again.');
+        setError(msg || 'Registration failed. Please try again.');
       }
     } finally {
       setIsLoading(false);

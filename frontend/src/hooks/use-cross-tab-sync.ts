@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef } from 'react';
 
 interface SyncMessage {
   type: 'conversation_created' | 'conversation_deleted' | 'conversation_updated' | 'chat_state_cleared' | 'auth_change' | 'force_refresh';
-  payload?: any;
+  payload?: Record<string, unknown> | null;
   timestamp: number;
   sourceTab: string;
 }
@@ -72,7 +72,7 @@ export function useCrossTabSync(
   }, [enabled]);
 
   // Send message to other tabs
-  const broadcast = useCallback((type: SyncMessage['type'], payload?: any) => {
+  const broadcast = useCallback((type: SyncMessage['type'], payload?: Record<string, unknown> | null) => {
     if (typeof window === 'undefined') return;
 
     const message: SyncMessage = {

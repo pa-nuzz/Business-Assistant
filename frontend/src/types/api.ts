@@ -136,7 +136,7 @@ export interface NotificationListResponse {
 }
 
 // User Profile
-export interface UserInfoResponse extends User {}
+export type UserInfoResponse = User;
 
 export interface UsernameUpdateRequest {
   username: string;
@@ -148,7 +148,7 @@ export interface PasswordUpdateRequest {
 }
 
 // Business Profile
-export interface BusinessProfileResponse extends BusinessProfile {}
+export type BusinessProfileResponse = BusinessProfile;
 
 export interface BusinessProfileUpdateRequest {
   business_name?: string;
