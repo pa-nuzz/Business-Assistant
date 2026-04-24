@@ -2,32 +2,16 @@
 Authentication views with email verification and password reset.
 """
 import logging
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
-from django.db import IntegrityError
-from django.utils import timezone
-from django.core.cache import cache
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.throttling import ScopedRateThrottle
-from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 
-from core.models import EmailVerification, PasswordResetCode
-from services.email_service import (
-    generate_verification_code,
-    send_verification_email,
-    send_password_reset_email,
-    send_welcome_email,
-)
+from core.services.auth_service import AuthService
 from utils.audit import log_audit_action
 
 logger = logging.getLogger(__name__)
-
-# Account lockout settings
-MAX_FAILED_ATTEMPTS = 5
-LOCKOUT_DURATION = 900  # 15 minutes in seconds
 
 
 @api_view(["POST"])
@@ -43,67 +27,14 @@ def register(request):
     password = request.data.get("password", "")
     email = request.data.get("email", "").strip()
 
-    if not username or not password or not email:
-        return Response(
-            {"error": "Username, email, and password are required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    if len(password) < 8:
-        return Response(
-            {"error": "Password must be at least 8 characters."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Check if username exists
-    if User.objects.filter(username=username).exists():
-        return Response(
-            {"error": "This username is already taken. Please choose another one."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Check if email exists
-    if User.objects.filter(email=email).exists():
-        return Response(
-            {"error": "An account with this email already exists. Please log in or use a different email."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
     try:
-        # Create user (inactive until email verified)
-        user = User.objects.create_user(
-            username=username,
-            password=password,
-            email=email,
-            is_active=False,  # Will activate after email verification
-        )
-
-        # Generate verification code
-        code = generate_verification_code()
-        EmailVerification.objects.create(user=user, code=code)
-
-        # Send verification email
-        email_sent = send_verification_email(email, username, code)
-
-        if not email_sent:
-            # If email fails, still return success but warn
-            logger.warning(f"Failed to send verification email to {email}")
-
+        result = AuthService.register(username, password, email)
         return Response({
             "message": "Registration successful! Please check your email for a verification code.",
-            "user_id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "verification_required": True,
-            "email_sent": email_sent,
+            **result
         }, status=status.HTTP_201_CREATED)
-
-    except IntegrityError as e:
-        logger.exception("User registration failed - IntegrityError")
-        return Response(
-            {"error": "This username or email is already registered."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         logger.exception("User registration failed")
         return Response(
@@ -124,81 +55,14 @@ def verify_email(request):
     username = request.data.get("username", "").strip()
     code = request.data.get("code", "").strip()
 
-    if not username or not code:
-        return Response(
-            {"error": "Username and verification code are required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
     try:
-        user = User.objects.get(username=username)
-        verification = EmailVerification.objects.get(user=user)
-
-        # Check if already verified
-        if verification.is_verified:
-            return Response(
-                {"error": "Email is already verified. Please log in."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Check expiry
-        if verification.is_expired():
-            return Response(
-                {"error": "Verification code has expired. Please request a new code."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Check attempts
-        if verification.attempts >= 5:
-            return Response(
-                {"error": "Too many attempts. Please request a new code."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Verify code
-        if verification.code != code:
-            verification.attempts += 1
-            verification.save()
-            remaining = 5 - verification.attempts
-            return Response(
-                {"error": f"Invalid code. {remaining} attempts remaining."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Success - activate user
-        verification.is_verified = True
-        verification.save()
-        user.is_active = True
-        user.save()
-
-        # Send welcome email
-        send_welcome_email(user.email, user.username)
-
-        # Generate tokens for auto-login
-        refresh = RefreshToken.for_user(user)
-
+        result = AuthService.verify_email(username, code)
         return Response({
             "message": "Email verified successfully! Welcome to AEIOU AI.",
-            "verified": True,
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-            }
+            **result
         }, status=status.HTTP_200_OK)
-
-    except User.DoesNotExist:
-        return Response(
-            {"error": "User not found."},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except EmailVerification.DoesNotExist:
-        return Response(
-            {"error": "No verification pending for this user."},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         logger.exception("Email verification failed")
         return Response(
@@ -218,40 +82,18 @@ def resend_verification(request):
     """
     username = request.data.get("username", "").strip()
 
-    if not username:
-        return Response(
-            {"error": "Username is required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
     try:
-        user = User.objects.get(username=username)
-        verification, created = EmailVerification.objects.get_or_create(user=user)
-
-        # Generate new code
-        code = generate_verification_code()
-        verification.code = code
-        verification.attempts = 0
-        verification.created_at = timezone.now()
-        verification.save()
-
-        # Send email
-        email_sent = send_verification_email(user.email, user.username, code)
-
+        result = AuthService.resend_verification(username)
         return Response({
             "message": "Verification code resent. Please check your email.",
-            "email_sent": email_sent,
+            **result
         }, status=status.HTTP_200_OK)
-
-    except User.DoesNotExist:
-        # Don't reveal if user exists
-        return Response({
-            "message": "If an account exists, a verification code has been sent.",
-        }, status=status.HTTP_200_OK)
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         logger.exception("Resend verification failed")
         return Response(
-            {"error": "Failed to resend code."},
+            {"error": "Failed to resend verification code. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -267,41 +109,11 @@ def forgot_password(request):
     """
     email = request.data.get("email", "").strip()
 
-    if not email:
-        return Response(
-            {"error": "Email is required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
     try:
-        user = User.objects.get(email=email)
-
-        # Clean up old reset codes for this user before creating new one
-        PasswordResetCode.objects.filter(
-            user=user,
-            created_at__lt=timezone.now() - timezone.timedelta(minutes=15)
-        ).delete()
-        PasswordResetCode.objects.filter(user=user, is_used=True).delete()
-
-        # Generate reset code
-        code = generate_verification_code()
-        PasswordResetCode.objects.create(user=user, code=code)
-
-        # Send email
-        email_sent = send_password_reset_email(email, user.username, code)
-
-        if not email_sent:
-            logger.warning(f"Failed to send password reset email to {email}")
-
+        result = AuthService.request_password_reset(email)
         return Response({
             "message": "If an account exists with this email, a password reset code has been sent.",
-            "email_sent": email_sent,
-        }, status=status.HTTP_200_OK)
-
-    except User.DoesNotExist:
-        # Don't reveal if email exists
-        return Response({
-            "message": "If an account exists with this email, a password reset code has been sent.",
+            **result
         }, status=status.HTTP_200_OK)
     except Exception as e:
         logger.exception("Forgot password failed")
@@ -323,42 +135,14 @@ def verify_reset_code(request):
     email = request.data.get("email", "").strip()
     code = request.data.get("code", "").strip()
 
-    if not email or not code:
-        return Response(
-            {"error": "Email and code are required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
     try:
-        user = User.objects.get(email=email)
-        reset_code = PasswordResetCode.objects.filter(
-            user=user,
-            code=code,
-            is_used=False
-        ).first()
-
-        if not reset_code:
-            return Response(
-                {"error": "Invalid code."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if reset_code.is_expired():
-            return Response(
-                {"error": "Code has expired. Please request a new one."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+        AuthService.verify_reset_code(email, code)
         return Response({
             "valid": True,
             "message": "Code verified. You can now reset your password.",
         }, status=status.HTTP_200_OK)
-
-    except User.DoesNotExist:
-        return Response(
-            {"error": "Invalid code."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["POST"])
@@ -374,66 +158,16 @@ def reset_password(request):
     code = request.data.get("code", "").strip()
     new_password = request.data.get("new_password", "")
 
-    logger.info(f"Password reset attempt for email: {email}")
-
-    if not email or not code or not new_password:
-        return Response(
-            {"error": "Email, code, and new password are required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    if len(new_password) < 8:
-        return Response(
-            {"error": "Password must be at least 8 characters."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
     try:
-        user = User.objects.get(email=email)
-        logger.info(f"Found user: {user.username}")
-        
-        # Get the most recent unused code for this user
-        reset_code = PasswordResetCode.objects.filter(
-            user=user,
-            code=code,
-            is_used=False
-        ).order_by('-created_at').first()
-
-        if not reset_code:
-            logger.warning(f"No valid reset code found for user: {user.username}")
-            return Response(
-                {"error": "Invalid or expired code. Please request a new one."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if reset_code.is_expired():
-            logger.warning(f"Reset code expired for user: {user.username}")
-            return Response(
-                {"error": "Code has expired. Please request a new one."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Update password using Django's proper method
-        user.set_password(new_password)
-        user.save()
-        logger.info(f"Password updated successfully for user: {user.username}")
-
-        # Mark ALL codes for this user as used (not just the one used)
-        PasswordResetCode.objects.filter(user=user, is_used=False).update(is_used=True)
-
+        result = AuthService.reset_password(email, code, new_password)
         return Response({
             "message": "Password reset successfully! Please log in with your new password.",
-            "success": True
+            **result
         }, status=status.HTTP_200_OK)
-
-    except User.DoesNotExist:
-        logger.warning(f"Password reset attempted for non-existent email: {email}")
-        return Response(
-            {"error": "Invalid request."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        logger.exception(f"Password reset failed for email: {email}")
+        logger.exception("Password reset failed")
         return Response(
             {"error": "Failed to reset password. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -452,94 +186,37 @@ def login(request):
     username = request.data.get("username", "").strip()
     password = request.data.get("password", "")
 
-    if not username or not password:
-        return Response(
-            {"error": "Username and password are required."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # SECURITY: Check for account lockout
-    lockout_key = f"lockout_{username}"
-    if cache.get(lockout_key):
-        logger.warning(f"Login attempt on locked account: {username}")
-        return Response(
-            {"error": "Account temporarily locked due to failed attempts. Try again in 15 minutes."},
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    # Try to authenticate
-    user = authenticate(username=username, password=password)
-
-    if user is None:
-        # Track failed login attempts
-        failed_key = f"failed_login_{username}"
-        failed_attempts = cache.get(failed_key, 0) + 1
-        cache.set(failed_key, failed_attempts, timeout=LOCKOUT_DURATION)
+    try:
+        result = AuthService.login(username, password)
         
-        if failed_attempts >= MAX_FAILED_ATTEMPTS:
-            cache.set(lockout_key, True, timeout=LOCKOUT_DURATION)
-            logger.warning(f"Account locked due to failed attempts: {username}")
-        else:
-            logger.info(f"Failed login attempt {failed_attempts} for user: {username}")
+        # Build response
+        response = Response({
+            "access": result["access"],
+            "user": result["user"]
+        }, status=status.HTTP_200_OK)
 
-        # Check if user exists but is not active
-        try:
-            user_obj = User.objects.get(username=username)
-            if not user_obj.is_active:
-                # Check if email verification is pending
-                if hasattr(user_obj, 'email_verification') and not user_obj.email_verification.is_verified:
-                    return Response(
-                        {"error": "Please verify your email before logging in. Check your inbox for the verification code."},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-        except User.DoesNotExist:
-            pass
-
-        return Response(
-            {"error": "Invalid username or password."},
-            status=status.HTTP_401_UNAUTHORIZED
+        # Set refresh token in httpOnly cookie (7 days)
+        response.set_cookie(
+            key="refresh_token",
+            value=result["refresh"],
+            httponly=True,
+            secure=True,  # HTTPS only in production
+            samesite="Lax",
+            max_age=7 * 24 * 60 * 60,  # 7 days
         )
 
-    # Clear failed attempts on successful login
-    cache.delete(f"failed_login_{username}")
-    cache.delete(f"lockout_{username}")
+        # Log successful login
+        from django.contrib.auth.models import User
+        user = User.objects.get(username=username)
+        log_audit_action(user, 'login', 'user', user.id, {'ip': request.META.get('REMOTE_ADDR')})
 
-    # Check if email is verified
-    if hasattr(user, 'email_verification') and not user.email_verification.is_verified:
-        return Response(
-            {"error": "Please verify your email before logging in. Check your inbox for the verification code."},
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    # Generate tokens
-    refresh = RefreshToken.for_user(user)
-    access_token = str(refresh.access_token)
-    refresh_token = str(refresh)
-
-    # Build response
-    response = Response({
-        "access": access_token,
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-        }
-    }, status=status.HTTP_200_OK)
-
-    # Set refresh token in httpOnly cookie (7 days)
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,  # HTTPS only in production
-        samesite="Lax",
-        max_age=7 * 24 * 60 * 60,  # 7 days
-    )
-
-    # Log successful login
-    log_audit_action(user, 'login', 'user', user.id, {'ip': request.META.get('REMOTE_ADDR')})
-
-    return response
+        return response
+    except ValueError as e:
+        if "locked" in str(e).lower():
+            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
+        if "verify" in str(e).lower():
+            return Response({"error": str(e)}, status=status.HTTP_403_FORBIDDEN)
+        return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 @api_view(["POST"])
@@ -553,12 +230,11 @@ def logout(request):
         # Get the refresh token from cookie
         refresh_token = request.COOKIES.get('refresh_token')
         if refresh_token:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
+            AuthService.logout(refresh_token)
         
         # Log the logout
         log_audit_action(request.user, 'logout', 'user', request.user.id, {'ip': request.META.get('REMOTE_ADDR')})
-    except TokenError:
+    except ValueError:
         # Token was already invalid/expired
         pass
     

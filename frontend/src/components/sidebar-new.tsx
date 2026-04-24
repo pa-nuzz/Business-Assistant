@@ -104,7 +104,7 @@ export default function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  
+
   // Start with default values to avoid hydration mismatch
   // Actual values loaded from localStorage in useEffect after mount
   const [isCollapsed, setIsCollapsed] = useState(true); // Default: collapsed
@@ -460,7 +460,7 @@ export default function Sidebar() {
       </motion.button>
 
       {/* Desktop Sidebar - Dynamic width based on collapsed state */}
-      <motion.aside 
+      <motion.aside
         initial={false}
         animate={{ width: isCollapsed ? 72 : 280 }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
@@ -468,7 +468,7 @@ export default function Sidebar() {
       >
         <SidebarContent />
       </motion.aside>
-      
+
       {/* Floating expand button when collapsed (desktop only) */}
       {!isMobileOpen && isCollapsed && (
         <motion.button

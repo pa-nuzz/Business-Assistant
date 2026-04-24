@@ -62,17 +62,19 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
-    "utils.middleware.SecurityHeadersMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "utils.middleware.InputValidationMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "utils.middleware.RateLimitLoggingMiddleware",
+    "utils.middleware.IPRateLimitMiddleware",
+    "utils.middleware.RequestIDMiddleware",
+    "utils.middleware.DeviceFingerprintMiddleware",
+    "utils.middleware.SlowQueryLoggingMiddleware",
+    "utils.middleware.SecurityHeadersMiddleware",
+    "utils.middleware_compression.CompressionMiddleware",
+    "utils.middleware_cache.CacheHeadersMiddleware",
 ]
 
 # Security Headers
@@ -111,9 +113,15 @@ if "sqlite" in DATABASES["default"].get("ENGINE", "") and not DEBUG:
 
 # Connection pooling for PostgreSQL
 if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
+    # Check if PgBouncer is configured
+    pgbouncer_host = config("PGBOUNCER_HOST", default="")
+    if pgbouncer_host:
+        DATABASES["default"]["HOST"] = pgbouncer_host
+        DATABASES["default"]["PORT"] = config("PGBOUNCER_PORT", default="6432")
+    
     DATABASES["default"]["OPTIONS"] = {
-        "MAX_CONNS": 20,
-        "MIN_CONNS": 5,
+        "MAX_CONNS": 200,  # Increased for 10k concurrent users
+        "MIN_CONNS": 10,   # Increased baseline connections
     }
 
 # ─── Static Files ─────────────────────────────────────────────────────────────
@@ -134,17 +142,19 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "user": "60/min",
+        "anon": "100/day",
+        "user": "1000/day",
+        "burst": "100/min",
+        "standard": "60/min",
+        "strict": "10/min",
+        "upload": "5/min",
+        "auth": "20/min",
         "chat": "20/min",
-        "upload": "10/min",
-        "auth_register": "5/hour",
-        "auth_verify": "10/min",
-        "auth_password": "5/hour",
-        "auth_login": "10/min",
         "task": "60/min",
         "task_write": "30/min",
         "conversation": "100/min",
@@ -320,6 +330,13 @@ LOGGING = {
             "backupCount": 5,
             "formatter": "verbose",
         },
+        "slow_queries": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOGS_DIR / "slow_queries.log",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
     },
     "root": {
         "handlers": ["console"],
@@ -334,6 +351,11 @@ LOGGING = {
         "django.request": {
             "handlers": ["console"],
             "level": "WARNING",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "WARNING",  # Log slow queries as warnings
             "propagate": False,
         },
         "api": {
@@ -364,6 +386,11 @@ LOGGING = {
         "audit": {
             "handlers": ["file"],
             "level": "INFO",
+            "propagate": False,
+        },
+        "slow_queries": {
+            "handlers": ["slow_queries"],
+            "level": "WARNING",
             "propagate": False,
         },
     },

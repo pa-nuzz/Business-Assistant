@@ -1,22 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { Toaster } from 'sonner';
 import { ChatProvider } from '@/components/chat-context';
 import { LoadingProvider } from '@/components/loading-context';
 import AuthGuard from '@/components/auth-guard';
 import { usePathname } from 'next/navigation';
-
-// Dynamic imports for code splitting
-const Sidebar = dynamic(() => import('@/components/sidebar-new'), {
-  ssr: false,
-  loading: () => <div className="w-[72px] h-screen bg-slate-50 border-r border-slate-200 animate-pulse" />
-});
-
-const CommandPalette = dynamic(() => import('@/components/enhanced-command-palette').then(mod => mod.CommandPalette), {
-  ssr: false
-});
+import Sidebar from '@/components/sidebar-new';
+import { CommandPalette } from '@/components/enhanced-command-palette';
 
 const publicPaths = ['/login', '/register', '/forgot-password', '/verify-email', '/reset-password'];
 
@@ -74,10 +65,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [hasError, setHasError] = useState(false);
   const pathname = usePathname();
-  
-  // Handle hydration safely - pathname may be null during initial render
-  const isPublicPage = pathname ? publicPaths.some((path) => pathname.startsWith(path)) : false;
 
+  // ALL hooks must be called before any conditional returns
   useEffect(() => {
     // Mark as mounted immediately on client
     try {
@@ -93,19 +82,22 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     const unblockTimer = setTimeout(() => {
       setMounted(true);
     }, 2000);
-    
+
     return () => clearTimeout(unblockTimer);
   }, []);
 
-  // Error boundary fallback
+  // Compute after all hooks are called
+  const isPublicPage = pathname ? publicPaths.some((path) => pathname.startsWith(path)) : false;
+
+  // Error boundary fallback - after all hooks
   if (hasError) {
     return (
       <div className="flex h-screen items-center justify-center bg-white">
         <div className="text-center">
           <h2 className="text-lg font-semibold text-slate-900 mb-2">Something went wrong</h2>
           <p className="text-slate-500 mb-4">Please refresh the page to continue</p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
             Refresh Page
@@ -115,8 +107,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Show loading skeleton only briefly, then force render
-  // If there's a JS error, we still want to show something
+  // Show loading skeleton - after all hooks
   if (!mounted) {
     return (
       <div className="flex h-screen bg-white overflow-hidden">
@@ -136,15 +127,15 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       <ChatProvider>
         <AuthGuard>
           <div className="flex h-screen overflow-hidden">
-            {!isPublicPage && <Sidebar />}
+            <Sidebar />
             <main className="flex-1 min-w-0 overflow-auto relative">
               {children}
             </main>
           </div>
           <CommandPalette />
-          <Toaster 
-            position="top-right" 
-            richColors 
+          <Toaster
+            position="top-right"
+            richColors
             closeButton
             toastOptions={{
               style: {

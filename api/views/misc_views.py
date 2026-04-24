@@ -13,8 +13,22 @@ from core.models import Task, TaskTag
 def tags_list_create(request):
     """List or create tags."""
     if request.method == "GET":
+        from django.core.paginator import Paginator
+        
+        page = int(request.GET.get("page", 1))
+        page_size = min(int(request.GET.get("page_size", 50)), 100)
+        
         tags = TaskTag.objects.filter(user=request.user).values("name", "color").distinct()
-        return Response({"tags": list(tags)})
+        
+        paginator = Paginator(tags, page_size)
+        page_obj = paginator.get_page(page)
+        
+        return Response({
+            "results": list(page_obj.object_list),
+            "count": paginator.count,
+            "page": page,
+            "total_pages": paginator.num_pages,
+        })
 
     # POST - create new tag
     name = request.data.get("name", "").strip().lower()
@@ -34,15 +48,25 @@ def tags_list_create(request):
 def tasks_by_tag(request, tag_name):
     """Filter tasks by tag."""
     from django.db.models import Q
+    from django.core.paginator import Paginator
+
+    page = int(request.GET.get("page", 1))
+    page_size = min(int(request.GET.get("page_size", 20)), 100)
 
     user_tasks = Task.objects.filter(
         Q(created_by=request.user) | Q(assignee=request.user) | Q(user=request.user)
     )
     tagged_tasks = user_tasks.filter(tags__name=tag_name.lower())
 
+    paginator = Paginator(tagged_tasks, page_size)
+    page_obj = paginator.get_page(page)
+
     return Response({
         "tag": tag_name,
-        "tasks": [{"id": str(t.id), "title": t.title, "status": t.status} for t in tagged_tasks],
+        "results": [{"id": str(t.id), "title": t.title, "status": t.status} for t in page_obj.object_list],
+        "count": paginator.count,
+        "page": page,
+        "total_pages": paginator.num_pages,
     })
 
 

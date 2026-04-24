@@ -3,6 +3,8 @@ Core models. Keep it flat and simple — no deep nesting.
 Every model maps to a clear business concept.
 """
 import uuid
+import secrets
+import hashlib
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -12,6 +14,14 @@ class SoftDeleteManager(models.Manager):
     """Manager that excludes soft-deleted records by default."""
     def get_queryset(self):
         return super().get_queryset().filter(deleted_at__isnull=True)
+    
+    def active(self):
+        """Explicitly filter for active records (same as default)."""
+        return self.filter(deleted_at__isnull=True)
+    
+    def deleted(self):
+        """Filter for soft-deleted records only."""
+        return self.filter(deleted_at__isnull=False)
 
 
 class SoftDeleteAllManager(models.Manager):
@@ -23,14 +33,29 @@ class SoftDeleteAllManager(models.Manager):
 class EmailVerification(models.Model):
     """Email verification codes for user registration."""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="email_verification")
-    code = models.CharField(max_length=6)
+    code_hash = models.CharField(max_length=64)  # SHA-256 hash
+    salt = models.CharField(max_length=32)  # Per-code salt
     created_at = models.DateTimeField(auto_now_add=True)
     is_verified = models.BooleanField(default=False)
     attempts = models.IntegerField(default=0)
     MAX_ATTEMPTS = 5
 
     class Meta:
-        indexes = [models.Index(fields=["code", "created_at"])]
+        indexes = [models.Index(fields=["created_at"])]
+
+    def set_code(self, code: str):
+        """Hash and store the verification code with a unique salt."""
+        self.salt = secrets.token_hex(16)
+        self.code_hash = hashlib.sha256(
+            f"{self.salt}{code}".encode()
+        ).hexdigest()
+
+    def verify_code(self, code: str) -> bool:
+        """Verify the code against the stored hash using constant-time comparison."""
+        expected = hashlib.sha256(
+            f"{self.salt}{code}".encode()
+        ).hexdigest()
+        return secrets.compare_digest(self.code_hash, expected)
 
     def is_expired(self):
         """Code expires after 15 minutes."""
@@ -52,15 +77,30 @@ class EmailVerification(models.Model):
 class PasswordResetCode(models.Model):
     """6-digit password reset codes."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="password_reset_codes")
-    code = models.CharField(max_length=6)
+    code_hash = models.CharField(max_length=64)  # SHA-256 hash
+    salt = models.CharField(max_length=32)  # Per-code salt
     created_at = models.DateTimeField(auto_now_add=True)
     is_used = models.BooleanField(default=False)
     attempts = models.IntegerField(default=0)
     
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["code", "created_at"])]
+        indexes = [models.Index(fields=["created_at"])]
     
+    def set_code(self, code: str):
+        """Hash and store the reset code with a unique salt."""
+        self.salt = secrets.token_hex(16)
+        self.code_hash = hashlib.sha256(
+            f"{self.salt}{code}".encode()
+        ).hexdigest()
+
+    def verify_code(self, code: str) -> bool:
+        """Verify the code against the stored hash using constant-time comparison."""
+        expected = hashlib.sha256(
+            f"{self.salt}{code}".encode()
+        ).hexdigest()
+        return secrets.compare_digest(self.code_hash, expected)
+
     def is_expired(self):
         """Code expires after 15 minutes."""
         return (timezone.now() - self.created_at).total_seconds() > 900

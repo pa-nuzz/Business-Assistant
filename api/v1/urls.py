@@ -11,6 +11,9 @@ from api.task_views import (
     complete_task, reopen_task, list_comments, create_comment, delete_comment,
     list_activities, task_dashboard, task_stats
 )
+from api.views.async_views import (
+    async_process_document, async_bulk_task_update, async_job_status
+)
 
 app_name = "api_v1"
 
@@ -96,4 +99,9 @@ urlpatterns = [
     # Notifications
     path("notifications/", views.get_notifications, name="notifications-list"),
     path("notifications/<int:notification_id>/read/", views.mark_notification_read, name="notification-mark-read"),
+
+    # Async Operations
+    path("async/process-document/", async_process_document, name="async-process-document"),
+    path("async/bulk-task-update/", async_bulk_task_update, name="async-bulk-task-update"),
+    path("async/jobs/<uuid:job_id>/status/", async_job_status, name="async-job-status"),
 ]
