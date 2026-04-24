@@ -1,9 +1,95 @@
 """
 Input sanitization utilities.
 Uses bleach to strip HTML/JS from user inputs while preserving safe content.
+Includes file upload validation with MIME type checking.
 """
+import re
 import bleach
+from pathlib import Path
 from typing import Optional
+from django.core.exceptions import ValidationError
+
+# Optional python-magic import (requires libmagic system library)
+try:
+    import magic
+    HAS_MAGIC = True
+except (ImportError, OSError):
+    HAS_MAGIC = False
+    magic = None
+
+# ─── File Upload Security (Phase 3.3) ─────────────────────────────────────────
+ALLOWED_UPLOAD_EXTENSIONS = ['.pdf', '.docx', '.txt', '.md']
+ALLOWED_MIME_TYPES = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'text/markdown'
+]
+MAX_UPLOAD_SIZE_MB = 25
+MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+
+def validate_file_upload(file) -> None:
+    """
+    Validate file upload - checks extension, MIME type, and size.
+    Raises ValidationError if file is not allowed.
+    
+    Args:
+        file: Django UploadedFile object
+        
+    Raises:
+        ValidationError: If file extension, MIME type, or size is invalid
+    """
+    # Check file extension
+    ext = Path(file.name).suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise ValidationError(f"File type '{ext}' is not allowed. Allowed types: {', '.join(ALLOWED_UPLOAD_EXTENSIONS)}")
+    
+    # Check file size
+    if file.size > MAX_UPLOAD_SIZE_BYTES:
+        raise ValidationError(f"File exceeds the {MAX_UPLOAD_SIZE_MB}MB limit.")
+
+    # Check MIME type using python-magic (if available)
+    if HAS_MAGIC:
+        mime = magic.from_buffer(file.read(2048), mime=True)
+        file.seek(0)  # Reset file pointer
+
+        if mime not in ALLOWED_MIME_TYPES:
+            raise ValidationError(f"File content type '{mime}' does not match allowed types.")
+    else:
+        # Fallback: validate by content type header only
+        if file.content_type not in ALLOWED_MIME_TYPES:
+            raise ValidationError(f"File type '{file.content_type}' is not allowed.")
+
+
+def sanitize_filename_strict(name: Optional[str]) -> str:
+    """
+    Strict filename sanitization - removes all special characters.
+    Used for uploaded files before saving.
+    
+    Args:
+        name: Original filename
+        
+    Returns:
+        Safe filename with only alphanumeric, underscore, hyphen, and dot
+    """
+    if not name:
+        return "unnamed"
+    
+    # Remove path traversal attempts
+    name = Path(name).name
+    
+    # Remove all special characters except alphanumeric, underscore, hyphen, dot
+    name = re.sub(r'[^\w\-.]', '_', name)
+    
+    # Remove multiple consecutive dots (prevent .. patterns)
+    name = re.sub(r'\.{2,}', '_', name)
+    
+    # Limit length
+    if len(name) > 100:
+        name = name[:100]
+    
+    return name.strip() or "unnamed"
 
 # Define allowed tags and attributes for rich text (if needed)
 ALLOWED_TAGS = [

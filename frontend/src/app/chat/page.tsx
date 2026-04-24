@@ -88,25 +88,9 @@ export default function ChatPage() {
         const data = await user.getInfo();
         if (data.username) {
           setUserName(data.username);
-        } else {
-          // Fallback to localStorage
-          const token = localStorage.getItem('access_token');
-          if (token) {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            setUserName(payload.username || "");
-          }
         }
       } catch {
-        // Fallback to localStorage
-        const token = localStorage.getItem('access_token');
-        if (token) {
-          try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            setUserName(payload.username || "");
-          } catch {
-            setUserName("");
-          }
-        }
+        // Silently fail - username not critical for chat
       }
     };
     fetchUserInfo();

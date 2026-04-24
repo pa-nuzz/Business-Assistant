@@ -2,6 +2,9 @@ import axios from 'axios';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
 
+// SECURITY: Access token stored in memory only (never localStorage)
+let accessToken: string | null = null;
+
 // Event emitter for auth failures (components should listen and use Next.js router)
 const authErrorListeners: Set<() => void> = new Set();
 
@@ -18,21 +21,32 @@ const triggerAuthRedirect = () => {
   }
 };
 
+// Token management functions
+export const setAccessToken = (token: string | null) => {
+  accessToken = token;
+};
+
+export const getAccessToken = () => accessToken;
+
+export const clearAuth = () => {
+  accessToken = null;
+};
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 30000, // 30 second timeout for all requests
+  // SECURITY: Include credentials for httpOnly cookie transmission
+  withCredentials: true,
 });
 
 // Add auth token to requests
 api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  // SECURITY: Access token from memory only (not localStorage)
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
   }
   return config;
 });
@@ -42,47 +56,44 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    
+
     // Handle network errors
     if (!error.response) {
-      // Network error - backend not reachable
       if (error.code === 'ECONNABORTED' || error.message?.includes('Network Error')) {
-        // Log to monitoring service instead of console
-        // console.error is prohibited in production code
+        // Network errors handled silently
       }
       return Promise.reject(new Error('Network error: Backend server not reachable. Please ensure the server is running.'));
     }
-    
+
+    // SECURITY: Token refresh uses httpOnly cookie (refresh_token in cookie, not body)
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (refreshToken) {
-        try {
-          const response = await axios.post(`${API_BASE}/auth/token/refresh/`, {
-            refresh: refreshToken,
-          });
-          
-          localStorage.setItem('access_token', response.data.access);
-          originalRequest.headers.Authorization = `Bearer ${response.data.access}`;
-          
-          return api(originalRequest);
-        } catch (refreshError) {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          triggerAuthRedirect();
-          return Promise.reject(refreshError);
-        }
+
+      try {
+        // Refresh token is automatically sent in httpOnly cookie
+        const response = await axios.post(`${API_BASE}/auth/token/refresh/`, {}, {
+          withCredentials: true,
+        });
+
+        // Store new access token in memory only
+        accessToken = response.data.access;
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Clear memory token on refresh failure
+        accessToken = null;
+        triggerAuthRedirect();
+        return Promise.reject(refreshError);
       }
     }
-    
-    // Handle 401 without refresh token or after refresh failed
+
+    // Handle 401 after refresh failed
     if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+      accessToken = null;
       triggerAuthRedirect();
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -90,58 +101,63 @@ api.interceptors.response.use(
 export default api;
 
 // Auth API - Premium Auth System with Email Verification
+// SECURITY: All tokens use memory-only storage + httpOnly cookies
 export const auth = {
   login: async (username: string, password: string) => {
     const response = await api.post('/auth/login/', { username, password });
+    // SECURITY: Access token in memory only, refresh token in httpOnly cookie
     if (response.data.access) {
-      localStorage.setItem('access_token', response.data.access);
-      localStorage.setItem('refresh_token', response.data.refresh);
+      accessToken = response.data.access;
     }
     return response.data;
   },
-  
+
   register: async (username: string, password: string, email: string) => {
     const response = await api.post('/auth/register/', { username, password, email });
     return response.data;
   },
-  
+
   verifyEmail: async (username: string, code: string) => {
     const response = await api.post('/auth/verify-email/', { username, code });
+    // SECURITY: Access token in memory only, refresh token in httpOnly cookie
     if (response.data.access) {
-      localStorage.setItem('access_token', response.data.access);
-      localStorage.setItem('refresh_token', response.data.refresh);
+      accessToken = response.data.access;
     }
     return response.data;
   },
-  
+
   resendVerification: async (username: string) => {
     const response = await api.post('/auth/resend-verification/', { username });
     return response.data;
   },
-  
+
   forgotPassword: async (email: string) => {
     const response = await api.post('/auth/forgot-password/', { email });
     return response.data;
   },
-  
+
   verifyResetCode: async (email: string, code: string) => {
     const response = await api.post('/auth/verify-reset-code/', { email, code });
     return response.data;
   },
-  
+
   resetPassword: async (email: string, code: string, newPassword: string) => {
     const response = await api.post('/auth/reset-password/', { email, code, new_password: newPassword });
     return response.data;
   },
-  
-  logout: () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+
+  // SECURITY: Server clears httpOnly cookie, client clears memory token
+  logout: async () => {
+    try {
+      await api.post('/auth/logout/');
+    } finally {
+      accessToken = null;
+    }
   },
-  
+
+  // SECURITY: Check memory-only token (not localStorage)
   isAuthenticated: () => {
-    if (typeof window === 'undefined') return false;
-    return !!localStorage.getItem('access_token');
+    return !!accessToken;
   },
 };
 
@@ -163,13 +179,15 @@ export const chat = {
     onDone: () => void,
     onError: (error: string) => void
   ) => {
-    const token = localStorage.getItem('access_token');
+    // SECURITY: Access token from memory only (not localStorage)
     const response = await fetch(`${API_BASE}/chat/stream/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${accessToken || ''}`,
       },
+      // SECURITY: Include credentials for httpOnly cookie
+      credentials: 'include',
       body: JSON.stringify({
         message,
         conversation_id: conversationId,

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 
 from core.models import Conversation, Message, Document
@@ -14,14 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def admin_dashboard(request):
     """Admin-only: system-wide stats."""
-    if not request.user.is_superuser:
-        return Response(
-            {"error": "Admin access required"},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # IsAdminUser ensures user is authenticated and is_staff
 
     from django.contrib.auth.models import User
     from core.models import Task
@@ -83,18 +79,14 @@ def admin_dashboard(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def admin_broadcast(request):
     """
     Admin-only broadcast message to all users.
     POST /api/v1/admin/broadcast/
     Request: {"message": "...", "type": "info|warning|maintenance"}
     """
-    if not request.user.is_superuser:
-        return Response(
-            {"error": "Admin access required"},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # IsAdminUser ensures user is authenticated and is_staff
 
     message = request.data.get("message", "").strip()
     msg_type = request.data.get("type", "info")
@@ -124,17 +116,13 @@ def admin_broadcast(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminUser])
 def admin_reindex_all(request):
     """
     Admin-only endpoint to trigger reindexing of all documents.
     POST /api/v1/admin/reindex-all/
     """
-    if not request.user.is_superuser:
-        return Response(
-            {"error": "Admin access required"},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # IsAdminUser ensures user is authenticated and is_staff
 
     # Get all documents that are ready or failed
     documents = Document.objects.filter(status__in=["ready", "failed"])

@@ -196,8 +196,7 @@ export function CommandPalette() {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
       // Check if user is authenticated before opening
-      const token = localStorage.getItem('token');
-      if (!token) {
+      if (!auth.isAuthenticated()) {
         // Redirect to login if not logged in
         router.push('/login');
         return;
@@ -233,7 +232,7 @@ export function CommandPalette() {
   return (
     <>
       {/* Keyboard shortcut hint - only show when authenticated */}
-      {typeof window !== 'undefined' && localStorage.getItem('token') && (
+      {auth.isAuthenticated() && (
         <motion.button
           onClick={() => setIsOpen(true)}
           whileHover={{ scale: 1.05 }}

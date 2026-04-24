@@ -124,8 +124,7 @@ export default function Sidebar() {
         setIsRecentChatsExpanded(JSON.parse(savedExpanded));
       }
       
-      const token = localStorage.getItem('access_token');
-      setIsAuthenticated(!!token);
+      setIsAuthenticated(auth.isAuthenticated());
     } catch (e) {
       // Ignore localStorage errors
     }

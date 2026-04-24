@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bell, X, Check, ArrowRight, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { notifications } from '@/lib/api';
+import { notifications, auth } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Notification {
@@ -38,8 +38,7 @@ export function FloatingNotificationWidget({
 
   const fetchNotifications = useCallback(async () => {
     // Only fetch if user is authenticated (has access token)
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
+    if (!auth.isAuthenticated()) return;
     
     try {
       const data = await notifications.list();

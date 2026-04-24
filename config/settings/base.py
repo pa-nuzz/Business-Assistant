@@ -6,6 +6,21 @@ from pathlib import Path
 from decouple import config, Csv
 import dj_database_url
 
+# ─── Sentry Error Monitoring (Phase 3.6) ──────────────────────────────────────
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+SENTRY_DSN = config("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        environment=config("ENVIRONMENT", default="production"),
+        traces_sample_rate=0.2,  # 20% of requests for performance monitoring
+        profiles_sample_rate=0.1,  # 10% of requests for profiling
+        send_default_pii=True,  # Include user context (email, username) in errors
+    )
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Security: Validate SECRET_KEY is properly configured
@@ -136,11 +151,14 @@ REST_FRAMEWORK = {
     },
 }
 
-# ─── CORS ─────────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-]
+# ─── CORS (Phase 3.5) ───────────────────────────────────────────────────────────
+CORS_ALLOW_ALL_ORIGINS = False  # Production: strict origin whitelist
+CORS_ALLOWED_ORIGINS = config(
+    "CORS_ALLOWED_ORIGINS",
+    default="http://localhost:3000,http://localhost:5173",
+    cast=lambda v: [s.strip() for s in v.split(",")]
+)
+CORS_ALLOW_CREDENTIALS = True  # Required for httpOnly cookies
 
 # ─── AI Model Config ──────────────────────────────────────────────────────────
 AI_CONFIG = {
@@ -358,3 +376,38 @@ DBBACKUP_STORAGE_OPTIONS = {
 # Backup 3AM daily via cron: 0 3 * * * cd /app && python manage.py dbbackup --clean
 DBBACKUP_CLEANUP_KEEP = 7  # Keep 7 daily backups
 DBBACKUP_CLEANUP_KEEP_MEDIA = 3  # Keep 3 media backups
+
+# ─── Security Headers (Phase 3.2) ───────────────────────────────────────────────
+# HTTPS & HSTS - 1 year, include subdomains, preload
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# SSL Redirect - force HTTPS
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Secure Cookies - only transmit over HTTPS
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# Clickjacking protection
+X_FRAME_OPTIONS = "DENY"
+
+# Content Type sniffing prevention
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Content Security Policy (CSP)
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC = ("'self'", "https://cdn.jsdelivr.net")
+CSP_STYLE_SRC = ("'self'", "https://fonts.googleapis.com", "'unsafe-inline'")
+CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com")
+CSP_IMG_SRC = ("'self'", "data:", "https://*.r2.cloudflarestorage.com", "https://*.amazonaws.com")
+CSP_CONNECT_SRC = ("'self'", "https://*.render.com", "https://*.railway.app")
+CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_BASE_URI = ("'self'",)
+CSP_FORM_ACTION = ("'self'",)

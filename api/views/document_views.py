@@ -2,6 +2,7 @@
 import logging
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.shortcuts import get_object_or_404
@@ -15,6 +16,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from core.models import Document, DocumentChunk
 from services.document import process_document, extract_text, chunk_text, generate_summary
 from services.tasks import process_document_task
+from utils.sanitization import validate_file_upload, sanitize_filename_strict
 
 logger = logging.getLogger(__name__)
 
@@ -61,27 +63,29 @@ def upload_document(request):
     if not file:
         return Response({"error": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-    allowed_types = [
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "text/plain"
-    ]
-    if file.content_type not in allowed_types:
-        return Response(
-            {"error": "Invalid file type. Use PDF, DOCX, or TXT."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    # SECURITY: Validate file upload (Phase 3.3)
+    try:
+        validate_file_upload(file)
+    except ValidationError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Determine file type
     if file.content_type == "application/pdf":
         file_type = "pdf"
     elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         file_type = "docx"
+    elif file.content_type == "text/markdown":
+        file_type = "md"
     else:
         file_type = "txt"
 
+    # SECURITY: Sanitize filename
+    safe_filename = sanitize_filename_strict(file.name)
+    file.name = safe_filename
+
     doc = Document.objects.create(
         user=request.user,
-        title=request.data.get("title", file.name),
+        title=request.data.get("title", safe_filename),
         file=file,
         file_type=file_type,
         status="pending",
