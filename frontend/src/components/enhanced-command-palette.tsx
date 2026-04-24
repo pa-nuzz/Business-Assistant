@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, MessageSquare, FileText, BarChart2, Settings, 
-  LogOut, User, Plus, X, Command, HelpCircle, Keyboard,
+  LogOut, User, Plus, X, Command, Keyboard,
   History, Clock
 } from 'lucide-react';
 import { auth } from '@/lib/api';

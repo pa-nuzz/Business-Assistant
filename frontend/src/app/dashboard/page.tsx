@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { analytics } from '@/lib/api';
-import { Loader2, ArrowRight, MessageSquare, TrendingUp, Target, BarChart3 } from 'lucide-react';
+import { ArrowRight, MessageSquare, TrendingUp, Target, BarChart3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { PageSkeleton } from '@/components/loading-skeletons';
 import {

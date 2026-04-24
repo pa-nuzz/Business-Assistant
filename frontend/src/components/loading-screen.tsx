@@ -14,8 +14,7 @@ export default function LoadingScreen({ children }: LoadingScreenProps) {
 
   useEffect(() => {
     // Check if this is a hard reload using Navigation API
-    // @ts-ignore - navigation is not in all browsers yet
-    const navEntry = window.performance?.getEntriesByType?.('navigation')?.[0] as any;
+    const navEntry = window.performance?.getEntriesByType?.('navigation')?.[0] as PerformanceEntry & { type?: string };
     const navigationType = navEntry?.type;
     
     // 'reload' in new API, also check legacy performance.navigation.type === 1

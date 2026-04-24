@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sparkles, ArrowLeft, Lock, ShieldCheck, Eye, EyeOff, Loader2 } from "lucide-react";
+import { ArrowLeft, Lock, ShieldCheck, Eye, EyeOff, Loader2 } from "lucide-react";
 
 // Shield with checkmark animation
 interface ShieldProps {
@@ -132,7 +132,7 @@ export default function AnimatedResetPasswordPage() {
       setTimeout(() => {
         router.push('/login');
       }, 3000);
-    } catch (err: any) {
+    } catch {
       setError('Failed to reset password. The link may have expired.');
     } finally {
       setIsLoading(false);

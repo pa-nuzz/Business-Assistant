@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { chat, user } from "@/lib/api";
 import { useChat } from "@/components/chat-context";
@@ -18,8 +18,6 @@ import {
   Copy,
   Check,
   RefreshCw,
-  Bot,
-  User,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -44,7 +42,7 @@ type SourceType = "search" | "deep_research" | "reason";
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const conversationId = searchParams.get("id") || undefined;
+  const _conversationId = searchParams.get("id") || undefined;
 
   // Use ChatContext for persistent state
   const {
@@ -61,7 +59,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSources, setActiveSources] = useState<Set<SourceType>>(new Set());
   const [userName, setUserName] = useState<string>("");
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const [, setHasInitialized] = useState(false);
 
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
 
@@ -151,10 +149,9 @@ export default function ChatPage() {
     }
   };
 
-  // Fetch the most recent conversation from backend
-  const loadRecentConversation = async () => {
+  const _loadRecentConversation = async () => {
     if (isStreaming) return;
-    
+
     setIsLoading(true);
     try {
       const data = await chat.getConversations(1, 1); // Get most recent

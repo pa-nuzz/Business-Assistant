@@ -12,7 +12,7 @@ import { CommandPalette } from '@/components/enhanced-command-palette';
 const publicPaths = ['/login', '/register', '/forgot-password', '/verify-email', '/reset-password'];
 
 // Loading skeleton - matches both collapsed and expanded sidebar states
-function LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
+function _LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
   return (
     <div className="flex h-screen bg-white overflow-hidden">
       {showSidebar && (

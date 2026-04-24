@@ -125,7 +125,7 @@ export default function Sidebar() {
       }
       
       setIsAuthenticated(auth.isAuthenticated());
-    } catch (e) {
+    } catch {
       // Ignore localStorage errors
     }
   }, []);
@@ -134,7 +134,7 @@ export default function Sidebar() {
   useEffect(() => {
     try {
       localStorage.setItem('sidebar-collapsed', JSON.stringify(isCollapsed));
-    } catch (e) {
+    } catch {
       // Ignore localStorage errors
     }
   }, [isCollapsed]);
@@ -142,7 +142,7 @@ export default function Sidebar() {
   useEffect(() => {
     try {
       localStorage.setItem('recent-chats-expanded', JSON.stringify(isRecentChatsExpanded));
-    } catch (e) {
+    } catch {
       // Ignore localStorage errors
     }
   }, [isRecentChatsExpanded]);

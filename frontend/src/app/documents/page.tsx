@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { documents } from '@/lib/api';
 import api from '@/lib/api';
-import { FileText, Upload, FileX, Trash2, Search, Loader2, X, MessageSquare, Eye } from 'lucide-react';
+import { FileText, Upload, Trash2, Search, Loader2, X, MessageSquare, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageSkeleton } from '@/components/loading-skeletons';
 

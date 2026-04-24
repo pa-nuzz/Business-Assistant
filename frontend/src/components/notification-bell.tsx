@@ -36,10 +36,11 @@ export function NotificationBell({ className }: NotificationBellProps) {
         setNotificationsList(data.notifications);
         setUnreadCount(data.count || 0);
       }
-    } catch (err: any) {
+    } catch (_err: unknown) {
       // Silently ignore auth errors
-      if (err?.response?.status === 401) return;
-      console.error('Failed to fetch notifications:', err);
+      const error = _err as { response?: { status?: number } };
+      if (error?.response?.status === 401) return;
+      console.error('Failed to fetch notifications:', _err);
     }
   }, []);
 

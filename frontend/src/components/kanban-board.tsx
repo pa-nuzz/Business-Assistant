@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Plus, 
   CheckCircle2, 
   Circle, 
   Clock, 
   AlertCircle,
-  Check,
   GripVertical,
   Trash2
 } from 'lucide-react';
