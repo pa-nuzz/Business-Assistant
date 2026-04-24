@@ -129,7 +129,7 @@ class DocumentService:
             process_document(str(doc.id))
         except Exception as e:
             logger.exception(f"Document processing failed: {e}")
-            doc.status = "error"
+            doc.status = "failed"
             doc.save(update_fields=["status"])
         
         # Invalidate cache

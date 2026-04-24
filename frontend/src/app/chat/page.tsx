@@ -560,13 +560,13 @@ export default function ChatPage() {
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 0, scale: 0.8 }}
                           whileHover={{ opacity: 1, scale: 1 }}
-                          className="absolute -top-2 -right-2 p-1.5 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-gray-50"
+                          className="absolute -top-2 -right-2 p-1.5 bg-white border border-slate-200 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-slate-50"
                           title="Copy to clipboard"
                         >
                           {copiedIndex === index ? (
-                            <Check className="w-3.5 h-3.5 text-green-600" />
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
                           ) : (
-                            <Copy className="w-3.5 h-3.5 text-gray-400" />
+                            <Copy className="w-3.5 h-3.5 text-slate-400" />
                           )}
                         </motion.button>
                       )}
@@ -741,7 +741,13 @@ export default function ChatPage() {
 
           {/* Disclaimer */}
           <p className="text-center text-xs text-slate-400 mt-3">
-            AI-generated content may contain inaccuracies. Verify important information.
+            AI-generated content may contain inaccuracies. Verify important information. • 
+            <button 
+              onClick={() => window.dispatchEvent(new CustomEvent('open-help'))}
+              className="hover:text-indigo-500 underline underline-offset-2"
+            >
+              Keyboard shortcuts
+            </button>
           </p>
         </div>
       </div>

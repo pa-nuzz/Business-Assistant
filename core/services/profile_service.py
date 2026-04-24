@@ -224,6 +224,7 @@ class ProfileService:
     def delete_account(self, password: str) -> bool:
         """
         Delete user account (requires password verification).
+        Uses soft delete for data preservation.
         
         Args:
             password: Current password for verification
@@ -237,11 +238,16 @@ class ProfileService:
         if not self.user.check_password(password):
             raise ValueError("Incorrect password")
         
-        # Soft delete conversations and messages
+        # Soft delete conversations (not hard delete)
         from core.models import Conversation
-        Conversation.objects.filter(user=self.user).delete()
+        for convo in Conversation.objects.filter(user=self.user):
+            convo.soft_delete(user=self.user)
         
-        # Delete user
-        self.user.delete()
+        # Deactivate user instead of hard delete
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+        
+        # Invalidate all user cache
+        CacheService.invalidate_user_cache(self.user.id)
         
         return True

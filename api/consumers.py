@@ -61,7 +61,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             del _user_message_times[user_id.id]
 
     async def receive(self, text_data):
-        """Handle incoming messages with rate limiting."""
+        """Handle incoming messages with rate limiting and improved error handling."""
         try:
             data = json.loads(text_data)
             message = data.get("message", "").strip()
@@ -93,8 +93,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             conversation = await self.get_or_create_conversation(conversation_id, message)
             self.conversation_id = str(conversation.id)
             
-            # Save user message
+            # Save user message immediately for persistence
             await self.save_message(conversation, "user", message)
+            await self.update_conversation_timestamp(conversation)
             
             # Build conversation history
             history = await self.build_history(conversation)
@@ -108,54 +109,72 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             }))
             
-            # Stream the response
+            # Stream the response with timeout protection
             full_response = []
+            stream_error = None
             from agents import orchestrator
             
-            for sse_data in orchestrator.run_stream(
-                user_message=message,
-                user_id=self.user.id,
-                conversation_history=history,
-                user_name=self.user.get_full_name() or self.user.username,
-                conversation_id=self.conversation_id,
-            ):
-                # Parse SSE data
-                if sse_data.startswith('data: '):
-                    try:
-                        payload = json.loads(sse_data[6:])  # Remove 'data: ' prefix
+            try:
+                for sse_data in orchestrator.run_stream(
+                    user_message=message,
+                    user_id=self.user.id,
+                    conversation_history=history,
+                    user_name=self.user.get_full_name() or self.user.username,
+                    conversation_id=self.conversation_id,
+                ):
+                    # Parse SSE data
+                    if sse_data.startswith('data: '):
+                        try:
+                            payload = json.loads(sse_data[6:])  # Remove 'data: ' prefix
+                            
+                            if "token" in payload:
+                                token = payload["token"]
+                                full_response.append(token)
+                                await self.send(json.dumps({
+                                    "type": "token",
+                                    "data": token
+                                }))
+                            elif "thinking" in payload:
+                                await self.send(json.dumps({
+                                    "type": "thinking",
+                                    "data": payload["thinking"]
+                                }))
+                            elif "metadata" in payload:
+                                await self.send(json.dumps({
+                                    "type": "metadata",
+                                    "data": payload["metadata"]
+                                }))
+                            elif "error" in payload:
+                                stream_error = payload["error"]
+                                await self.send(json.dumps({
+                                    "type": "error",
+                                    "data": payload["error"]
+                                }))
+                        except json.JSONDecodeError:
+                            pass
+                    elif "[DONE]" in sse_data:
+                        break
                         
-                        if "token" in payload:
-                            token = payload["token"]
-                            full_response.append(token)
-                            await self.send(json.dumps({
-                                "type": "token",
-                                "data": token
-                            }))
-                        elif "metadata" in payload:
-                            await self.send(json.dumps({
-                                "type": "metadata",
-                                "data": payload["metadata"]
-                            }))
-                        elif "error" in payload:
-                            await self.send(json.dumps({
-                                "type": "error",
-                                "data": payload["error"]
-                            }))
-                    except json.JSONDecodeError:
-                        pass
-                elif "[DONE]" in sse_data:
-                    break
+            except Exception as stream_exc:
+                logger.exception("Streaming error in consumer")
+                stream_error = str(stream_exc)
+                await self.send(json.dumps({
+                    "type": "error",
+                    "data": "Streaming interrupted. Please try again."
+                }))
             
-            # Save assistant message
+            # Save assistant message even if stream had errors
             response_text = "".join(full_response)
-            if response_text.strip():
-                await self.save_message(conversation, "assistant", response_text)
-                # Update conversation timestamp
+            if response_text.strip() or stream_error:
+                final_content = response_text if response_text.strip() else f"I encountered an error: {stream_error}"
+                await self.save_message(conversation, "assistant", final_content)
                 await self.update_conversation_timestamp(conversation)
             
             # Send done signal
             await self.send(json.dumps({"type": "done"}))
             
+        except json.JSONDecodeError:
+            await self.send_error("Invalid message format")
         except Exception as e:
             logger = logging.getLogger(__name__)
             logger.exception(f"Error in WebSocket receive: {e}")

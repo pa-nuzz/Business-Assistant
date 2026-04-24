@@ -103,44 +103,61 @@ class ChatService:
         # Build conversation history
         history = self._build_conversation_history(conversation)
         
-        # Stream response
-        full_response = []
-        model_info = {"used": "unknown"}
-        
-        for sse_data in orchestrator.run_stream(
-            user_message=message,
-            user_id=self.user.id,
-            conversation_history=history,
-            user_name=self.user.get_full_name() or self.user.username,
-            conversation_id=str(conversation.id),
-        ):
-            yield sse_data
-            
-            # Collect response for saving
-            if sse_data.startswith('data: ') and '[DONE]' not in sse_data:
-                try:
-                    import json
-                    data = json.loads(sse_data[6:])
-                    if "token" in data:
-                        full_response.append(data["token"])
-                    if "metadata" in data:
-                        model_info["used"] = data["metadata"].get("model", "unknown")
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning(f"SSE parse error: {e}")
-        
-        # Save messages after streaming completes
+        # Save user message immediately
         Message.objects.create(
             conversation=conversation,
             role="user",
             content=message,
         )
-        Message.objects.create(
-            conversation=conversation,
-            role="assistant",
-            content="".join(full_response),
-            model_used=model_info["used"],
-        )
         conversation.save(update_fields=["updated_at"])
+        
+        # Stream response
+        full_response = []
+        model_info = {"used": "unknown"}
+        stream_error = None
+        
+        try:
+            for sse_data in orchestrator.run_stream(
+                user_message=message,
+                user_id=self.user.id,
+                conversation_history=history,
+                user_name=self.user.get_full_name() or self.user.username,
+                conversation_id=str(conversation.id),
+            ):
+                yield sse_data
+                
+                # Collect response for saving
+                if sse_data.startswith('data: ') and '[DONE]' not in sse_data:
+                    try:
+                        import json
+                        data = json.loads(sse_data[6:])
+                        if "token" in data:
+                            full_response.append(data["token"])
+                        if "metadata" in data:
+                            model_info["used"] = data["metadata"].get("model", "unknown")
+                        if "error" in data:
+                            stream_error = data["error"]
+                            logger.warning(f"Stream error received: {stream_error}")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(f"SSE parse error: {e}")
+                        
+        except Exception as e:
+            logger.exception("Streaming failed")
+            stream_error = str(e)
+            yield f'data: {{"error": "{str(e)}"}}\n\n'
+        
+        # Save assistant message after streaming completes (even if error)
+        response_text = "".join(full_response)
+        if response_text.strip() or stream_error:
+            final_content = response_text if response_text.strip() else f"I encountered an error: {stream_error}"
+            Message.objects.create(
+                conversation=conversation,
+                role="assistant",
+                content=final_content,
+                model_used=model_info["used"],
+                tool_calls={"stream_error": stream_error} if stream_error else None,
+            )
+            conversation.save(update_fields=["updated_at"])
     
     def _get_or_create_conversation(
         self,

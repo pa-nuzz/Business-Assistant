@@ -3,7 +3,7 @@ Message service for managing messages.
 Extracted from views to enable testing and reusability.
 """
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 from django.contrib.auth.models import User
 from core.models import Message, Conversation
 

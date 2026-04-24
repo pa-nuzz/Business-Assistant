@@ -6,6 +6,7 @@ from api.auth_views import (
     forgot_password, verify_reset_code, reset_password, token_refresh
 )
 from api.views import *  # Import all modular views
+from api.views.analytics_views import get_analytics
 from api.task_views import (
     list_tasks, create_task, get_task, update_task, delete_task,
     complete_task, reopen_task, list_comments, create_comment, delete_comment,
@@ -93,6 +94,9 @@ urlpatterns = [
     path("admin/broadcast/", views.admin_broadcast, name="admin-broadcast"),
     path("admin/reindex-all/", views.admin_reindex_all, name="admin-reindex-all"),
 
+    # Analytics
+    path("analytics/", get_analytics, name="analytics"),
+    
     # Notifications
     path("notifications/", views.get_notifications, name="notifications-list"),
     path("notifications/<int:notification_id>/read/", views.mark_notification_read, name="notification-mark-read"),

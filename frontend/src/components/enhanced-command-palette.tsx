@@ -43,21 +43,21 @@ function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
       {/* Glassmorphism card */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/40 overflow-hidden">
         {/* Header gradient */}
-        <div className="px-6 py-4 bg-gradient-to-r from-blue-500/10 to-cyan-400/10 border-b border-white/30 flex items-center justify-between">
+        <div className="px-6 py-4 bg-gradient-to-r from-indigo-500/10 to-violet-400/10 border-b border-white/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg">
-              <Keyboard className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-400 flex items-center justify-center shadow-lg">
+              <Keyboard className="w-5 h-5 text-slate-900" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-800">Keyboard Shortcuts</h2>
-              <p className="text-xs text-gray-500">Press any key to navigate</p>
+              <h2 className="text-lg font-semibold text-slate-800">Keyboard Shortcuts</h2>
+              <p className="text-xs text-slate-500">Press any key to navigate</p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-white/50 rounded-xl transition-colors"
           >
-            <X className="w-5 h-5 text-gray-500" />
+            <X className="w-5 h-5 text-slate-500" />
           </button>
         </div>
 
@@ -72,8 +72,8 @@ function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
                 transition={{ delay: index * 0.05 }}
                 className="flex items-center justify-between p-3 rounded-xl bg-white/60 hover:bg-white/80 transition-colors border border-white/40"
               >
-                <span className="text-sm text-gray-600">{shortcut.description}</span>
-                <kbd className="px-2.5 py-1 bg-gradient-to-b from-gray-100 to-gray-200 border border-gray-300 rounded-lg text-xs font-mono font-semibold text-gray-700 shadow-sm">
+                <span className="text-sm text-slate-600">{shortcut.description}</span>
+                <kbd className="px-2.5 py-1 bg-gradient-to-b from-slate-100 to-slate-200 border border-slate-300 rounded-lg text-xs font-mono font-semibold text-slate-700 shadow-sm">
                   {shortcut.key}
                 </kbd>
               </motion.div>
@@ -82,8 +82,8 @@ function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 bg-gray-50/50 border-t border-white/30 text-center">
-          <p className="text-xs text-gray-400">Pro tip: Use Cmd/Ctrl + letter for quick navigation</p>
+        <div className="px-6 py-3 bg-slate-50/50 border-t border-white/30 text-center">
+          <p className="text-xs text-slate-400">Pro tip: Use Cmd/Ctrl + letter for quick navigation</p>
         </div>
       </div>
     </motion.div>
@@ -94,6 +94,16 @@ export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [search, setSearch] = useState('');
+
+  // Listen for help trigger event from chat
+  useEffect(() => {
+    const handleOpenHelp = () => {
+      setShowHelp(true);
+    };
+    
+    window.addEventListener('open-help', handleOpenHelp);
+    return () => window.removeEventListener('open-help', handleOpenHelp);
+  }, []);
   const [recentCommands, setRecentCommands] = useState<string[]>([]);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -237,9 +247,9 @@ export function CommandPalette() {
           onClick={() => setIsOpen(true)}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 px-3 py-2 bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-xl shadow-lg text-sm text-gray-600 hover:text-gray-900 hover:border-gray-300 hover:shadow-xl transition-all"
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 px-3 py-2 bg-white/80 backdrop-blur-md border border-slate-200/80 rounded-xl shadow-lg text-sm text-slate-600 hover:text-slate-900 hover:border-slate-300 hover:shadow-xl transition-all"
         >
-          <Command size={14} className="text-blue-500" />
+          <Command size={14} className="text-indigo-500" />
           <span className="font-medium">Cmd K</span>
         </motion.button>
       )}
@@ -265,37 +275,37 @@ export function CommandPalette() {
               className="fixed top-1/4 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white/85 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/40 z-50 overflow-hidden"
             >
               {/* Search Input with gradient background */}
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200/50 bg-gradient-to-r from-blue-50/50 to-cyan-50/50">
-                <Search size={20} className="text-blue-500" />
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200/50 bg-gradient-to-r from-indigo-50/50 to-violet-50/50">
+                <Search size={20} className="text-indigo-500" />
                 <input
                   ref={inputRef}
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search commands..."
-                  className="flex-1 bg-transparent border-none outline-none text-sm text-gray-800 placeholder:text-gray-400"
+                  className="flex-1 bg-transparent border-none outline-none text-sm text-slate-800 placeholder:text-slate-400"
                   autoFocus
                 />
                 <button
                   onClick={() => setIsOpen(false)}
                   className="p-1.5 hover:bg-white/80 rounded-lg transition-colors"
                 >
-                  <X size={16} className="text-gray-400" />
+                  <X size={16} className="text-slate-400" />
                 </button>
               </div>
 
               {/* Recent commands indicator */}
               {!search && recentCommands.length > 0 && (
-                <div className="px-4 py-2 bg-gray-50/50 border-b border-gray-200/30 flex items-center gap-2">
-                  <History size={12} className="text-gray-400" />
-                  <span className="text-xs text-gray-400">Recent commands</span>
+                <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-200/30 flex items-center gap-2">
+                  <History size={12} className="text-slate-400" />
+                  <span className="text-xs text-slate-400">Recent commands</span>
                 </div>
               )}
 
               {/* Commands List */}
               <div className="max-h-[300px] overflow-y-auto py-2">
                 {filteredCommands.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-gray-500">
+                  <div className="px-4 py-8 text-center text-sm text-slate-500">
                     No commands found
                   </div>
                 ) : (
@@ -308,21 +318,21 @@ export function CommandPalette() {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.03 }}
                         onClick={() => handleCommand(cmd)}
-                        className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-blue-50/60 transition-colors text-left group ${
-                          isRecent ? 'bg-blue-50/30' : ''
+                        className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-indigo-50/60 transition-colors text-left group ${
+                          isRecent ? 'bg-indigo-50/30' : ''
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <span className="text-blue-500/70 group-hover:text-blue-600 transition-colors">
+                          <span className="text-indigo-500/70 group-hover:text-indigo-600 transition-colors">
                             {cmd.icon}
                           </span>
-                          <span className="text-sm text-gray-700 group-hover:text-gray-900">{cmd.label}</span>
+                          <span className="text-sm text-slate-700 group-hover:text-slate-900">{cmd.label}</span>
                           {isRecent && (
-                            <Clock size={12} className="text-blue-400" />
+                            <Clock size={12} className="text-indigo-400" />
                           )}
                         </div>
                         {cmd.shortcut && (
-                          <kbd className="px-2 py-0.5 bg-gray-100 group-hover:bg-white border border-gray-200 rounded text-xs text-gray-500 font-medium">
+                          <kbd className="px-2 py-0.5 bg-slate-100 group-hover:bg-white border border-slate-200 rounded text-xs text-slate-500 font-medium">
                             {cmd.shortcut}
                           </kbd>
                         )}
@@ -333,8 +343,8 @@ export function CommandPalette() {
               </div>
 
               {/* Footer */}
-              <div className="px-4 py-2.5 bg-gray-50/70 border-t border-gray-200/50 flex items-center justify-between text-xs text-gray-500">
-                <span>Press <kbd className="px-1.5 py-0.5 bg-white rounded border border-gray-200">Enter</kbd> to select</span>
+              <div className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-200/50 flex items-center justify-between text-xs text-slate-500">
+                <span>Press <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-200">Enter</kbd> to select</span>
               </div>
             </motion.div>
           </>
@@ -350,7 +360,7 @@ export function CommandPalette() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowHelp(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50"
+              className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50"
             />
             <KeyboardShortcutsHelp onClose={() => setShowHelp(false)} />
           </>
