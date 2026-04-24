@@ -15,13 +15,23 @@ class EmailVerification(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     is_verified = models.BooleanField(default=False)
     attempts = models.IntegerField(default=0)
-    
+    MAX_ATTEMPTS = 5
+
     class Meta:
         indexes = [models.Index(fields=["code", "created_at"])]
-    
+
     def is_expired(self):
         """Code expires after 15 minutes."""
-        return (timezone.now() - self.created_at).seconds > 900
+        return (timezone.now() - self.created_at).total_seconds() > 900
+
+    def is_locked(self):
+        """Check if too many failed attempts have been made."""
+        return self.attempts >= self.MAX_ATTEMPTS
+
+    def record_attempt(self):
+        """Increment failed attempt counter."""
+        self.attempts += 1
+        self.save(update_fields=["attempts"])
     
     def __str__(self):
         return f"Verification for {self.user.email} - {'Verified' if self.is_verified else 'Pending'}"
@@ -41,8 +51,19 @@ class PasswordResetCode(models.Model):
     
     def is_expired(self):
         """Code expires after 15 minutes."""
-        return (timezone.now() - self.created_at).seconds > 900
-    
+        return (timezone.now() - self.created_at).total_seconds() > 900
+
+    def clean_expired_codes(self):
+        """Delete old used or expired codes for this user."""
+        self.__class__.objects.filter(
+            user=self.user,
+            created_at__lt=timezone.now() - timezone.timedelta(minutes=15)
+        ).delete()
+        self.__class__.objects.filter(
+            user=self.user,
+            is_used=True
+        ).exclude(id=self.id).delete()
+
     def __str__(self):
         return f"Reset code for {self.user.email}"
 
@@ -83,7 +104,7 @@ class UserMemory(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memories")
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="fact")
-    key = models.CharField(max_length=100)         # e.g. "preferred_report_format"
+    key = models.CharField(max_length=100, db_index=True)         # e.g. "preferred_report_format"
     value = models.TextField()                     # e.g. "bullet points with numbers"
     source_conversation = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -142,7 +163,10 @@ class DocumentChunk(models.Model):
 
     class Meta:
         ordering = ["chunk_index"]
-        indexes = [models.Index(fields=["document", "chunk_index"])]
+        indexes = [
+            models.Index(fields=["document", "chunk_index"]),
+            models.Index(fields=["keywords"]),
+        ]
 
     def __str__(self):
         return f"Chunk {self.chunk_index} of {self.document.title}"
@@ -353,3 +377,32 @@ class TaskAISuggestion(models.Model):
     
     def __str__(self):
         return f"AI Suggestion: {self.suggested_title} ({'Accepted' if self.was_accepted else 'Pending'})"
+
+
+class Notification(models.Model):
+    """In-app notifications for users."""
+    PRIORITY_CHOICES = [
+        ("low", "Low"),
+        ("normal", "Normal"),
+        ("high", "High"),
+        ("urgent", "Urgent"),
+    ]
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notifications"
+    )
+    message = models.TextField()
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="normal")
+    is_read = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    action_url = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "is_read", "-created_at"], name="notification_unread_idx")
+        ]
+
+    def __str__(self):
+        return f"{self.priority}: {self.message[:50]}"

@@ -3,7 +3,7 @@ Premium Email Service for AEIOU AI
 Handles transactional emails with professional branding.
 """
 import os
-import random
+import secrets
 from typing import Optional
 from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -12,8 +12,8 @@ from django.conf import settings
 
 
 def generate_verification_code() -> str:
-    """Generate a 6-digit verification code."""
-    return str(random.randint(100000, 999999))
+    """Generate a 6-digit verification code using cryptographically secure random."""
+    return str(secrets.randbelow(900000) + 100000)
 
 
 def get_email_branding():

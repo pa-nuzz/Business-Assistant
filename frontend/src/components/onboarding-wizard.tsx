@@ -143,10 +143,10 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
               exit={{ opacity: 0, x: -20 }}
               className="text-center"
             >
-              <div className="w-16 h-16 mx-auto mb-6">
-                <img
-                  src="/logos/core.svg"
-                  alt="AEIOU AI"
+              <div className="w-16 h-16 mx-auto mb-6 relative">
+                <img 
+                  src="/logos/app-logo.svg" 
+                  alt="AEIOU AI" 
                   className="w-full h-full object-contain"
                 />
               </div>
@@ -287,7 +287,7 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
                     fill="none"
                     className="w-10 h-10 text-green-600"
                   >
-                    <motion.circle
+                    <circle
                       cx="12"
                       cy="12"
                       r="10"

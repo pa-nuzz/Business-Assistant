@@ -1,11 +1,19 @@
 """
 Chat WebSocket Consumer for real-time streaming chat.
 """
+import asyncio
 import json
-import uuid
+import logging
+import time
+from collections import defaultdict
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
+
+# Rate limiting configuration
+_user_message_times = defaultdict(list)
+RATE_LIMIT = 20       # messages
+RATE_WINDOW = 60      # seconds
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -18,6 +26,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                  {"type": "metadata", "data": {...}}
                  {"type": "done"}
                  {"type": "error", "data": "..."}
+                 {"type": "ping"}
     """
 
     async def connect(self):
@@ -30,13 +39,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
         await self.accept()
         self.conversation_id = None
+        
+        # Start keepalive ping task
+        self.keepalive_task = asyncio.ensure_future(self.send_ping())
+
+    async def send_ping(self):
+        """Send periodic ping to keep connection alive and detect dead clients."""
+        while True:
+            try:
+                await asyncio.sleep(30)  # Ping every 30 seconds
+                await self.send(text_data=json.dumps({"type": "ping"}))
+            except Exception:
+                # Connection is dead, exit the loop
+                break
 
     async def disconnect(self, close_code):
-        """Handle disconnection."""
-        pass
+        """Handle disconnection - clean up rate limiting data."""
+        # Remove user's rate limiting data on disconnect
+        user_id = getattr(self, 'user', None)
+        if user_id and hasattr(user_id, 'id') and user_id.id in _user_message_times:
+            del _user_message_times[user_id.id]
 
     async def receive(self, text_data):
-        """Handle incoming messages."""
+        """Handle incoming messages with rate limiting."""
         try:
             data = json.loads(text_data)
             message = data.get("message", "").strip()
@@ -49,6 +74,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if len(message) > 4000:
                 await self.send_error("Message too long (max 4000 chars)")
                 return
+            
+            # Rate limiting check
+            user_id = self.user.id
+            now = time.time()
+            times = _user_message_times[user_id]
+            
+            # Remove timestamps outside the window
+            _user_message_times[user_id] = [t for t in times if now - t < RATE_WINDOW]
+            
+            if len(_user_message_times[user_id]) >= RATE_LIMIT:
+                await self.send_error("Too many messages. Please wait a moment.")
+                return
+            
+            _user_message_times[user_id].append(now)
             
             # Get or create conversation
             conversation = await self.get_or_create_conversation(conversation_id, message)
@@ -109,12 +148,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             # Save assistant message
             response_text = "".join(full_response)
-            await self.save_message(conversation, "assistant", response_text)
+            if response_text.strip():
+                await self.save_message(conversation, "assistant", response_text)
+                # Update conversation timestamp
+                await self.update_conversation_timestamp(conversation)
             
             # Send done signal
             await self.send(json.dumps({"type": "done"}))
             
         except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.exception(f"Error in WebSocket receive: {e}")
             await self.send_error(f"Error processing message: {str(e)}")
 
     async def send_error(self, message):
@@ -181,3 +225,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             role=role,
             content=content,
         )
+
+    @database_sync_to_async
+    def update_conversation_timestamp(self, conversation):
+        """Update conversation timestamp to move it to top of list."""
+        from django.utils import timezone
+        conversation.updated_at = timezone.now()
+        conversation.save(update_fields=['updated_at'])

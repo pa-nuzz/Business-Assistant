@@ -7,8 +7,25 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, List
+import re
 from django.core.cache import cache
+
+def _build_prompt(base: str, user_id: int) -> str:
+    mem = get_user_memory(user_id)
+    return f"{base}\n\n{mem}" if mem else base
+
+
+def _extract_keywords(text: str) -> List[str]:
+    """Extract business-relevant keywords from text."""
+    business_terms = {
+        "revenue", "sales", "profit", "growth", "customer", "client",
+        "marketing", "strategy", "budget", "forecast", "kpi", "metrics",
+        "document", "contract", "invoice", "report", "analysis",
+        "competitor", "market", "product", "service", "team", "hiring"
+    }
+    words = set(re.findall(r'\b[a-zA-Z]{3,}\b', text.lower()))
+    return list(words & business_terms)
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +104,88 @@ def _to_cache(user_id: int, query: str, task: str, text: str, model: str):
     cache.set(_cache_key(user_id, query, task), (text, time.time(), model), timeout=_CACHE_TTL)
 
 
-def _build_prompt(base: str, user_id: int) -> str:
-    mem = get_user_memory(user_id)
-    return f"{base}\n\n{mem}" if mem else base
+def extract_and_store_memory(user_id: int, user_message: str, ai_response: str) -> bool:
+    """
+    Extract important facts from conversation and store as memory.
+    Uses AI to identify what should be remembered.
+    """
+    try:
+        # Skip short or trivial messages
+        if len(user_message) < 10:
+            return False
+            
+        # Skip common greetings and social chatter
+        trivial_patterns = [
+            r'^\s*(hi|hello|hey|bye|goodbye|thanks|thank you|ok|okay|cool|nice)\s*$',
+            r'^\s*how are you\s*$',
+        ]
+        for pattern in trivial_patterns:
+            if re.search(pattern, user_message.lower()):
+                return False
+        
+        # Memory extraction prompt
+        extraction_prompt = f"""Analyze this conversation and extract ONLY important facts that should be remembered for future context.
+
+User: {user_message}
+AI: {ai_response}
+
+Extract facts ONLY if they contain:
+- Personal/business preferences ("I prefer...", "We use...")
+- Important decisions made
+- Goals or objectives stated
+- Key business info (company name, industry, size)
+- Work habits or patterns
+- Rejections or negative preferences ("I don't like...", "Never...")
+
+Return EXACTLY in this format:
+MEMORY: <the fact to remember>
+OR
+NONE
+
+Be concise. One sentence max per memory."""
+
+        result = call_model(
+            user_id=user_id,
+            user_message=extraction_prompt,
+            base_system_prompt="You are a memory extraction system. Only extract genuinely important facts.",
+            task_type=TaskType.ANALYSIS,
+            priority=Priority.NORMAL,
+            use_cache=False,
+            store_memory=False
+        )
+        
+        extracted = result.text.strip()
+        
+        if extracted.upper().startswith("MEMORY:"):
+            memory_text = extracted[7:].strip().strip('"').strip("'")
+            if memory_text and len(memory_text) > 5:
+                add_user_memory(user_id, memory_text)
+                logger.info(f"Memory stored for user {user_id}: {memory_text[:80]}...")
+                return True
+        
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Memory extraction failed: {e}")
+        return False
+
+
+def get_enhanced_user_memory(user_id: int) -> Dict[str, Any]:
+    """
+    Get comprehensive user memory including raw memories and derived insights.
+    """
+    raw_memories = get_user_memory(user_id)
+    
+    # Get cached context too
+    from agents.orchestrator import _get_cached_context
+    context = _get_cached_context(user_id)
+    
+    return {
+        "raw_memory": raw_memories,
+        "conversation_count": context.get("conversation_count", 0),
+        "last_topics": context.get("last_topics", []),
+        "frequent_keywords": _extract_keywords(raw_memories) if raw_memories else []
+    }
 
 
 def call_model(

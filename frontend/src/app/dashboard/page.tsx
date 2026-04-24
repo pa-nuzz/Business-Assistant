@@ -186,8 +186,8 @@ export default function DashboardPage() {
                       borderRadius: '8px',
                       fontSize: '12px'
                     }}
-                    formatter={(value: number, _name: string, props: { payload: { fullKey: string; name: string } }) => [
-                      formatMetricValue(props.payload.fullKey, value),
+                    formatter={(value, _name, props) => [
+                      formatMetricValue(props.payload.fullKey, value as number),
                       props.payload.name
                     ]}
                   />
@@ -226,8 +226,7 @@ export default function DashboardPage() {
                     outerRadius={80}
                     paddingAngle={5}
                     dataKey="value"
-                    label={({ name }: { name: string }) => name.length > 15 ? name.substring(0, 15) + '...' : name}
-                    labelStyle={{ fontSize: '10px' }}
+                    label={({ name }) => name && name.length > 15 ? name.substring(0, 15) + '...' : name || ''}
                   >
                     {topicsChartData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

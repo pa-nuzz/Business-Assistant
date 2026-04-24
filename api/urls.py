@@ -23,9 +23,6 @@ urlpatterns = [
     path("auth/verify-reset-code/", verify_reset_code, name="verify-reset-code"),
     path("auth/reset-password/", reset_password, name="reset-password"),
     
-    # Legacy auth endpoints (for backward compatibility)
-    path("auth/reset-password-legacy/", views.reset_password_confirm, name="reset-password-legacy"),
-
     # Chat
     path("chat/", views.chat, name="chat"),
     path("chat/stream/", views.chat_stream, name="chat-stream"),
@@ -88,4 +85,8 @@ urlpatterns = [
     path("admin/dashboard/", views.admin_dashboard, name="admin-dashboard"),
     path("admin/broadcast/", views.admin_broadcast, name="admin-broadcast"),
     path("admin/reindex-all/", views.admin_reindex_all, name="admin-reindex-all"),
+    
+    # Notifications
+    path("notifications/", views.get_notifications, name="notifications-list"),
+    path("notifications/<int:notification_id>/read/", views.mark_notification_read, name="notification-mark-read"),
 ]

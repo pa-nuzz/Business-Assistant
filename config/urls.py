@@ -6,10 +6,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/v1/", include("api.urls")),
-    # JWT Auth endpoints
-    path("api/v1/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/v1/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    # API v1 (modular structure)
+    path("api/v1/", include("api.v1.urls", namespace="api_v1")),
+    # Legacy API (for backwards compatibility)
+    path("api/", include("api.urls")),
 ]
 
 if settings.DEBUG:

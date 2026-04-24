@@ -8,7 +8,19 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-SECRET_KEY = config("SECRET_KEY")
+# Security: Validate SECRET_KEY is properly configured
+SECRET_KEY = config("SECRET_KEY", default="")
+if not SECRET_KEY or SECRET_KEY == "your-secret-key-here-generate-with-python-c-":
+    import secrets
+    import warnings
+    warnings.warn(
+        "WARNING: Using auto-generated SECRET_KEY. This is insecure for production. "
+        "Set a proper SECRET_KEY in your .env file using: python -c \"import secrets; print(secrets.token_hex(50))\"",
+        RuntimeWarning
+    )
+    # Auto-generate a temporary key for development only
+    SECRET_KEY = secrets.token_hex(50)
+
 DEBUG = config("DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost", cast=Csv())
 
@@ -35,12 +47,33 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "utils.middleware.SecurityHeadersMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "utils.middleware.InputValidationMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "utils.middleware.RateLimitLoggingMiddleware",
 ]
+
+# Security Headers
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = "DENY"
+
+# HTTPS Settings (enable in production)
+SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=False, cast=bool)
+SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False, cast=bool)
+SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=False, cast=bool)
+
+# Session Security
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=False, cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=False, cast=bool)
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
@@ -50,8 +83,16 @@ DATABASES = {
     "default": dj_database_url.config(
         default=config("DATABASE_URL", default="sqlite:///db.sqlite3"),
         conn_max_age=600,
+        conn_health_checks=True,
     )
 }
+
+# Connection pooling for PostgreSQL
+if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
+    DATABASES["default"]["OPTIONS"] = {
+        "MAX_CONNS": 20,
+        "MIN_CONNS": 5,
+    }
 
 # ─── Static Files ─────────────────────────────────────────────────────────────
 STATIC_URL = "/static/"
@@ -78,6 +119,13 @@ REST_FRAMEWORK = {
         "user": "60/min",
         "chat": "20/min",
         "upload": "10/min",
+        "auth_register": "5/hour",
+        "auth_verify": "10/min",
+        "auth_password": "5/hour",
+        "auth_login": "10/min",
+        "task": "60/min",
+        "task_write": "30/min",
+        "conversation": "100/min",
     },
 }
 
@@ -182,16 +230,16 @@ CHANNEL_LAYERS = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
-    "UPDATE_LAST_LOGIN": False,
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  # Short-lived for security
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),  # 7 days for httpOnly cookie
+    "ROTATE_REFRESH_TOKENS": True,  # Security: new refresh token on each use
+    "BLACKLIST_AFTER_ROTATION": True,  # Security: old token invalidated
+    "UPDATE_LAST_LOGIN": True,  # Track last login time
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
-    "VERIFYING_KEY": "",
+    "VERIFYING_KEY": None,
     "AUDIENCE": None,
-    "ISSUER": None,
+    "ISSUER": "business-assistant",
     "JSON_ENCODER": None,
     "JWK_URL": None,
     "LEEWAY": 0,
@@ -213,4 +261,80 @@ SIMPLE_JWT = {
     "TOKEN_BLACKLIST_SERIALIZER": "rest_framework_simplejwt.serializers.TokenBlacklistSerializer",
     "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
     "SLIDING_TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSlidingSerializer",
+}
+
+# ─── Logging Configuration ─────────────────────────────────────────────────────
+import os
+
+# Ensure logs directory exists
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOGS_DIR / "django.log",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "api": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "agents": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "mcp": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "services": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "utils": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
 }

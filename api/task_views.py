@@ -3,11 +3,12 @@ Task Management API Views
 Handles CRUD operations for tasks, comments, and activities.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.db.models import Q, Count
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
@@ -16,6 +17,8 @@ from core.models import (
     Task, TaskTag, TaskComment, TaskActivity, 
     TaskAttachment, TaskAISuggestion, BusinessProfile
 )
+from utils.sanitization import sanitize_plain_text, sanitize_rich_text
+from utils.task_permissions import can_modify_task, can_delete_task
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def list_tasks(request):
+    list_tasks.throttle_scope = "task"
     """List tasks for the authenticated user with filtering and pagination."""
     user = request.user
     
@@ -42,9 +47,14 @@ def list_tasks(request):
     page_size = min(int(request.GET.get("page_size", 20)), 100)
     
     # Base queryset - tasks created by user OR assigned to user
+    # Using select_related for foreign keys and prefetch_related for many-to-many
     tasks = Task.objects.filter(
         Q(created_by=user) | Q(assignee=user) | Q(user=user)
-    ).select_related("assignee", "created_by").prefetch_related("tags")
+    ).select_related(
+        "assignee", "created_by", "business_profile"
+    ).prefetch_related(
+        "tags", "subtasks", "comments"
+    )
     
     # Apply filters
     if status_filter:
@@ -99,10 +109,27 @@ def list_tasks(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def create_task(request):
+    create_task.throttle_scope = "task_write"
     """Create a new task."""
     user = request.user
     data = request.data
+    
+    # Sanitize inputs
+    title = sanitize_plain_text(data.get("title", ""), max_length=255)
+    description = sanitize_rich_text(data.get("description", ""), max_length=5000)
+
+    if not title:
+        return Response(
+            {"error": "Task title is required and must be valid text."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Replace raw data references with sanitized values
+    data = request.data.copy()
+    data["title"] = title
+    data["description"] = description
     
     # Validate required fields
     title = data.get("title", "").strip()
@@ -128,7 +155,7 @@ def create_task(request):
         status=data.get("status", "todo"),
         priority=data.get("priority", "medium"),
         due_date=data.get("due_date"),
-        assignee_id=data.get("assignee_id") or user.id,
+        assignee_id=data.get("assignee_id") if data.get("assignee_id") is not None else user.id,
         estimated_hours=data.get("estimated_hours"),
         is_subtask=data.get("is_subtask", False),
         parent_task_id=data.get("parent_task_id"),
@@ -164,7 +191,9 @@ def create_task(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def get_task(request, task_id):
+    get_task.throttle_scope = "task"
     """Get detailed information about a specific task."""
     user = request.user
     
@@ -234,19 +263,29 @@ def get_task(request, task_id):
 
 @api_view(["PUT", "PATCH"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def update_task(request, task_id):
+    update_task.throttle_scope = "task_write"
     """Update an existing task."""
     user = request.user
     task = get_object_or_404(Task, id=task_id)
     
-    # Check permissions
-    if task.created_by != user and task.assignee != user:
+    # Check permissions using shared utility
+    if not can_modify_task(task, user):
         return Response(
             {"error": "You don't have permission to update this task"},
             status=status.HTTP_403_FORBIDDEN
         )
     
     data = request.data
+    
+    # Sanitize text inputs
+    if "title" in data:
+        data["title"] = sanitize_plain_text(data["title"], max_length=255)
+    if "description" in data:
+        data["description"] = sanitize_rich_text(data["description"], max_length=5000)
+    if "completion_notes" in data:
+        data["completion_notes"] = sanitize_rich_text(data["completion_notes"], max_length=2000)
     
     # Track changes for activity log
     changes = []
@@ -327,7 +366,9 @@ def update_task(request, task_id):
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def delete_task(request, task_id):
+    delete_task.throttle_scope = "task_write"
     """Delete (archive) a task."""
     user = request.user
     task = get_object_or_404(Task, id=task_id)
@@ -356,7 +397,9 @@ def delete_task(request, task_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def complete_task(request, task_id):
+    complete_task.throttle_scope = "task_write"
     """Mark a task as complete."""
     user = request.user
     task = get_object_or_404(Task, id=task_id)
@@ -394,7 +437,9 @@ def complete_task(request, task_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def reopen_task(request, task_id):
+    reopen_task.throttle_scope = "task_write"
     """Reopen a completed task."""
     user = request.user
     task = get_object_or_404(Task, id=task_id)
@@ -426,7 +471,9 @@ def reopen_task(request, task_id):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def list_comments(request, task_id):
+    list_comments.throttle_scope = "task"
     """List comments for a task."""
     task = get_object_or_404(Task, id=task_id)
     comments = task.comments.select_related("user").order_by("-created_at")
@@ -449,15 +496,18 @@ def list_comments(request, task_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def create_comment(request, task_id):
+    create_comment.throttle_scope = "task_write"
     """Add a comment to a task."""
     user = request.user
     task = get_object_or_404(Task, id=task_id)
     
-    content = request.data.get("content", "").strip()
+    # Sanitize comment content to prevent XSS
+    content = sanitize_rich_text(request.data.get("content", ""), max_length=2000)
     if not content:
         return Response(
-            {"error": "Comment content is required"},
+            {"error": "Comment content is required and cannot be empty after sanitization"},
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -484,7 +534,9 @@ def create_comment(request, task_id):
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def delete_comment(request, task_id, comment_id):
+    delete_comment.throttle_scope = "task_write"
     """Delete a comment."""
     user = request.user
     comment = get_object_or_404(TaskComment, id=comment_id, task_id=task_id)
@@ -538,7 +590,9 @@ def list_activities(request, task_id):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def task_dashboard(request):
+    task_dashboard.throttle_scope = "task"
     """Get task dashboard data."""
     user = request.user
     
@@ -555,24 +609,27 @@ def task_dashboard(request):
     priority_counts = tasks.exclude(status="done").exclude(status="archived").values("priority").annotate(count=Count("id"))
     priority_data = {item["priority"]: item["count"] for item in priority_counts}
     
-    # Overdue tasks
+    # Overdue tasks - use timezone-aware comparison
+    from django.utils import timezone
+    now = timezone.now()
     overdue_tasks = tasks.filter(
-        due_date__lt=datetime.now(),
+        due_date__lt=now,
         status__in=["todo", "in_progress", "review"]
     ).order_by("due_date")[:5]
     
     overdue_data = []
     for task in overdue_tasks:
+        days_overdue = (now - task.due_date).days if task.due_date else 0
         overdue_data.append({
             "id": str(task.id),
             "title": task.title,
-            "due_date": task.due_date.isoformat(),
+            "due_date": task.due_date.isoformat() if task.due_date else None,
             "priority": task.priority,
-            "days_overdue": (datetime.now() - task.due_date.replace(tzinfo=None)).days
+            "days_overdue": days_overdue
         })
     
     # Today's tasks
-    today = datetime.now().date()
+    today = now.date()
     today_tasks = tasks.filter(
         due_date__date=today,
         status__in=["todo", "in_progress"]
@@ -590,7 +647,7 @@ def task_dashboard(request):
     # Upcoming tasks (next 7 days)
     upcoming = tasks.filter(
         due_date__date__gt=today,
-        due_date__date__lte=today + __import__('datetime').timedelta(days=7),
+        due_date__date__lte=today + timedelta(days=7),
         status__in=["todo", "in_progress"]
     ).order_by("due_date")[:10]
     
@@ -617,7 +674,9 @@ def task_dashboard(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
 def task_stats(request):
+    task_stats.throttle_scope = "task"
     """Get task completion statistics."""
     user = request.user
     
@@ -631,7 +690,6 @@ def task_stats(request):
     completion_rate = (completed / total * 100) if total > 0 else 0
     
     # This week stats
-    from datetime import timedelta
     week_ago = datetime.now() - timedelta(days=7)
     
     created_this_week = tasks.filter(created_at__gte=week_ago).count()

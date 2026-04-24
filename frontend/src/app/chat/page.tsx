@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { chat, user } from "@/lib/api";
-import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { useChat } from "@/components/chat-context";
 import ReactMarkdown from "react-markdown";
 import {
@@ -11,7 +10,7 @@ import {
   Mic,
   ArrowUp,
   BrainCircuit,
-  CircleDot,
+  Sparkles,
   FileText,
   CheckSquare,
   BarChart3,
@@ -19,10 +18,10 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Bot,
+  User,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TypingIndicator } from "@/components/typing-indicator";
-import { useSoundEffects } from "@/components/sound-effects";
 
 interface Message {
   id?: string;
@@ -53,12 +52,8 @@ export default function ChatPage() {
     setMessages,
     inputValue,
     setInputValue,
-    scrollPosition,
-    setScrollPosition,
     currentConversationId: contextConversationId,
     setCurrentConversationId,
-    isRestored,
-    saveState,
   } = useChat();
 
   const [isStreaming, setIsStreaming] = useState(false);
@@ -69,16 +64,13 @@ export default function ChatPage() {
   const [hasInitialized, setHasInitialized] = useState(false);
 
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
-  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef("");
   const currentConversationIdRef = useRef(contextConversationId);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const isInitialMount = useRef(true);
 
-  const { pop, chime } = useSoundEffects();
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -120,12 +112,6 @@ export default function ChatPage() {
     fetchUserInfo();
   }, []);
 
-  // Track scroll position
-  const handleScroll = useCallback(() => {
-    if (messagesContainerRef.current) {
-      setScrollPosition(messagesContainerRef.current.scrollTop);
-    }
-  }, [setScrollPosition]);
 
   // Fetch conversation history when id changes
   useEffect(() => {
@@ -133,28 +119,19 @@ export default function ChatPage() {
     setCurrentConversationId(id || undefined);
 
     if (id) {
-      // Only fetch if we haven't restored from context or if it's a different conversation
-      if (!isRestored || contextConversationId !== id) {
-        fetchConversation(id);
-      }
+      fetchConversation(id);
     } else {
-      // Only clear messages if we're not restoring from context
-      if (!isRestored || isInitialMount.current) {
-        setMessages([]);
-        setError(null);
-      }
+      // No ID in URL - show fresh chat on startup
+      // Don't auto-load recent conversation - user wants fresh start
+      setMessages([]);
+      setError(null);
+      // Clear any stored conversation ID
+      setCurrentConversationId(undefined);
     }
     
-    isInitialMount.current = false;
     setHasInitialized(true);
   }, [searchParams]);
 
-  // Restore scroll position after messages load
-  useEffect(() => {
-    if (messagesContainerRef.current && scrollPosition > 0 && !isLoading) {
-      messagesContainerRef.current.scrollTop = scrollPosition;
-    }
-  }, [messages.length, isLoading, scrollPosition]);
 
   const fetchConversation = async (id: string) => {
     // Don't fetch if we're currently streaming
@@ -185,6 +162,31 @@ export default function ChatPage() {
         setError("Failed to load conversation");
       }
       console.error("Error fetching conversation:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch the most recent conversation from backend
+  const loadRecentConversation = async () => {
+    if (isStreaming) return;
+    
+    setIsLoading(true);
+    try {
+      const data = await chat.getConversations(1, 1); // Get most recent
+      if (data.results && data.results.length > 0) {
+        const recentId = data.results[0].id;
+        // Navigate to the recent conversation
+        router.replace(`/chat?id=${recentId}`, { scroll: false });
+      } else {
+        // No conversations exist, clear messages
+        setMessages([]);
+        setError(null);
+      }
+    } catch (err) {
+      // Silently fail - show empty state
+      setMessages([]);
+      setError(null);
     } finally {
       setIsLoading(false);
     }
@@ -226,8 +228,6 @@ export default function ChatPage() {
       setLastUserMessage(messageToSend);
     }
 
-    // Play pop sound on send
-    pop();
 
     const userMessage: Message = {
       role: "user",
@@ -248,9 +248,10 @@ export default function ChatPage() {
       { role: "assistant", content: "", isStreaming: true },
     ]);
 
-    // Add 3-4 second "thinking" delay for natural feel (random between 3-4s)
-    const thinkingDelay = 3000 + Math.random() * 1000;
-    await new Promise(resolve => setTimeout(resolve, thinkingDelay));
+    // Small animation grace period only on first message
+    if (messages.length <= 1) {
+      await new Promise(resolve => setTimeout(resolve, 400));
+    }
 
     try {
       await chat.sendMessageStream(
@@ -279,8 +280,6 @@ export default function ChatPage() {
         () => {
           // Streaming done
           setIsStreaming(false);
-          // Play chime sound on receive
-          chime();
           setMessages((prev) => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
@@ -291,8 +290,6 @@ export default function ChatPage() {
           });
           // Trigger sidebar refresh
           window.dispatchEvent(new CustomEvent("refresh-conversations"));
-          // Save state after message complete
-          saveState();
         },
         (err) => {
           setError(err);
@@ -343,28 +340,32 @@ export default function ChatPage() {
       icon: FileText,
       title: "Analyze documents",
       description: "Upload PDFs and ask questions about them",
-      color: "blue",
+      iconBg: "bg-blue-50",
+      iconColor: "text-blue-600",
       prompt: "I have a document I'd like to analyze. Can you help me understand it?",
     },
     {
       icon: CheckSquare,
       title: "Manage tasks",
       description: "Create and track your business tasks",
-      color: "green",
+      iconBg: "bg-green-50",
+      iconColor: "text-green-600",
       prompt: "Help me create a task list for my business priorities.",
     },
     {
       icon: BarChart3,
       title: "Business insights",
       description: "Get AI analysis of your metrics and KPIs",
-      color: "purple",
+      iconBg: "bg-purple-50",
+      iconColor: "text-purple-600",
       prompt: "Can you help me analyze my business performance and metrics?",
     },
     {
       icon: Globe,
       title: "Market research",
       description: "Search and summarize industry trends",
-      color: "orange",
+      iconBg: "bg-orange-50",
+      iconColor: "text-orange-600",
       prompt: "What are the current trends in my industry?",
     },
   ];
@@ -405,87 +406,128 @@ export default function ChatPage() {
 
   return (
     <>
-      <div className="flex flex-col h-[calc(100vh-4rem)] bg-background">
-      {/* Messages Area */}
+      <div className="flex flex-col h-screen bg-slate-50">
+      {/* Messages Area - Added pl-14 for mobile to account for hamburger button */}
       <div 
         ref={messagesContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6"
+        className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 pl-14 sm:pl-6 py-6 scroll-smooth"
       >
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto pb-40">
           {isLoading ? (
-            // Loading skeleton
+            // Clean loading skeleton
             <div className="space-y-6">
               <div className="flex justify-end">
-                <div className="skeleton w-3/4 h-12" />
+                <div className="w-3/4 h-12 rounded-2xl bg-indigo-100 animate-pulse" />
               </div>
               <div className="flex justify-start">
-                <div className="skeleton w-full h-24" />
+                <div className="w-full h-24 rounded-2xl bg-slate-100 animate-pulse" />
               </div>
               <div className="flex justify-end">
-                <div className="skeleton w-1/2 h-12" />
+                <div className="w-1/2 h-12 rounded-2xl bg-indigo-100 animate-pulse" />
               </div>
               <div className="flex justify-start">
-                <div className="skeleton w-3/4 h-20" />
+                <div className="w-3/4 h-20 rounded-2xl bg-slate-100 animate-pulse" />
               </div>
             </div>
           ) : messages.length === 0 ? (
-            // Empty state with welcome UI - premium design
-            <div className="flex flex-col items-center justify-center pt-[3%] min-h-[400px] text-center">
-              <div className="w-20 h-20 mb-6 relative" style={{ filter: 'drop-shadow(0 0 40px rgba(59,130,246,0.15))' }}>
-                <img 
-                  src="/logos/core.svg" 
-                  alt="AEIOU AI" 
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <h1 className="text-2xl font-semibold text-foreground mb-2">
+            // Clean empty state with animated logo
+            <div className="flex flex-col items-center justify-center pt-[10vh] min-h-[400px] text-center px-4 sm:px-0">
+              <motion.div 
+                className="w-16 h-16 mb-5 flex items-center justify-center"
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              >
+                <svg 
+                  width="64" 
+                  height="64" 
+                  viewBox="0 0 100 100" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="drop-shadow-lg"
+                >
+                  <circle cx="50" cy="50" r="48" fill="white"/>
+                  <circle cx="50" cy="50" r="48" fill="url(#brandGradient)" fillOpacity="0.1"/>
+                  <rect x="20" y="45" width="8" height="35" rx="4" fill="#6366F1">
+                    <animate attributeName="height" values="35;25;45;35" dur="3s" repeatCount="indefinite" />
+                    <animate attributeName="y" values="45;55;35;45" dur="3s" repeatCount="indefinite" />
+                  </rect>
+                  <rect x="35" y="30" width="8" height="50" rx="4" fill="#8B5CF6">
+                    <animate attributeName="height" values="50;35;55;50" dur="2.5s" repeatCount="indefinite" />
+                    <animate attributeName="y" values="30;45;25;30" dur="2.5s" repeatCount="indefinite" />
+                  </rect>
+                  <rect x="50" y="20" width="8" height="60" rx="4" fill="#6366F1">
+                    <animate attributeName="height" values="60;40;70;60" dur="2s" repeatCount="indefinite" />
+                    <animate attributeName="y" values="20;40;10;20" dur="2s" repeatCount="indefinite" />
+                  </rect>
+                  <rect x="65" y="35" width="8" height="45" rx="4" fill="#8B5CF6">
+                    <animate attributeName="height" values="45;30;50;45" dur="2.7s" repeatCount="indefinite" />
+                    <animate attributeName="y" values="35;50;25;35" dur="2.7s" repeatCount="indefinite" />
+                  </rect>
+                  <rect x="80" y="50" width="8" height="30" rx="4" fill="#6366F1">
+                    <animate attributeName="height" values="30;20;40;30" dur="3.2s" repeatCount="indefinite" />
+                    <animate attributeName="y" values="50;60;40;50" dur="3.2s" repeatCount="indefinite" />
+                  </rect>
+                  <defs>
+                    <linearGradient id="brandGradient" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="#6366F1"/>
+                      <stop offset="1" stopColor="#8B5CF6"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </motion.div>
+              <motion.h1 
+                className="text-xl font-semibold text-slate-900 mb-1"
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.1, duration: 0.4 }}
+              >
                 {getGreeting()}{userName ? `, ${userName}` : ""}
-              </h1>
-              <p className="text-muted-foreground max-w-md mb-8">
+              </motion.h1>
+              <motion.p 
+                className="text-slate-500 max-w-md mb-8 text-sm"
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.4 }}
+              >
                 What can I help you with today?
-              </p>
+              </motion.p>
               
-              {/* Capability cards - 2x2 grid */}
+              {/* Clean capability cards */}
               <div className="grid grid-cols-2 gap-3 max-w-lg w-full">
                 {capabilityCards.map((card, idx) => {
                   const Icon = card.icon;
-                  const colorClasses: Record<string, { bg: string; text: string }> = {
-                    blue: { bg: "bg-blue-50", text: "text-blue-600" },
-                    green: { bg: "bg-green-50", text: "text-green-600" },
-                    purple: { bg: "bg-purple-50", text: "text-purple-600" },
-                    orange: { bg: "bg-orange-50", text: "text-orange-600" },
-                  };
-                  const colors = colorClasses[card.color];
                   return (
                     <motion.button
                       key={idx}
-                      initial={{ opacity: 0, y: 10 }}
+                      initial={{ opacity: 0, y: 15 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.1 }}
+                      transition={{ delay: 0.3 + idx * 0.08, duration: 0.4 }}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
                       onClick={() => handleCardClick(card.prompt)}
-                      className="flex flex-col items-start p-4 bg-card border border-border rounded-xl hover:border-blue-300 hover:shadow-sm cursor-pointer transition-all text-left"
+                      className="flex flex-col items-start p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-md cursor-pointer transition-all text-left group"
                     >
-                      <div className={`w-10 h-10 rounded-lg ${colors.bg} flex items-center justify-center mb-3`}>
-                        <Icon className={`w-5 h-5 ${colors.text}`} />
+                      <div className={`w-9 h-9 rounded-lg ${card.iconBg} flex items-center justify-center mb-3 bg-slate-100`}>
+                        <Icon className={`w-4 h-4 ${card.iconColor}`} />
                       </div>
-                      <h3 className="text-sm font-medium text-foreground mb-1">{card.title}</h3>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{card.description}</p>
+                      <h3 className="text-sm font-medium text-slate-900 mb-0.5">{card.title}</h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">{card.description}</p>
                     </motion.button>
                   );
                 })}
               </div>
             </div>
           ) : (
-            // Messages list
+            // Messages list with premium styling
             <div className="space-y-6">
               <AnimatePresence initial={false}>
                 {messages.map((message, index) => (
                   <motion.div
                     key={index}
-                    initial={{ opacity: 0, y: 8 }}
+                    initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
                     className={`flex flex-col ${
                       message.role === "user" ? "items-end" : "items-start"
                     }`}
@@ -494,45 +536,46 @@ export default function ChatPage() {
                       <div
                         className={`${
                           message.role === "user"
-                            ? "bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 shadow-sm"
-                            : "bg-white border border-gray-100 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm"
+                            ? "bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 shadow-sm"
+                            : "bg-slate-100 text-slate-900 rounded-2xl rounded-bl-sm px-4 py-2.5"
                         }`}
                       >
                         {message.role === "assistant" ? (
-                          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:p-0 prose-p:my-1">
-                            <ReactMarkdown>
-                              {message.content}
-                            </ReactMarkdown>
-                            {message.isStreaming && (
-                              <motion.span
-                                animate={{ opacity: [1, 0, 1] }}
-                                transition={{ duration: 0.8, repeat: Infinity }}
-                                className="inline-block w-0.5 h-4 bg-foreground ml-0.5 align-middle"
-                              />
+                          <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-p:my-1 text-slate-800">
+                            {message.isStreaming ? (
+                              <div className="text-sm leading-relaxed whitespace-pre-wrap flex items-end">
+                                {message.content}
+                                <span className="inline-block w-0.5 h-4 bg-indigo-500 ml-0.5 animate-pulse" />
+                              </div>
+                            ) : (
+                              <ReactMarkdown>{message.content}</ReactMarkdown>
                             )}
                           </div>
                         ) : (
-                          <p className="text-sm leading-relaxed">{message.content}</p>
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
                         )}
                       </div>
                       {/* Copy button for assistant messages */}
                       {message.role === "assistant" && !message.isStreaming && message.content && (
-                        <button
+                        <motion.button
                           onClick={() => handleCopy(message.content, index)}
-                          className="absolute -top-2 -right-2 p-1.5 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 0, scale: 0.8 }}
+                          whileHover={{ opacity: 1, scale: 1 }}
+                          className="absolute -top-2 -right-2 p-1.5 bg-white border border-gray-200 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-gray-50"
                           title="Copy to clipboard"
                         >
                           {copiedIndex === index ? (
                             <Check className="w-3.5 h-3.5 text-green-600" />
                           ) : (
-                            <Copy className="w-3.5 h-3.5 text-gray-500" />
+                            <Copy className="w-3.5 h-3.5 text-gray-400" />
                           )}
-                        </button>
+                        </motion.button>
                       )}
                     </div>
                     {/* Timestamp */}
                     {message.created_at && (
-                      <span className="text-xs text-muted-foreground mt-1 px-1">
+                      <span className="text-[11px] text-slate-400 mt-1 px-1">
                         {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
@@ -540,31 +583,56 @@ export default function ChatPage() {
                 ))}
               </AnimatePresence>
               
-              {/* Typing indicator when AI is thinking */}
+              {/* Typing indicator with animated logo */}
               {isStreaming && messages[messages.length - 1]?.role === "assistant" && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-start"
+                  className="flex justify-start items-center gap-3"
                 >
-                  <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-3">
-                    <TypingIndicator />
+                  <div className="w-6 h-6 flex-shrink-0">
+                    <svg width="24" height="24" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <rect x="15" y="50" width="10" height="30" rx="5" fill="#6366F1">
+                        <animate attributeName="height" values="30;20;35;30" dur="3s" repeatCount="indefinite" />
+                        <animate attributeName="y" values="50;60;45;50" dur="3s" repeatCount="indefinite" />
+                      </rect>
+                      <rect x="35" y="35" width="10" height="50" rx="5" fill="#8B5CF6">
+                        <animate attributeName="height" values="50;35;55;50" dur="2.5s" repeatCount="indefinite" />
+                        <animate attributeName="y" values="35;50;30;35" dur="2.5s" repeatCount="indefinite" />
+                      </rect>
+                      <rect x="55" y="25" width="10" height="60" rx="5" fill="#6366F1">
+                        <animate attributeName="height" values="60;40;70;60" dur="2s" repeatCount="indefinite" />
+                        <animate attributeName="y" values="25;45;15;25" dur="2s" repeatCount="indefinite" />
+                      </rect>
+                      <rect x="75" y="45" width="10" height="35" rx="5" fill="#8B5CF6">
+                        <animate attributeName="height" values="35;25;40;35" dur="2.7s" repeatCount="indefinite" />
+                        <animate attributeName="y" values="45;55;40;45" dur="2.7s" repeatCount="indefinite" />
+                      </rect>
+                    </svg>
+                  </div>
+                  <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-2.5 flex items-center gap-2">
+                    <div className="flex gap-1">
+                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
                 </motion.div>
               )}
               
+              {/* Error display with retry */}
               {error && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex flex-col items-center gap-2"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center gap-3"
                 >
-                  <div className="bg-destructive/10 text-destructive px-4 py-2 rounded-lg text-sm">
+                  <div className="bg-red-50 text-red-600 border border-red-100 px-4 py-2.5 rounded-lg text-sm font-medium">
                     {typeof error === 'string' ? error : 'An error occurred'}
                   </div>
                   <button
                     onClick={() => handleRetry()}
-                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors px-3 py-1.5 rounded-full hover:bg-slate-100"
                   >
                     <RefreshCw className="w-4 h-4" />
                     Retry
@@ -577,10 +645,10 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Input Area */}
-      <div className="border-t border-border bg-background px-4 sm:px-6 lg:px-8 py-4">
+      {/* Input Area - Fixed at bottom with proper mobile spacing */}
+      <div className="fixed bottom-0 left-0 right-0 lg:left-[280px] border-t border-slate-200 bg-white px-4 sm:px-6 lg:px-8 pl-14 sm:pl-6 py-4 z-10">
         <div className="max-w-3xl mx-auto">
-          <div className="bg-card border border-border rounded-xl shadow-sm">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl shadow-sm">
             {/* Text input */}
             <div className="px-4 pt-4">
               <textarea
@@ -591,7 +659,7 @@ export default function ChatPage() {
                 placeholder="Ask me anything..."
                 disabled={isStreaming}
                 rows={1}
-                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none outline-none min-h-[24px] max-h-[200px] text-sm leading-relaxed"
+                className="w-full bg-transparent text-slate-900 placeholder:text-slate-400 resize-none outline-none min-h-[24px] max-h-[200px] text-sm leading-relaxed"
               />
             </div>
 
@@ -604,8 +672,8 @@ export default function ChatPage() {
                   disabled={isStreaming}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     activeSources.has("search")
-                      ? "bg-accent-blue-subtle text-accent-blue"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      ? "bg-indigo-50 text-indigo-600 border border-indigo-200"
+                      : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
                   }`}
                 >
                   <Search className="w-3.5 h-3.5" />
@@ -616,11 +684,11 @@ export default function ChatPage() {
                   disabled={isStreaming}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     activeSources.has("deep_research")
-                      ? "bg-accent-blue-subtle text-accent-blue"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      ? "bg-purple-50 text-purple-600 border border-purple-200"
+                      : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
                   }`}
                 >
-                  <CircleDot className="w-3.5 h-3.5" />
+                  <Sparkles className="w-3.5 h-3.5" />
                   <span>Deep Research</span>
                 </button>
                 <button
@@ -628,8 +696,8 @@ export default function ChatPage() {
                   disabled={isStreaming}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     activeSources.has("reason")
-                      ? "bg-accent-blue-subtle text-accent-blue"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      ? "bg-green-50 text-green-600 border border-green-200"
+                      : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
                   }`}
                 >
                   <BrainCircuit className="w-3.5 h-3.5" />
@@ -641,22 +709,26 @@ export default function ChatPage() {
               <div className="flex items-center gap-2">
                 <button
                   disabled={isStreaming}
-                  className="p-2 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="p-2 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Mic className="w-4 h-4" />
                 </button>
                 {isStreaming ? (
                   <div className="w-8 h-8 flex items-center justify-center">
-                    <TypingIndicator />
+                    <div className="flex gap-1">
+                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
                 ) : (
                   <button
                     onClick={() => handleSend()}
                     disabled={!inputValue.trim() || isStreaming}
-                    className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 ${
                       inputValue.trim() && !isStreaming
-                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                        : "bg-muted text-muted-foreground cursor-not-allowed"
+                        ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
+                        : "bg-slate-200 text-slate-400 cursor-not-allowed"
                     }`}
                   >
                     <ArrowUp className="w-4 h-4" />
@@ -667,16 +739,12 @@ export default function ChatPage() {
           </div>
 
           {/* Disclaimer */}
-          <p className="text-center text-xs text-muted-foreground mt-3">
+          <p className="text-center text-xs text-slate-400 mt-3">
             AI-generated content may contain inaccuracies. Verify important information.
           </p>
         </div>
       </div>
     </div>
-      {showOnboarding && (
-        <OnboardingWizard onClose={() => setShowOnboarding(false)} />
-      )}
     </>
   );
 }
-

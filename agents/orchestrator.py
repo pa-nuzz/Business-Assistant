@@ -24,8 +24,24 @@ from services.model_layer import (
 )
 from mcp.tools import TOOL_DEFINITIONS, execute_tool
 from django.core.cache import cache
+from agents.entity_resolver import EntityResolver
+from agents.tool_decision import ToolDecisionEngine
 
 logger = logging.getLogger(__name__)
+
+SYNTHESIS_SYSTEM_PROMPT = """You are AEIOU, a business assistant. You have strict rules:
+
+1. BASE YOUR RESPONSE ONLY ON THE TOOL RESULTS PROVIDED BELOW.
+2. NEVER invent, estimate, or calculate numbers not present in tool results.
+3. If a specific piece of information is missing from tool results, say exactly:
+   "I don't have that information available right now."
+4. NEVER use your training knowledge to fill in business data (revenue, task counts, dates).
+5. If tool results are empty, say so clearly and offer to help the user set up that data.
+6. Keep responses concise and actionable.
+7. If the user asks about something you just told them, refer back to what you said — don't re-fetch.
+
+Tool results are provided below. Respond based ONLY on these.
+"""
 
 QueryIntent = Literal["chat", "search", "document", "analytics", "memory", "action", "task"]
 
@@ -119,7 +135,8 @@ def classify_intent_advanced(user_message: str, user_id: int) -> QueryIntent:
                  "task for", "remind me to", "schedule", "plan to", "need to", "should I",
                  "mark complete", "finish task", "done with", "task done", "my tasks",
                  "what tasks", "show tasks", "list tasks", "prioritize", "organize tasks",
-                 "task priority", "assign task", "due date", "deadline"],
+                 "task priority", "assign task", "due date", "deadline", "i need to", 
+                 "i have to", "i must", "set a reminder", "add a reminder", "reminder for"],
         "action": ["create", "update", "delete", "save", "schedule", "remind me",
                    "add to", "remove from", "set up", "configure"]
     }
@@ -143,6 +160,40 @@ def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
                            conversation_history: List[Dict]) -> ExecutionPlan:
     """Build an execution plan using rule-based logic (no AI call)."""
     
+    # --- Entity resolution ---
+    resolver = EntityResolver(user_id=user_id, conversation_history=conversation_history)
+    entities = resolver.resolve(user_message)
+
+    # --- Clarification shortcut ---
+    unclear = [e for e in entities if e.needs_clarification]
+    if unclear:
+        # Return a clarification plan instead of guessing
+        return ExecutionPlan(
+            intent="clarification",
+            tool_calls=[],
+            reasoning_chain=[f"Ambiguous reference — confirm: did you mean '{e.name}'?" for e in unclear],
+            expected_outcome="Ask user to confirm which entity they mean before proceeding."
+        )
+
+    # --- Tool decision engine ---
+    # Use for intents where the hardcoded logic below doesn't have a specific handler
+    engine = ToolDecisionEngine(user_id=user_id)
+    decision = engine.decide(
+        intent=intent,
+        user_message=user_message,
+        entities=entities,
+        context={}
+    )
+
+    # If the engine says no tools needed, return early
+    if decision.decision_type.value == "no_tools":
+        return ExecutionPlan(
+            intent=intent,
+            tool_calls=[],
+            reasoning_chain=[decision.reasoning],
+            expected_outcome="Answer from conversation context only."
+        )
+
     tool_calls = []
     reasoning_chain = []
     
@@ -173,19 +224,63 @@ def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
         is_creating = any(sig in user_message.lower() for sig in creation_signals)
         
         if is_creating:
-            # Auto-extract and create tasks from the message
+            # Try to extract due date using dateparser if available
+            try:
+                import dateparser
+                parsed_date = dateparser.parse(
+                    user_message,
+                    settings={"PREFER_DATES_FROM": "future", "RETURN_AS_TIMEZONE_AWARE": False}
+                )
+                due_date_str = parsed_date.strftime("%Y-%m-%d") if parsed_date else None
+            except ImportError:
+                due_date_str = None
+
+            # Infer priority from message keywords
+            urgent_keywords = ["urgent", "asap", "immediately", "critical", "emergency"]
+            high_keywords = ["important", "priority", "must", "need to", "have to"]
+            priority = "medium"
+            msg_lower = user_message.lower()
+            if any(k in msg_lower for k in urgent_keywords):
+                priority = "urgent"
+            elif any(k in msg_lower for k in high_keywords):
+                priority = "high"
+
             tool_calls = [
-                {"name": "suggest_tasks_from_context", "args": {"text": user_message, "user_id": user_id, "source_type": "chat"}, "reason": "Extract actionable tasks from user message"},
-                {"name": "list_tasks", "args": {"user_id": user_id, "limit": 5, "status": "todo"}, "reason": "Show updated task list"}
+                {
+                    "name": "create_task",
+                    "args": {
+                        "user_id": user_id,
+                        "title": user_message[:120].strip(),
+                        "description": user_message,
+                        "priority": priority,
+                        **({"due_date": due_date_str} if due_date_str else {}),
+                    },
+                    "reason": "Auto-create task from user message"
+                },
+                {
+                    "name": "list_tasks",
+                    "args": {"user_id": user_id, "limit": 5, "status": "todo"},
+                    "reason": "Show updated task list after creation"
+                }
             ]
-            reasoning_chain = ["User wants to create a task", "Extract tasks from their message", "Show updated task list"]
         else:
-            # Just querying existing tasks
+            # No clear creation signal — show existing tasks and suggest
             tool_calls = [
-                {"name": "list_tasks", "args": {"user_id": user_id, "limit": 10}, "reason": "Check recent tasks"},
-                {"name": "get_task_insights", "args": {"user_id": user_id}, "reason": "Get task productivity insights"}
+                {
+                    "name": "suggest_tasks_from_context",
+                    "args": {
+                        "user_id": user_id,
+                        "text": user_message,
+                        "source_type": "chat"
+                    },
+                    "reason": "Extract task suggestions from user message"
+                },
+                {
+                    "name": "list_tasks",
+                    "args": {"user_id": user_id, "limit": 5},
+                    "reason": "Show current tasks"
+                }
             ]
-            reasoning_chain = ["User asked about tasks", "List tasks and get productivity insights"]
     
     elif intent == "memory":
         tool_calls = [
@@ -259,6 +354,41 @@ def execute_intelligent_plan(plan: ExecutionPlan, user_id: int) -> List[Dict]:
     
     return results
 
+
+def get_proactive_alerts(user_id: int) -> list:
+    """Return time-sensitive alerts the user should know about."""
+    from django.utils import timezone
+    from core.models import Task
+    alerts = []
+
+    overdue = Task.objects.filter(
+        user_id=user_id,
+        due_date__lt=timezone.now(),
+        status__in=["todo", "in_progress"]
+    ).count()
+
+    if overdue > 0:
+        alerts.append({
+            "type": "overdue",
+            "message": f"You have {overdue} overdue task{'s' if overdue > 1 else ''}.",
+            "action": "list_tasks",
+        })
+
+    due_today = Task.objects.filter(
+        user_id=user_id,
+        due_date__date=timezone.now().date(),
+        status__in=["todo", "in_progress"]
+    ).count()
+
+    if due_today > 0:
+        alerts.append({
+            "type": "due_today",
+            "message": f"{due_today} task{'s' if due_today > 1 else ''} due today.",
+            "action": "list_tasks",
+        })
+
+    return alerts
+
 def _format_tool_result(tool_name: str, result: Dict) -> str:
     """Format tool result with smart context injection."""
     data = result.get("result", result)
@@ -282,7 +412,7 @@ def synthesize_response(user_message: str, plan: ExecutionPlan, tool_results: Li
     """Synthesize a comprehensive, intelligent response."""
     from agents.prompts import get_system_prompt
     
-    system_prompt = get_system_prompt(user_name)
+    system_prompt = SYNTHESIS_SYSTEM_PROMPT
     
     # --- Extract user context from already-fetched tool_results ---
     user_context_parts = []
@@ -363,7 +493,9 @@ Just give a natural, helpful response:"""
 
 def run_intelligent(user_message: str, user_id: int, conversation_history: List[Dict], 
                    user_name: str = None) -> OrchestratorResult:
-    """Main entry point for intelligent orchestration."""
+    """Main entry point for intelligent orchestration with context-first responses."""
+    from services.model_layer import extract_and_store_memory
+    
     _update_context(user_id, user_message, "", [])
     
     intent = classify_intent_advanced(user_message, user_id)
@@ -378,28 +510,29 @@ def run_intelligent(user_message: str, user_id: int, conversation_history: List[
         user_message, plan, tool_results, user_id, user_name
     )
     
+    # Automatic memory extraction - always run after response generation
     memory_stored = False
-    if intent in ["analytics", "document", "action", "task"]:
-        add_user_memory(
-            user_id,
-            f"User asked about {intent}: {user_message[:100]}... Response used tools: {', '.join(tools_used)}"
-        )
-        memory_stored = True
+    try:
+        memory_stored = extract_and_store_memory(user_id, user_message, response_text)
+    except Exception as e:
+        logger.warning(f"Memory extraction failed: {e}")
     
-    return OrchestratorResult(
-        text=response_text,
-        model="intelligent_orchestrator",
-        tools_used=tools_used,
-        intent=intent,
-        reasoning_chain=plan.reasoning_chain,
-        confidence=len(tools_used) / max(len(plan.tool_calls), 1),
-        memory_stored=memory_stored
-    )
+    return {
+        "reply": response_text,
+        "suggestions": get_proactive_alerts(user_id),
+        "model": "intelligent_orchestrator",
+        "tools_used": tools_used,
+        "intent": intent,
+        "reasoning_chain": plan.reasoning_chain,
+        "confidence": len(tools_used) / max(len(plan.tool_calls), 1),
+        "memory_stored": memory_stored
+    }
 
 def run_stream_intelligent(user_message: str, user_id: int, conversation_history: List[Dict], 
                           user_name: str = None, conversation_id: str = None):
-    """Streaming version of intelligent orchestration."""
+    """Streaming version of intelligent orchestration with thinking indicators and automatic memory extraction."""
     import json as _json
+    from services.model_layer import extract_and_store_memory
     
     _update_context(user_id, user_message, "", [])
     intent = classify_intent_advanced(user_message, user_id)
@@ -415,8 +548,15 @@ def run_stream_intelligent(user_message: str, user_id: int, conversation_history
     }
     yield f"data: {_json.dumps(meta)}\n\n"
     
+    # Start thinking indicator immediately
+    thinking_msg = _get_thinking_message(plan.tool_calls, intent)
+    yield f"data: {_json.dumps({'type': 'thinking', 'content': thinking_msg})}\n\n"
+    
     tool_results = execute_intelligent_plan(plan, user_id)
     tools_used = [r["tool"] for r in tool_results if r.get("success", False)]
+    
+    # Update thinking message before synthesis
+    yield f"data: {_json.dumps({'type': 'thinking', 'content': 'Putting it together...'})}\n\n"
     
     tools_meta = {"tools_used": tools_used}
     yield f"data: {_json.dumps(tools_meta)}\n\n"
@@ -432,6 +572,9 @@ Data: {context_block}
 
 Provide a helpful, actionable response:"""
 
+    # Collect response for memory extraction
+    collected_response = []
+    
     try:
         for token in call_model_stream(
             user_id=user_id,
@@ -439,12 +582,44 @@ Provide a helpful, actionable response:"""
             base_system_prompt="You are an intelligent business assistant. Be specific and actionable.",
             task_type=TaskType.ANALYSIS,
         ):
+            collected_response.append(token)
             yield f"data: {_json.dumps({'token': token})}\n\n"
     except Exception as e:
         logger.exception("Streaming synthesis failed")
         yield f"data: {_json.dumps({'error': str(e)})}\n\n"
     
+    # Extract memory after streaming completes
+    try:
+        full_response = "".join(collected_response)
+        memory_stored = extract_and_store_memory(user_id, user_message, full_response)
+        if memory_stored:
+            yield f"data: {_json.dumps({'memory_stored': True})}\n\n"
+    except Exception as e:
+        logger.warning(f"Memory extraction in stream failed: {e}")
+    
     yield "data: [DONE]\n\n"
+
+
+def _get_thinking_message(tool_calls: List[Dict], intent: str) -> str:
+    """Generate an appropriate thinking message based on tools being called."""
+    if not tool_calls:
+        return "Thinking..."
+    
+    tool_names = [tc.get("name", "") for tc in tool_calls]
+    
+    # Group by category
+    if any("search" in tn or "brave" in tn for tn in tool_names):
+        return "Searching for information..."
+    elif any("document" in tn for tn in tool_names):
+        return "Looking through your documents..."
+    elif any("task" in tn for tn in tool_names):
+        return "Checking your tasks..."
+    elif any("revenue" in tn or "analytics" in tn or "profile" in tn for tn in tool_names):
+        return "Pulling up your business data..."
+    elif len(tool_calls) > 2:
+        return f"Running {len(tool_calls)} tools to get your answer..."
+    else:
+        return "Looking that up..."
 
 # Backwards compatibility
 run = run_intelligent

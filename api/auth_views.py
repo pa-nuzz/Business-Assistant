@@ -6,10 +6,11 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.models import EmailVerification, PasswordResetCode
@@ -25,7 +26,9 @@ logger = logging.getLogger(__name__)
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def register(request):
+    register.throttle_scope = "auth_register"
     """
     Register a new user with email verification.
     Request: {"username": "...", "password": "...", "email": "..."}
@@ -105,7 +108,9 @@ def register(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def verify_email(request):
+    verify_email.throttle_scope = "auth_verify"
     """
     Verify email with 6-digit code.
     Request: {"username": "...", "code": "..."}
@@ -198,7 +203,9 @@ def verify_email(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def resend_verification(request):
+    resend_verification.throttle_scope = "auth_verify"
     """
     Resend verification code.
     Request: {"username": "..."}
@@ -245,7 +252,9 @@ def resend_verification(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def forgot_password(request):
+    forgot_password.throttle_scope = "auth_password"
     """
     Request password reset code.
     Request: {"email": "..."}
@@ -260,6 +269,13 @@ def forgot_password(request):
 
     try:
         user = User.objects.get(email=email)
+
+        # Clean up old reset codes for this user before creating new one
+        PasswordResetCode.objects.filter(
+            user=user,
+            created_at__lt=timezone.now() - timezone.timedelta(minutes=15)
+        ).delete()
+        PasswordResetCode.objects.filter(user=user, is_used=True).delete()
 
         # Generate reset code
         code = generate_verification_code()
@@ -291,7 +307,9 @@ def forgot_password(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def verify_reset_code(request):
+    verify_reset_code.throttle_scope = "auth_verify"
     """
     Verify password reset code (without resetting yet).
     Request: {"email": "...", "code": "..."}
@@ -339,7 +357,9 @@ def verify_reset_code(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def reset_password(request):
+    reset_password.throttle_scope = "auth_password"
     """
     Reset password with verification code.
     Request: {"email": "...", "code": "...", "new_password": "..."}
@@ -416,7 +436,9 @@ def reset_password(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def login(request):
+    login.throttle_scope = "auth_login"
     """
     Login with username and password.
     Returns JWT tokens on success.

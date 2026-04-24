@@ -350,7 +350,9 @@ export default function AnimatedSignupPage() {
       <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-primary/90 via-primary to-primary/80 p-12 text-primary-foreground overflow-hidden">
         <div className="relative z-20">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-8 h-8" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
+              <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
+            </div>
             <span>AEIOU AI</span>
           </div>
         </div>
@@ -529,7 +531,9 @@ export default function AnimatedSignupPage() {
       <div className="flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #e0f2fe 100%)' }}>
         <div className="w-full max-w-[420px]">
           <div className="lg:hidden flex items-center justify-center gap-2 text-lg font-semibold mb-12">
-            <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-8 h-8" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
+              <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
+            </div>
             <span>AEIOU AI</span>
           </div>
 

@@ -10,7 +10,9 @@ Key rules enforced here:
 import re
 import os
 import logging
+import zipfile
 from typing import Any
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,75 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
 }
+
+# Dangerous signatures that indicate executable/malicious content
+BLOCKED_SIGNATURES = [
+    b"\x4D\x5A",          # Windows executable (MZ)
+    b"\x7F\x45\x4C\x46",  # ELF executable
+    b"PK\x03\x04",        # ZIP (generic — will be validated further for DOCX)
+    b"<?php",             # PHP code
+    b"#!/",               # Shell script shebang
+    b"<%",                # ASP/JSP tag
+]
+
+
+def _validate_magic_bytes(file_obj, ext: str) -> tuple[bool, str]:
+    """
+    Validate actual file content (magic bytes) to prevent extension spoofing.
+    Uses built-in Python modules — no external dependencies.
+    """
+    try:
+        file_obj.seek(0)
+        header = file_obj.read(4096)
+        file_obj.seek(0)
+    except Exception:
+        return False, "Could not read file content for validation."
+
+    if not header:
+        return False, "Empty file."
+
+    # Check for dangerous signatures first
+    for sig in BLOCKED_SIGNATURES:
+        if header.startswith(sig) and ext != "docx":
+            # DOCX is a ZIP, so we allow PK header only for docx
+            return False, "File content does not match allowed types. Possible executable or script detected."
+
+    if ext == "pdf":
+        if not header.startswith(b"%PDF"):
+            return False, "Invalid PDF file content."
+        return True, ""
+
+    if ext == "docx":
+        # DOCX is a ZIP containing word/document.xml
+        try:
+            with zipfile.ZipFile(BytesIO(header)) as zf:
+                if "word/document.xml" not in zf.namelist():
+                    return False, "Invalid DOCX file: missing word/document.xml."
+            return True, ""
+        except zipfile.BadZipFile:
+            return False, "Invalid DOCX file: not a valid ZIP archive."
+
+    if ext == "txt":
+        # Reject if it looks like a script/executable
+        dangerous_patterns = [b"<?php", b"#!/", b"<script", b"<%", b"%PDF", b"\x4D\x5A"]
+        lower_header = header.lower()
+        for pattern in dangerous_patterns:
+            if pattern.lower() in lower_header:
+                return False, "TXT file contains suspicious content."
+        # Check it's mostly readable text
+        try:
+            header.decode("utf-8")
+            return True, ""
+        except UnicodeDecodeError:
+            # Allow if it's mostly ASCII
+            text_chars = bytearray({7, 8, 9, 10, 12, 13, 32}
+                                   | set(range(32, 127)))
+            non_text = sum(1 for b in header if b not in text_chars)
+            if non_text / len(header) > 0.3:
+                return False, "File does not appear to be valid text."
+            return True, ""
+
+    return False, "Unsupported file type for magic byte validation."
 
 
 def validate_uploaded_file(file) -> tuple[bool, str]:
@@ -45,6 +116,11 @@ def validate_uploaded_file(file) -> tuple[bool, str]:
     if ".." in name or "/" in name or "\\" in name:
         return False, "Invalid filename."
 
+    # Validate actual file content (magic bytes)
+    valid, error = _validate_magic_bytes(file, ext)
+    if not valid:
+        return False, error
+
     return True, ""
 
 
@@ -62,6 +138,11 @@ def sanitize_tool_args(tool_name: str, args: dict, authenticated_user_id: int) -
         "list_documents",
         "get_document_summary",
         "search_documents",
+        "create_task",
+        "get_task_details",
+        "update_task",
+        "delete_task",
+        "list_tasks",
     }
 
     if tool_name in PROTECTED_TOOLS and "user_id" in args:

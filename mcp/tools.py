@@ -10,10 +10,32 @@ The agent reads TOOL_DEFINITIONS to tell the model what's available,
 then calls execute_tool() when the model requests a tool.
 """
 import logging
+from functools import wraps
+from django.core.cache import cache
+import hashlib
+import json
 from typing import Any
 from django.contrib.auth.models import User
 
 logger = logging.getLogger(__name__)
+
+
+def cached_tool(ttl: int = 300):
+    """Cache tool results for `ttl` seconds. Skip cache on error."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            key_data = json.dumps({"fn": func.__name__, "a": args, "k": kwargs}, sort_keys=True, default=str)
+            cache_key = "tool_" + hashlib.md5(key_data.encode()).hexdigest()
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return {**cached, "_cached": True}
+            result = func(*args, **kwargs)
+            if "error" not in result:
+                cache.set(cache_key, result, timeout=ttl)
+            return result
+        return wrapper
+    return decorator
 
 # ─── Tool Definitions (sent to the LLM) ──────────────────────────────────────
 # These follow the function-calling schema format used by Gemini/OpenAI-compatible APIs.
@@ -222,11 +244,163 @@ TOOL_DEFINITIONS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "create_task",
+        "description": (
+            "Create a new task for the user. Use when the user wants to add a task, "
+            "create a todo, or schedule something. Extract title, priority, and due date "
+            "from their message."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "title": {"type": "string", "description": "Clear, actionable task title"},
+                "description": {"type": "string", "description": "Optional details"},
+                "priority": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "urgent"],
+                    "default": "medium"
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": "ISO format date e.g. 2026-04-05. Optional."
+                },
+            },
+            "required": ["user_id", "title"],
+        },
+    },
+    {
+        "name": "list_tasks",
+        "description": "List the user's tasks with optional filtering by status or priority.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "status": {
+                    "type": "string",
+                    "enum": ["todo", "in_progress", "review", "done"],
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "urgent"],
+                },
+                "limit": {"type": "integer", "default": 50},
+            },
+            "required": ["user_id"],
+        },
+    },
+    {
+        "name": "update_task_status",
+        "description": "Update a task's status.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "UUID of the task"},
+                "user_id": {"type": "integer"},
+                "status": {
+                    "type": "string",
+                    "enum": ["todo", "in_progress", "review", "done", "archived"]
+                },
+            },
+            "required": ["task_id", "user_id", "status"],
+        },
+    },
+    {
+        "name": "get_task_details",
+        "description": "Get full details of a specific task by its ID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "user_id": {"type": "integer"},
+            },
+            "required": ["task_id", "user_id"],
+        },
+    },
+    {
+        "name": "get_task_insights",
+        "description": "Get analytics and insights about the user's tasks (completion rate, overdue count, priority breakdown).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+            },
+            "required": ["user_id"],
+        },
+    },
+    {
+        "name": "suggest_tasks_from_context",
+        "description": "Extract and suggest tasks from a block of text (e.g. from a document or message). Returns suggestions, does NOT create tasks automatically.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "text": {"type": "string"},
+                "source_type": {
+                    "type": "string",
+                    "enum": ["chat", "document", "email"],
+                    "default": "chat"
+                },
+            },
+            "required": ["user_id", "text"],
+        },
+    },
+    {
+        "name": "delete_task",
+        "description": "Delete a task permanently. Ask for confirmation before calling this.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string"},
+                "user_id": {"type": "integer"},
+            },
+            "required": ["task_id", "user_id"],
+        },
+    },
+    {
+        "name": "scrape_webpage",
+        "description": (
+            "Scrape and extract text content from a web page URL. "
+            "Use when the user shares a link and wants to know what's on it, "
+            "or for competitor research."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Full URL including https://"},
+                "user_id": {"type": "integer"},
+            },
+            "required": ["url", "user_id"],
+        },
+    },
+    {
+        "name": "send_notification",
+        "description": (
+            "Send an in-app notification to the user. Use for urgent updates, "
+            "task reminders, or when you need the user's attention."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "message": {"type": "string", "description": "Notification message text"},
+                "priority": {
+                    "type": "string",
+                    "enum": ["low", "normal", "high", "urgent"],
+                    "default": "normal",
+                },
+                "action_url": {"type": "string", "description": "Optional URL to redirect when clicked"},
+            },
+            "required": ["user_id", "message"],
+        },
+    },
 ]
 
 
 # ─── Tool Implementations ─────────────────────────────────────────────────────
 
+@cached_tool(ttl=600)   # 10 minutes
 def get_business_profile(user_id: int) -> dict:
     """Fetch user's business profile from DB."""
     try:
@@ -480,6 +654,7 @@ def get_followup_items(user_id: int) -> dict:
         return {"error": str(e)}
 
 
+@cached_tool(ttl=300)   # 5 minutes
 def list_documents(user_id: int) -> dict:
     """List user's uploaded documents."""
     try:
@@ -588,6 +763,7 @@ def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
         return {"error": str(e)}
 
 
+@cached_tool(ttl=3600)  # 1 hour (external API, rarely changes)
 def brave_search(query: str, num_results: int = 3) -> dict:
     """
     Web search via Brave Search API.
@@ -646,6 +822,24 @@ def brave_search(query: str, num_results: int = 3) -> dict:
             return {"result": results if results else "No results found."}
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
+
+
+def send_notification(user_id: int, message: str, priority: str = "normal", action_url: str = "") -> dict:
+    """Create an in-app notification for the user."""
+    from core.models import Notification
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        user = User.objects.get(id=user_id)
+        n = Notification.objects.create(
+            user=user,
+            message=message,
+            priority=priority,
+            action_url=action_url
+        )
+        return {"result": {"notification_id": n.id, "message": message, "sent": True}}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ─── Task Management Tools ──────────────────────────────────────────────────
@@ -796,8 +990,12 @@ def update_task_status(task_id: str, user_id: int, status: str) -> dict:
         
         task = Task.objects.get(id=task_id)
         
-        # Check permissions
-        if task.created_by_id != user_id and task.assignee_id != user_id:
+        # Check permissions using shared utility
+        from utils.task_permissions import can_modify_task
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.get(id=user_id)
+        if not can_modify_task(task, user):
             return {"error": "Permission denied"}
         
         old_status = task.status
@@ -1070,6 +1268,9 @@ TOOL_MAP: dict[str, callable] = {
     "get_document_summary": get_document_summary,
     "search_documents": search_documents,
     "brave_search": brave_search,
+    # Web scraper (lazy import to avoid circular dependency)
+    "scrape_webpage": lambda **kwargs: __import__('mcp.tools.web_scraper', fromlist=['scrape_webpage']).scrape_webpage(**kwargs),
+    "send_notification": send_notification,
     # Task management tools
     "create_task": create_task,
     "list_tasks": list_tasks,
@@ -1081,21 +1282,43 @@ TOOL_MAP: dict[str, callable] = {
 }
 
 
-def execute_tool(tool_name: str, tool_args: dict) -> dict:
+def execute_tool(tool_name: str, tool_args: dict, timeout: int = 15) -> dict:
     """
     Single entry point for all tool calls.
     Returns a dict — always has "result" or "error" key.
+    Implements hard timeout to prevent stuck tool calls from hanging threads.
     """
+    import concurrent.futures
+    import threading
+    
     fn = TOOL_MAP.get(tool_name)
     if not fn:
         return {"error": f"Unknown tool: {tool_name}"}
+    
+    def execute_with_timeout():
+        try:
+            return fn(**tool_args)
+        except Exception as e:
+            return {"error": f"Tool execution error: {str(e)}"}
+    
     try:
-        logger.info(f"Executing tool: {tool_name} | args: {tool_args}")
-        result = fn(**tool_args)
-        logger.info(f"Tool result: {tool_name} → ok")
-        return result
-    except TypeError as e:
-        return {"error": f"Invalid arguments for {tool_name}: {str(e)}"}
+        logger.info(f"Executing tool: {tool_name} | args: {tool_args} | timeout: {timeout}s")
+        
+        # Use ThreadPoolExecutor for cross-platform timeout support
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(execute_with_timeout)
+            try:
+                result = future.result(timeout=timeout)
+                logger.info(f"Tool result: {tool_name} → ok")
+                return result
+            except concurrent.futures.TimeoutError:
+                logger.error(f"Tool {tool_name} timed out after {timeout}s")
+                future.cancel()
+                return {"error": f"Tool {tool_name} took too long ({timeout}s). Try again or simplify your request."}
+            except Exception as e:
+                logger.exception(f"Tool {tool_name} crashed")
+                return {"error": f"Tool error: {str(e)}"}
+                
     except Exception as e:
-        logger.exception(f"Tool {tool_name} crashed")
-        return {"error": f"Tool error: {str(e)}"}
+        logger.exception(f"Tool execution setup failed for {tool_name}")
+        return {"error": f"Failed to execute tool: {str(e)}"}

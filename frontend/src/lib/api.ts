@@ -2,11 +2,28 @@ import axios from 'axios';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
 
+// Event emitter for auth failures (components should listen and use Next.js router)
+const authErrorListeners: Set<() => void> = new Set();
+
+export const onAuthError = (callback: () => void) => {
+  authErrorListeners.add(callback);
+  return () => authErrorListeners.delete(callback);
+};
+
+const triggerAuthRedirect = () => {
+  authErrorListeners.forEach(cb => cb());
+  // Fallback if no listeners registered
+  if (authErrorListeners.size === 0 && typeof window !== 'undefined') {
+    window.location.href = '/login';
+  }
+};
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout for all requests
 });
 
 // Add auth token to requests
@@ -28,9 +45,10 @@ api.interceptors.response.use(
     if (!error.response) {
       // Network error - backend not reachable
       if (error.code === 'ECONNABORTED' || error.message?.includes('Network Error')) {
-        console.error('Backend server not reachable. Please ensure Django is running on http://127.0.0.1:8000');
+        // Log to monitoring service instead of console
+        // console.error is prohibited in production code
       }
-      return Promise.reject(error);
+      return Promise.reject(new Error('Network error: Backend server not reachable. Please ensure the server is running.'));
     }
     
     if (error.response?.status === 401 && !originalRequest._retry) {
@@ -50,9 +68,7 @@ api.interceptors.response.use(
         } catch (refreshError) {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
+          triggerAuthRedirect();
           return Promise.reject(refreshError);
         }
       }
@@ -62,9 +78,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
+      triggerAuthRedirect();
     }
     
     return Promise.reject(error);
@@ -277,18 +291,28 @@ export const documents = {
 };
 
 // Profile API
+export interface ProfileData {
+  company_name?: string;
+  industry?: string;
+  company_size?: string;
+  description?: string;
+  goals?: string[];
+  key_metrics?: Record<string, number>;
+  [key: string]: string | string[] | Record<string, number> | undefined;
+}
+
 export const profile = {
   get: async () => {
     const response = await api.get('/profile/');
     return response.data;
   },
   
-  update: async (data: any) => {
+  update: async (data: ProfileData) => {
     const response = await api.post('/profile/', data);
     return response.data;
   },
   
-  updateWithAvatar: async (data: any, avatarFile: File) => {
+  updateWithAvatar: async (data: ProfileData, avatarFile: File) => {
     const formData = new FormData();
     
     // Add all data fields
@@ -371,7 +395,7 @@ export const tasks = {
     return response.data;
   },
   
-  update: async (id: string, data: any) => {
+  update: async (id: string, data: Partial<{ title: string; description?: string; priority?: string; status?: string; due_date?: string; assignee_id?: number; tags?: string[]; document_ids?: string[] }>) => {
     const response = await api.put(`/tasks/${id}/update/`, data);
     return response.data;
   },
@@ -441,6 +465,18 @@ export const onboarding = {
   },
   seedDemo: async () => {
     const response = await api.post('/demo/seed/');
+    return response.data;
+  },
+};
+
+// Notifications API
+export const notifications = {
+  list: async () => {
+    const response = await api.get('/notifications/');
+    return response.data;
+  },
+  markAsRead: async (notificationId: number) => {
+    const response = await api.post(`/notifications/${notificationId}/read/`);
     return response.data;
   },
 };

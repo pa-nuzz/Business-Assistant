@@ -192,9 +192,16 @@ export function CommandPalette() {
       : commands;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Cmd+K or Ctrl+K to open
+    // Cmd+K or Ctrl+K to open - only if authenticated
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
+      // Check if user is authenticated before opening
+      const token = localStorage.getItem('token');
+      if (!token) {
+        // Redirect to login if not logged in
+        router.push('/login');
+        return;
+      }
       setIsOpen(true);
       setShowHelp(false);
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -207,7 +214,7 @@ export function CommandPalette() {
         setIsOpen(false);
       }
     }
-  }, [isOpen, showHelp]);
+  }, [isOpen, showHelp, router]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -225,16 +232,18 @@ export function CommandPalette() {
 
   return (
     <>
-      {/* Keyboard shortcut hint */}
-      <motion.button
-        onClick={() => setIsOpen(true)}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 px-3 py-2 bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-xl shadow-lg text-sm text-gray-600 hover:text-gray-900 hover:border-gray-300 hover:shadow-xl transition-all"
-      >
-        <Command size={14} className="text-blue-500" />
-        <span className="font-medium">Cmd K</span>
-      </motion.button>
+      {/* Keyboard shortcut hint - only show when authenticated */}
+      {typeof window !== 'undefined' && localStorage.getItem('token') && (
+        <motion.button
+          onClick={() => setIsOpen(true)}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 px-3 py-2 bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-xl shadow-lg text-sm text-gray-600 hover:text-gray-900 hover:border-gray-300 hover:shadow-xl transition-all"
+        >
+          <Command size={14} className="text-blue-500" />
+          <span className="font-medium">Cmd K</span>
+        </motion.button>
+      )}
 
       <AnimatePresence>
         {isOpen && (

@@ -158,8 +158,8 @@ export default function AnimatedResetPasswordPage() {
         {/* Top branding */}
         <div className="relative z-20">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <div className="size-8 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center">
-              <Sparkles className="size-4" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
+              <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
             </div>
             <span>AEIOU AI</span>
           </div>
@@ -210,8 +210,8 @@ export default function AnimatedResetPasswordPage() {
         <div className="w-full max-w-[420px] py-8">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-2 text-lg font-semibold mb-8">
-            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Sparkles className="size-4 text-primary" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
+              <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
             </div>
             <span>AEIOU AI</span>
           </div>
