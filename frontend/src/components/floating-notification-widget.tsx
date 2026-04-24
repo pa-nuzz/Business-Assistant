@@ -193,7 +193,7 @@ export function FloatingNotificationWidget({
                 >
                   <div className="flex items-start gap-2">
                     <div className={`w-2 h-2 rounded-full mt-1.5 ${getPriorityColor(unreadNotifications[0].priority)}`} />
-                    <p className="text-sm text-foreground flex-1 line-clamp-2">
+                    <p className="text-sm text-slate-900 flex-1 line-clamp-2">
                       {unreadNotifications[0].message}
                     </p>
                     <button
@@ -203,14 +203,14 @@ export function FloatingNotificationWidget({
                       }}
                       className="p-1 hover:bg-black/5 rounded transition-colors"
                     >
-                      <X className="w-3 h-3 text-muted-foreground" />
+                      <X className="w-3 h-3 text-slate-400" />
                     </button>
                   </div>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-slate-500">
                       {formatTime(unreadNotifications[0].created_at)}
                     </span>
-                    <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                    <ArrowRight className="w-3 h-3 text-slate-400" />
                   </div>
                 </div>
               </motion.div>
@@ -221,7 +221,7 @@ export function FloatingNotificationWidget({
               onClick={() => setIsExpanded(true)}
               className="relative group flex items-center justify-center w-14 h-14 bg-card border border-border rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all"
             >
-              <Bell className="w-6 h-6 text-foreground group-hover:text-blue-600 transition-colors" />
+              <Bell className="w-6 h-6 text-slate-900 group-hover:text-blue-600 transition-colors" />
               
               {/* Unread Count Badge */}
               {unreadCount > 0 && (
@@ -254,7 +254,7 @@ export function FloatingNotificationWidget({
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Bell className="w-5 h-5 text-foreground" />
+                  <Bell className="w-5 h-5 text-slate-900" />
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[8px] text-white font-bold">
                       {unreadCount > 9 ? '9+' : unreadCount}
@@ -282,7 +282,7 @@ export function FloatingNotificationWidget({
                   onClick={() => setIsExpanded(false)}
                   className="p-1.5 hover:bg-muted rounded-lg transition-colors"
                 >
-                  <X className="w-4 h-4 text-muted-foreground" />
+                  <X className="w-4 h-4 text-slate-400" />
                 </button>
               </div>
             </div>
@@ -292,10 +292,10 @@ export function FloatingNotificationWidget({
               {notificationsList.length === 0 ? (
                 <div className="px-4 py-12 text-center">
                   <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-                    <Bell className="w-8 h-8 text-muted-foreground/50" />
+                    <Bell className="w-8 h-8 text-slate-400/50" />
                   </div>
-                  <p className="text-sm text-muted-foreground">No notifications yet</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">
+                  <p className="text-sm text-slate-600">No notifications yet</p>
+                  <p className="text-xs text-slate-500/60 mt-1">
                     We'll notify you of important updates
                   </p>
                 </div>
@@ -316,7 +316,7 @@ export function FloatingNotificationWidget({
                       
                       <div className="pl-3">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm text-foreground flex-1">
+                          <p className="text-sm text-slate-900 flex-1">
                             {notification.message}
                           </p>
                           
@@ -337,7 +337,7 @@ export function FloatingNotificationWidget({
                         </div>
                         
                         <div className="flex items-center gap-2 mt-2">
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-xs text-slate-500">
                             {formatTime(notification.created_at)}
                           </span>
                           
@@ -375,7 +375,7 @@ export function FloatingNotificationWidget({
             {notificationsList.length > 0 && (
               <div className="px-4 py-3 border-t border-border bg-muted/30">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-slate-500">
                     {unreadCount} of {notificationsList.length} unread
                   </span>
                   <a 

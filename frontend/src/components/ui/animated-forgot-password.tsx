@@ -382,15 +382,15 @@ export default function AnimatedForgotPasswordPage() {
           {step === 'email' && (
             <>
               <div className="text-center mb-10">
-                <h1 className="text-3xl font-bold tracking-tight mb-2">Forgot password?</h1>
-                <p className="text-muted-foreground text-sm">Enter your email to get a reset code</p>
+                <h1 className="text-3xl font-bold tracking-tight mb-2 text-slate-900">Forgot password?</h1>
+                <p className="text-slate-600 text-sm">Enter your email to get a reset code</p>
               </div>
               <form onSubmit={handleSendCode} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-sm font-medium">Email</Label>
                   <div className="relative">
                     <Input id="email" type="email" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 pr-10 bg-background border-border/60 focus:border-primary" />
-                    <Mail className="absolute right-3 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
+                    <Mail className="absolute right-3 top-1/2 -translate-y-1/2 size-5 text-slate-400" />
                   </div>
                 </div>
                 {error && <div className="p-3 text-sm text-red-400 bg-red-950/20 border border-red-900/30 rounded-lg">{typeof error === 'string' ? error : JSON.stringify(error)}</div>}
@@ -404,8 +404,8 @@ export default function AnimatedForgotPasswordPage() {
           {step === 'code' && (
             <>
               <div className="text-center mb-10">
-                <h1 className="text-3xl font-bold tracking-tight mb-2">Enter code</h1>
-                <p className="text-muted-foreground text-sm">We sent a 6-digit code to <strong>{email}</strong></p>
+                <h1 className="text-3xl font-bold tracking-tight mb-2 text-slate-900">Enter code</h1>
+                <p className="text-slate-600 text-sm">We sent a 6-digit code to <strong className="text-slate-900">{email}</strong></p>
               </div>
               <form onSubmit={handleVerifyCode} className="space-y-5">
                 <div className="space-y-2">
@@ -426,15 +426,15 @@ export default function AnimatedForgotPasswordPage() {
           {step === 'password' && (
             <>
               <div className="text-center mb-10">
-                <h1 className="text-3xl font-bold tracking-tight mb-2">New password</h1>
-                <p className="text-muted-foreground text-sm">Create a new password for your account</p>
+                <h1 className="text-3xl font-bold tracking-tight mb-2 text-slate-900">New password</h1>
+                <p className="text-slate-600 text-sm">Create a new password for your account</p>
               </div>
               <form onSubmit={handleResetPassword} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="newPassword" className="text-sm font-medium">New Password</Label>
                   <div className="relative">
                     <Input id="newPassword" type={showPassword ? "text" : "password"} placeholder="Enter new password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required minLength={8} className="h-12 pr-10 bg-background border-border/60 focus:border-primary" />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                       {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
                     </button>
                   </div>
@@ -443,7 +443,7 @@ export default function AnimatedForgotPasswordPage() {
                   <Label htmlFor="confirmPassword" className="text-sm font-medium">Confirm Password</Label>
                   <div className="relative">
                     <Input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 pr-10 bg-background border-border/60 focus:border-primary" />
-                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                       {showConfirmPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
                     </button>
                   </div>
@@ -461,8 +461,8 @@ export default function AnimatedForgotPasswordPage() {
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-6">
                 <CheckCircle2 className="w-8 h-8 text-green-600" />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mb-3">Password reset!</h1>
-              <p className="text-muted-foreground text-sm mb-6">Your password has been updated. You can now log in with your new password.</p>
+              <h1 className="text-2xl font-bold tracking-tight mb-3 text-slate-900">Password reset!</h1>
+              <p className="text-slate-600 text-sm mb-6">Your password has been updated. You can now log in with your new password.</p>
               <Button className="w-full h-12" onClick={() => router.push('/login')}>
                 <Lock className="mr-2 size-4" />Go to login
               </Button>
@@ -470,8 +470,8 @@ export default function AnimatedForgotPasswordPage() {
           )}
 
           {step !== 'success' && (
-            <div className="text-center text-sm text-muted-foreground mt-8">
-              Remember your password? <Link href="/login" className="text-foreground font-medium hover:underline">Sign in</Link>
+            <div className="text-center text-sm text-slate-600 mt-8">
+              Remember your password? <Link href="/login" className="text-slate-900 font-medium hover:underline">Sign in</Link>
             </div>
           )}
         </div>

@@ -190,7 +190,7 @@ export function CommandPalette() {
 
   const filteredCommands = search 
     ? fuse.search(search).map(result => result.item)
-    : recentCommands.length > 0 && !search
+    : recentCommands.length > 0
       ? [
           // Show recent commands first
           ...recentCommands

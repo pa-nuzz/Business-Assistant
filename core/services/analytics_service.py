@@ -64,30 +64,27 @@ class AnalyticsService:
         
         return {
             "total_conversations": Conversation.objects.filter(
-                user=self.user, is_deleted=False
+                user=self.user
             ).count(),
             "conversations_last_30d": Conversation.objects.filter(
-                user=self.user, is_deleted=False, updated_at__gte=thirty_days_ago
+                user=self.user, updated_at__gte=thirty_days_ago
             ).count(),
             "total_messages": Message.objects.filter(
                 conversation__user=self.user
             ).count(),
             "total_documents": Document.objects.filter(
-                uploaded_by=self.user, is_deleted=False
+                uploaded_by=self.user
             ).count(),
             "total_tasks": Task.objects.filter(
-                Q(created_by=self.user) | Q(assignee=self.user),
-                is_deleted=False
+                Q(created_by=self.user) | Q(assignee=self.user)
             ).count(),
             "completed_tasks": Task.objects.filter(
                 Q(created_by=self.user) | Q(assignee=self.user),
-                status="completed",
-                is_deleted=False
+                status="completed"
             ).count(),
             "pending_tasks": Task.objects.filter(
                 Q(created_by=self.user) | Q(assignee=self.user),
-                status__in=["pending", "in_progress"],
-                is_deleted=False
+                status__in=["pending", "in_progress"]
             ).count(),
         }
     
@@ -155,7 +152,6 @@ class AnalyticsService:
             Q(created_by=self.user) | Q(assignee=self.user),
             status__in=["pending", "in_progress"],
             due_date__lt=datetime.now(),
-            is_deleted=False
         ).count()
         
         if overdue_count > 0:
@@ -166,7 +162,6 @@ class AnalyticsService:
             Q(created_by=self.user) | Q(assignee=self.user),
             priority="high",
             status__in=["pending", "in_progress"],
-            is_deleted=False
         ).count()
         
         if high_priority_count > 0:
@@ -176,7 +171,6 @@ class AnalyticsService:
         unprocessed_docs = Document.objects.filter(
             uploaded_by=self.user,
             processing_status="pending",
-            is_deleted=False
         ).count()
         
         if unprocessed_docs > 0:
@@ -187,7 +181,6 @@ class AnalyticsService:
         recent_conversations = Conversation.objects.filter(
             user=self.user,
             updated_at__gte=week_ago,
-            is_deleted=False
         ).count()
         
         if recent_conversations < 3:
@@ -214,7 +207,7 @@ class AnalyticsService:
         
         # Average messages per conversation
         avg_messages = 0
-        convo_count = Conversation.objects.filter(user=self.user, is_deleted=False).count()
+        convo_count = Conversation.objects.filter(user=self.user).count()
         if convo_count > 0:
             total_messages = Message.objects.filter(conversation__user=self.user).count()
             avg_messages = round(total_messages / convo_count, 1)
@@ -245,15 +238,13 @@ class AnalyticsService:
         # Task completion rate
         total_tasks = Task.objects.filter(
             Q(created_by=self.user) | Q(assignee=self.user),
-            is_deleted=False
         ).count()
         
         if total_tasks > 0:
             completed = Task.objects.filter(
                 Q(created_by=self.user) | Q(assignee=self.user),
                 status="completed",
-                is_deleted=False
-            ).count()
+                ).count()
             completion_rate = completed / total_tasks
             score += int(completion_rate * 25)
         
@@ -275,7 +266,6 @@ class AnalyticsService:
         processed_docs = Document.objects.filter(
             uploaded_by=self.user,
             processing_status="completed",
-            is_deleted=False
         ).count()
         
         if processed_docs > 5:
@@ -315,7 +305,6 @@ class AnalyticsService:
             Q(created_by=self.user) | Q(assignee=self.user),
             status__in=["pending", "in_progress"],
             due_date__lt=datetime.now(),
-            is_deleted=False
         ).order_by("due_date")[:3]
         
         for task in overdue:
@@ -326,7 +315,6 @@ class AnalyticsService:
             Q(created_by=self.user) | Q(assignee=self.user),
             priority="high",
             status__in=["pending", "in_progress"],
-            is_deleted=False
         ).exclude(
             id__in=[t.id for t in overdue]
         ).order_by("due_date")[:3]
@@ -339,7 +327,6 @@ class AnalyticsService:
         old_conversations = Conversation.objects.filter(
             user=self.user,
             updated_at__lt=week_ago,
-            is_deleted=False
         ).order_by("-updated_at")[:2]
         
         for convo in old_conversations:

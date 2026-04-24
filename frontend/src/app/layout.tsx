@@ -42,7 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${syne.variable} ${dmSans.variable} h-full antialiased`}>
-      <body className="min-h-full bg-[var(--bg-base)] text-[var(--text-primary)] font-sans">
+      <body className="min-h-full bg-background text-foreground font-sans">
         <ErrorBoundary>
           <ClientLayout>{children}</ClientLayout>
         </ErrorBoundary>

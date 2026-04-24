@@ -55,15 +55,21 @@ def call(
             for t in tool_definitions
         ]
 
-    response = client.chat.completions.create(
-        model=cfg["model"],
-        messages=groq_messages,
-        tools=tools,
-        tool_choice="auto" if tools else None,
-        temperature=0.3,
-        max_tokens=2048,
-        timeout=timeout,
-    )
+    # Build API parameters
+    api_params = {
+        "model": cfg["model"],
+        "messages": groq_messages,
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "timeout": timeout,
+    }
+    
+    # Only include tools if they exist
+    if tools:
+        api_params["tools"] = tools
+        api_params["tool_choice"] = "auto"
+    
+    response = client.chat.completions.create(**api_params)
 
     choice = response.choices[0]
     message = choice.message

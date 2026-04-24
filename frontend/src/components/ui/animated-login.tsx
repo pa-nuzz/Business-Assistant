@@ -540,14 +540,14 @@ export default function AnimatedLoginPage() {
 
           {/* Header */}
           <div className="text-center mb-10">
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Welcome back!</h1>
-            <p className="text-muted-foreground text-sm">Please enter your details</p>
+            <h1 className="text-3xl font-bold tracking-tight mb-2 text-slate-900">Welcome back!</h1>
+            <p className="text-slate-600 text-sm">Please enter your details</p>
           </div>
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium">Username</Label>
+              <Label htmlFor="username" className="text-sm font-medium text-slate-700">Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -563,7 +563,7 @@ export default function AnimatedLoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium text-slate-700">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -577,7 +577,7 @@ export default function AnimatedLoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="size-5" />
@@ -593,7 +593,7 @@ export default function AnimatedLoginPage() {
                 <Checkbox id="remember" />
                 <Label
                   htmlFor="remember"
-                  className="text-sm font-normal cursor-pointer"
+                  className="text-sm font-normal cursor-pointer text-slate-700"
                 >
                   Remember for 30 days
                 </Label>
@@ -620,9 +620,9 @@ export default function AnimatedLoginPage() {
           </form>
 
           {/* Sign Up Link */}
-          <div className="text-center text-sm text-muted-foreground mt-8">
+          <div className="text-center text-sm text-slate-600 mt-8">
             Don&apos;t have an account?{" "}
-            <a href="/register" className="text-foreground font-medium hover:underline">
+            <a href="/register" className="text-slate-900 font-medium hover:underline">
               Sign Up
             </a>
           </div>

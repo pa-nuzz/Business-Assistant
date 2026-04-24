@@ -160,7 +160,7 @@ export function AIAssistantInterface() {
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-blue-400 mb-2">
               Ready to assist you
             </h1>
-            <p className="text-muted-foreground max-w-md">
+            <p className="text-slate-600 max-w-md">
               Ask me anything or try one of the suggestions below
             </p>
           </motion.div>
@@ -175,7 +175,7 @@ export function AIAssistantInterface() {
               placeholder="Ask me anything..."
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              className="w-full text-foreground text-base outline-none placeholder:text-muted-foreground bg-transparent"
+              className="w-full text-slate-900 text-base outline-none placeholder:text-slate-400 bg-transparent"
             />
           </div>
 
@@ -186,8 +186,8 @@ export function AIAssistantInterface() {
                 {uploadedFiles.map((file, index) => (
                   <div key={index} className="flex items-center gap-2 bg-muted py-1 px-2 rounded-md border border-border">
                     <FileText className="w-3 h-3 text-blue-600" />
-                    <span className="text-xs text-foreground">{file}</span>
-                    <button onClick={() => removeFile(index)} className="text-muted-foreground hover:text-foreground">
+                    <span className="text-xs text-slate-900">{file}</span>
+                    <button onClick={() => removeFile(index)} className="text-slate-400 hover:text-slate-600">
                       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -207,7 +207,7 @@ export function AIAssistantInterface() {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   searchEnabled
                     ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    : "bg-muted text-slate-600 hover:bg-muted/80"
                 }`}
               >
                 <Search className="w-4 h-4" />
@@ -218,10 +218,10 @@ export function AIAssistantInterface() {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   deepResearchEnabled
                     ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    : "bg-muted text-slate-600 hover:bg-muted/80"
                 }`}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={deepResearchEnabled ? "text-blue-600" : "text-muted-foreground"}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={deepResearchEnabled ? "text-blue-600" : "text-slate-400"}>
                   <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="2" />
                   <circle cx="8" cy="8" r="3" fill="currentColor" />
                 </svg>
@@ -232,15 +232,15 @@ export function AIAssistantInterface() {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   reasonEnabled
                     ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    : "bg-muted text-slate-600 hover:bg-muted/80"
                 }`}
               >
-                <BrainCircuit className={`w-4 h-4 ${reasonEnabled ? "text-blue-600" : "text-muted-foreground"}`} />
+                <BrainCircuit className={`w-4 h-4 ${reasonEnabled ? "text-blue-600" : "text-slate-400"}`} />
                 <span>Reason</span>
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
+              <button className="p-2 text-slate-400 hover:text-slate-900 transition-colors">
                 <Mic className="w-5 h-5" />
               </button>
               <button
@@ -249,7 +249,7 @@ export function AIAssistantInterface() {
                 className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
                   inputValue.trim()
                     ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "bg-muted text-muted-foreground cursor-not-allowed"
+                    : "bg-muted text-slate-600 cursor-not-allowed"
                 }`}
               >
                 <ArrowUp className="w-4 h-4" />
@@ -261,7 +261,7 @@ export function AIAssistantInterface() {
           <div className="px-4 py-2 border-t border-border">
             <button
               onClick={handleUploadFile}
-              className="flex items-center gap-2 text-muted-foreground text-sm hover:text-foreground transition-colors"
+              className="flex items-center gap-2 text-slate-400 text-sm hover:text-slate-900 transition-colors"
             >
               {showUploadAnimation ? (
                 <motion.div className="flex space-x-1" initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.1 } } }}>
@@ -314,7 +314,7 @@ export function AIAssistantInterface() {
             >
               <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
                 <div className="p-3 border-b border-border">
-                  <h3 className="text-sm font-medium text-foreground">
+                  <h3 className="text-sm font-medium text-slate-900">
                     {activeCommandCategory === "learn"
                       ? "Learning suggestions"
                       : activeCommandCategory === "code"
@@ -340,7 +340,7 @@ export function AIAssistantInterface() {
                         ) : (
                           <PenTool className="w-4 h-4 text-blue-600" />
                         )}
-                        <span className="text-sm text-foreground">{suggestion}</span>
+                        <span className="text-sm text-slate-900">{suggestion}</span>
                       </div>
                     </motion.li>
                   ))}
@@ -371,8 +371,8 @@ function CommandButton({ icon, label, isActive, onClick }: CommandButtonProps) {
           : "bg-card border-border hover:border-muted-foreground/30"
       }`}
     >
-      <div className={isActive ? "text-blue-600" : "text-muted-foreground"}>{icon}</div>
-      <span className={`text-sm font-medium ${isActive ? "text-blue-700" : "text-foreground"}`}>{label}</span>
+      <div className={isActive ? "text-blue-600" : "text-slate-400"}>{icon}</div>
+      <span className={`text-sm font-medium ${isActive ? "text-blue-700" : "text-slate-900"}`}>{label}</span>
     </motion.button>
   );
 }

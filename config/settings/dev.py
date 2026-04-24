@@ -5,6 +5,29 @@ from decouple import config
 DEBUG = True
 CORS_ALLOW_ALL_ORIGINS = True
 
+# Disable HTTPS redirects for local development
+SECURE_SSL_REDIRECT = False
+SECURE_HSTS_SECONDS = 0
+
+# Add CORS middleware for development (must be early in middleware stack)
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "utils.middleware.IPRateLimitMiddleware",
+    "utils.middleware.RequestIDMiddleware",
+    "utils.middleware.DeviceFingerprintMiddleware",
+    "utils.middleware.SlowQueryLoggingMiddleware",
+    "utils.middleware.SecurityHeadersMiddleware",
+    "utils.middleware_compression.CompressionMiddleware",
+    "utils.middleware_cache.CacheHeadersMiddleware",
+]
+
 # Frontend URL
 FRONTEND_URL = "http://localhost:3000"
 

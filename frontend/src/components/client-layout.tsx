@@ -126,12 +126,18 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     <LoadingProvider>
       <ChatProvider>
         <AuthGuard>
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
+          {!isPublicPage ? (
+            <div className="flex h-screen overflow-hidden">
+              <Sidebar />
+              <main className="flex-1 min-w-0 overflow-auto relative">
+                {children}
+              </main>
+            </div>
+          ) : (
             <main className="flex-1 min-w-0 overflow-auto relative">
               {children}
             </main>
-          </div>
+          )}
           <CommandPalette />
           <Toaster
             position="top-right"

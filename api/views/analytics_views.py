@@ -28,7 +28,7 @@ def get_analytics(request):
         recent_activity: Recent messages and task activities
     """
     try:
-        analytics.throttle_scope = "analytics"
+        get_analytics.throttle_scope = "analytics"
         service = AnalyticsService(request.user)
         data = service.get_dashboard_analytics()
         return Response(data)

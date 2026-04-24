@@ -118,14 +118,14 @@ export default function DashboardPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground mb-1">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">Dashboard</h1>
           {profile.company_name ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-600">
               {profile.company_name}
               {profile.industry && ` • ${profile.industry}`}
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground">Your business overview</p>
+            <p className="text-sm text-slate-600">Your business overview</p>
           )}
         </div>
 
@@ -135,8 +135,8 @@ export default function DashboardPage() {
             <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <BarChart3 className="w-8 h-8 text-indigo-600" />
             </div>
-            <h2 className="text-lg font-semibold mb-2">Your dashboard is empty</h2>
-            <p className="text-sm text-muted-foreground max-w-sm mb-6">
+            <h2 className="text-lg font-semibold mb-2 text-slate-900">Your dashboard is empty</h2>
+            <p className="text-sm text-slate-600 max-w-sm mb-6">
               Start chatting, upload documents, and create tasks. 
               AEIOU will surface insights here automatically.
             </p>
@@ -164,7 +164,7 @@ export default function DashboardPage() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-card rounded-xl border border-border p-6"
           >
-            <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
               <BarChart3 size={16} className="text-indigo-500" />
               Key Metrics
             </h2>
@@ -212,7 +212,7 @@ export default function DashboardPage() {
             transition={{ delay: 0.1 }}
             className="bg-card rounded-xl border border-border p-6"
           >
-            <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
               <MessageSquare size={16} className="text-violet-500" />
               Conversation Topics
             </h2>
@@ -264,10 +264,10 @@ export default function DashboardPage() {
               transition={{ delay: index * 0.05 }}
               className="p-4 bg-card rounded-xl border border-border hover:border-indigo-200 hover:shadow-sm transition-all cursor-pointer group"
             >
-              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
                 {METRIC_LABELS[key] || key.replace(/_/g, ' ')}
               </p>
-              <p className="text-xl font-bold text-foreground group-hover:text-indigo-600 transition-colors">
+              <p className="text-xl font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
                 {formatMetricValue(key, value)}
               </p>
             </motion.div>
@@ -278,7 +278,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top Topics */}
           <div className="p-6 bg-card rounded-xl border border-border">
-            <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
               <MessageSquare size={16} className="text-indigo-500" />
               Recent conversation topics
             </h2>
@@ -293,7 +293,7 @@ export default function DashboardPage() {
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: idx * 0.05 }}
-                      className="text-xs px-3 py-1.5 bg-muted text-muted-foreground rounded-lg border border-border hover:border-indigo-300 hover:text-foreground transition-colors cursor-pointer"
+                      className="text-xs px-3 py-1.5 bg-muted text-slate-700 rounded-lg border border-border hover:border-indigo-300 hover:text-slate-900 transition-colors cursor-pointer"
                       title={frequency ? `Mentioned ${frequency} times` : undefined}
                     >
                       {topicText}
@@ -303,7 +303,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground">Start chatting to generate insights</p>
+                <p className="text-sm text-slate-600">Start chatting to generate insights</p>
                 <button
                   onClick={() => router.push('/chat')}
                   className="mt-3 px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
@@ -316,7 +316,7 @@ export default function DashboardPage() {
 
           {/* Follow-ups */}
           <div className="p-6 bg-card rounded-xl border border-border">
-            <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
               <Target size={16} className="text-emerald-500" />
               Follow-ups
             </h2>
@@ -333,7 +333,7 @@ export default function DashboardPage() {
                     <span className="text-sm text-indigo-500 font-medium min-w-[24px]">
                       {idx + 1}.
                     </span>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
+                    <p className="text-sm text-slate-600 leading-relaxed">
                       {typeof item === 'string' ? item : item.value}
                     </p>
                   </motion.div>
@@ -341,7 +341,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground">No pending follow-ups</p>
+                <p className="text-sm text-slate-600">No pending follow-ups</p>
                 <button
                   onClick={() => router.push('/chat')}
                   className="mt-3 px-4 py-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
@@ -372,7 +372,7 @@ export default function DashboardPage() {
                   <svg className="h-4 w-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <p className="text-sm text-muted-foreground">{goal}</p>
+                  <p className="text-sm text-slate-600">{goal}</p>
                 </motion.div>
               ))}
             </div>
@@ -390,7 +390,7 @@ export default function DashboardPage() {
           </button>
         </div>
         {/* Last updated timestamp */}
-        <p className="text-xs text-muted-foreground text-center mt-4">
+        <p className="text-xs text-slate-500 text-center mt-4">
           Last updated {new Date().toLocaleString()}
         </p>
           </>

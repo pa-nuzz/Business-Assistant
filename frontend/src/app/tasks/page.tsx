@@ -133,7 +133,7 @@ export default function TasksPage() {
       case 'review':
         return <AlertCircle size={18} className="text-orange-600" />;
       default:
-        return <Circle size={18} className="text-muted-foreground" />;
+        return <Circle size={18} className="text-slate-400" />;
     }
   };
 
@@ -147,8 +147,8 @@ export default function TasksPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-foreground mb-1">Tasks</h1>
-            <p className="text-sm text-muted-foreground">Manage your work and stay organized</p>
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">Tasks</h1>
+            <p className="text-sm text-slate-600">Manage your work and stay organized</p>
           </div>
           <div className="flex items-center gap-3">
             {/* View Toggle */}
@@ -196,10 +196,10 @@ export default function TasksPage() {
               animate={{ opacity: 1, y: 0 }}
               className="p-5 bg-card rounded-xl border border-border"
             >
-              <div className="text-3xl font-bold text-foreground">
+              <div className="text-3xl font-bold text-slate-900">
                 {dashboardData.counts.by_status.todo || 0}
               </div>
-              <div className="text-sm text-muted-foreground">To Do</div>
+              <div className="text-sm text-slate-500">To Do</div>
             </motion.div>
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
@@ -210,7 +210,7 @@ export default function TasksPage() {
               <div className="text-3xl font-bold text-blue-600">
                 {dashboardData.counts.by_status.in_progress || 0}
               </div>
-              <div className="text-sm text-muted-foreground">In Progress</div>
+              <div className="text-sm text-slate-500">In Progress</div>
             </motion.div>
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
@@ -221,7 +221,7 @@ export default function TasksPage() {
               <div className="text-3xl font-bold text-orange-600">
                 {(dashboardData.counts.by_priority.high || 0) + (dashboardData.counts.by_priority.urgent || 0)}
               </div>
-              <div className="text-sm text-muted-foreground">High Priority</div>
+              <div className="text-sm text-slate-500">High Priority</div>
             </motion.div>
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
@@ -232,7 +232,7 @@ export default function TasksPage() {
               <div className="text-3xl font-bold text-green-600">
                 {dashboardData.counts.by_status.done || 0}
               </div>
-              <div className="text-sm text-muted-foreground">Completed</div>
+              <div className="text-sm text-slate-500">Completed</div>
             </motion.div>
           </div>
         )}
@@ -260,7 +260,7 @@ export default function TasksPage() {
                       className="flex items-center p-4 bg-red-50 border border-red-100 rounded-xl"
                     >
                       {getStatusIcon(task.status)}
-                      <span className="ml-3 flex-1 text-sm text-foreground">{task.title}</span>
+                      <span className="ml-3 flex-1 text-sm text-slate-900">{task.title}</span>
                       <span className="text-xs text-red-600 font-medium">
                         {task.days_overdue} days overdue
                       </span>
@@ -273,7 +273,7 @@ export default function TasksPage() {
             {/* Today's Tasks */}
             {dashboardData?.today && dashboardData.today.length > 0 && (
               <div className="mb-8">
-                <h2 className="text-lg font-semibold text-foreground mb-4">Today</h2>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">Today</h2>
                 <div className="space-y-2">
                   {dashboardData.today.map((task) => (
                     <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
@@ -285,7 +285,7 @@ export default function TasksPage() {
             {/* Upcoming Tasks */}
             {dashboardData?.upcoming && dashboardData.upcoming.length > 0 && (
               <div className="mb-8">
-                <h2 className="text-lg font-semibold text-foreground mb-4">Upcoming</h2>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">Upcoming</h2>
                 <div className="space-y-2">
                   {dashboardData.upcoming.map((task) => (
                     <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
@@ -297,14 +297,14 @@ export default function TasksPage() {
             {/* All Tasks Grouped by Status */}
             {allTasks.length > 0 && (
               <div className="mt-8">
-                <h2 className="text-lg font-semibold text-foreground mb-4">All Tasks</h2>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">All Tasks</h2>
                 <div className="space-y-6">
                   {STATUS_ORDER.map((status) => {
                     const statusTasks = allTasks.filter((t) => t.status === status);
                     if (statusTasks.length === 0) return null;
                     return (
                       <div key={status}>
-                        <h3 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">
+                        <h3 className="text-sm font-medium text-slate-500 mb-3 uppercase tracking-wide">
                           {STATUS_LABELS[status]} ({statusTasks.length})
                         </h3>
                         <div className="space-y-2">
@@ -331,21 +331,21 @@ export default function TasksPage() {
         {/* Pagination */}
         {allTasks.length > 0 && (
           <div className="mt-8 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-500">
               Page {currentPage} of {totalPages}
             </p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-sm font-medium text-slate-900 bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Previous
               </button>
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-sm font-medium text-slate-900 bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Next
               </button>
@@ -369,8 +369,8 @@ export default function TasksPage() {
               <div className="absolute top-3 left-6 w-10 h-10 border-2 border-blue-300 rounded-md transform rotate-3" />
               <div className="absolute top-6 left-8 w-10 h-10 border-2 border-blue-400 rounded-md transform rotate-12" />
             </div>
-            <h2 className="text-xl font-semibold text-foreground mb-2">No tasks yet</h2>
-            <p className="text-sm text-muted-foreground mb-6">Create your first task or let AI extract tasks from your conversations</p>
+            <h2 className="text-xl font-semibold text-slate-900 mb-2">No tasks yet</h2>
+            <p className="text-sm text-slate-600 mb-6">Create your first task or let AI extract tasks from your conversations</p>
             <div className="flex items-center justify-center gap-3">
               <motion.button
                 onClick={() => setShowNewTaskModal(true)}
@@ -410,10 +410,10 @@ export default function TasksPage() {
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-card rounded-2xl border border-border shadow-2xl z-50 p-6"
             >
-              <h2 className="text-xl font-semibold text-foreground mb-6">Create New Task</h2>
+              <h2 className="text-xl font-semibold text-slate-900 mb-6">Create New Task</h2>
               
               <div className="mb-4">
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Task Title *
                 </label>
                 <input
@@ -421,14 +421,14 @@ export default function TasksPage() {
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                   placeholder="What needs to be done?"
-                  className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateTask()}
                   autoFocus
                 />
               </div>
 
               <div className="mb-6">
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Priority
                 </label>
                 <div className="flex gap-2">
@@ -441,7 +441,7 @@ export default function TasksPage() {
                       className={`px-4 py-2 text-sm rounded-lg border transition-all duration-200 capitalize ${
                         newTaskPriority === p 
                           ? `${getPriorityBg(p)} border-current` 
-                          : 'bg-transparent border-border text-muted-foreground hover:text-foreground'
+                          : 'bg-transparent border-border text-slate-600 hover:text-slate-900'
                       }`}
                       style={{
                         borderColor: newTaskPriority === p ? getPriorityColor(p) : undefined,
@@ -457,7 +457,7 @@ export default function TasksPage() {
               <div className="flex gap-3 justify-end">
                 <button
                   onClick={() => setShowNewTaskModal(false)}
-                  className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 transition-colors"
                 >
                   Cancel
                 </button>
@@ -544,7 +544,7 @@ function TaskCard({
         <Check size={14} className={isDone ? 'text-white' : 'text-green-600 opacity-0 group-hover:opacity-100'} />
       </motion.button>
 
-      <span className={`ml-3 flex-1 text-sm ${isDone ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+      <span className={`ml-3 flex-1 text-sm ${isDone ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
         {task.title}
       </span>
       
@@ -559,7 +559,7 @@ function TaskCard({
           {task.tags.slice(0, 3).map((tag) => (
             <span
               key={tag}
-              className="px-2 py-1 text-xs bg-muted text-muted-foreground rounded-md"
+              className="px-2 py-1 text-xs bg-muted text-slate-600 rounded-md"
             >
               {tag}
             </span>

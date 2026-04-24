@@ -223,8 +223,8 @@ export default function AnimatedResetPasswordPage() {
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-100 mb-4">
                   <Lock className="w-6 h-6 text-indigo-600" />
                 </div>
-                <h1 className="text-2xl font-bold tracking-tight mb-2">Reset your password</h1>
-                <p className="text-muted-foreground text-sm">
+                <h1 className="text-2xl font-bold tracking-tight mb-2 text-slate-900">Reset your password</h1>
+                <p className="text-slate-600 text-sm">
                   Enter your new password below
                 </p>
               </div>
@@ -254,13 +254,13 @@ export default function AnimatedResetPasswordPage() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                       </button>
                     </div>
                     <StrengthBars password={passwordData.newPassword} />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Must be at least 8 characters with uppercase, number, and special character
                     </p>
                   </div>
@@ -280,7 +280,7 @@ export default function AnimatedResetPasswordPage() {
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                       </button>
@@ -312,7 +312,7 @@ export default function AnimatedResetPasswordPage() {
               )}
 
               {/* Back to login */}
-              <div className="text-center text-sm text-muted-foreground mt-6">
+              <div className="text-center text-sm text-slate-600 mt-6">
                 <Link href="/login" className="text-indigo-600 font-medium hover:underline">
                   Back to login
                 </Link>
@@ -324,8 +324,8 @@ export default function AnimatedResetPasswordPage() {
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 mb-6">
                 <ShieldCheck className="w-8 h-8 text-indigo-600" />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight mb-3">Password Reset Complete!</h1>
-              <p className="text-muted-foreground text-sm mb-6">
+              <h1 className="text-2xl font-bold tracking-tight mb-3 text-slate-900">Password Reset Complete!</h1>
+              <p className="text-slate-600 text-sm mb-6">
                 Your password has been successfully reset. You&apos;ll be redirected to the login page shortly.
               </p>
               <Button 
