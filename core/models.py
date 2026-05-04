@@ -545,22 +545,6 @@ class TaskTag(models.Model):
         return self.tag
 
 
-class TaskComment(models.Model):
-    """Comments on tasks for collaboration."""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="comments")
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        ordering = ["-created_at"]
-    
-    def __str__(self):
-        return f"Comment by {self.user.username} on {self.task.title}"
-
-
 class TaskActivity(models.Model):
     """Audit trail of task changes."""
     ACTIVITY_TYPES = [
@@ -976,7 +960,7 @@ class TaskSubtask(models.Model):
     Subtasks for breaking down larger tasks.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    parent_task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="subtasks")
+    parent_task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="child_subtasks")
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     status = models.CharField(
