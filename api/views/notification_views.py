@@ -44,3 +44,47 @@ def mark_notification_read(request, notification_id):
     """Mark a notification as read."""
     Notification.objects.filter(id=notification_id, user=request.user).update(is_read=True)
     return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def get_unread_count(request):
+    """Get count of unread notifications."""
+    count = Notification.objects.filter(user=request.user, is_read=False).count()
+    return Response({"count": count})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def mark_all_read(request):
+    """Mark all notifications as read."""
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def get_notification_preferences(request):
+    """Get notification preferences for the user."""
+    # Default preferences
+    preferences = {
+        "email": True,
+        "push": True,
+        "in_app": True,
+        "task_updates": True,
+        "mentions": True,
+        "system_updates": False
+    }
+    return Response(preferences)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def update_notification_preferences(request):
+    """Update notification preferences."""
+    # For now just return success - preferences stored in frontend
+    return Response({"ok": True})

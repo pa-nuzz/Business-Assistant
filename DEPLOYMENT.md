@@ -5,7 +5,7 @@ How to get this running in production.
 ## Docker (Easiest)
 
 ```bash
-git clone https://github.com/yourusername/aeiou-ai.git
+git clone https://github.com/pa-nuzz/aeiou-ai.git
 cd aeiou-ai
 cp .env.example .env
 # Edit .env with your production settings
