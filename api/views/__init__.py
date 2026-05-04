@@ -50,6 +50,17 @@ from .admin_views import (
 from .notification_views import (
     get_notifications,
     mark_notification_read,
+    get_unread_count,
+    mark_all_read,
+    get_notification_preferences,
+    update_notification_preferences,
+)
+
+# Session Management
+from .session_views import (
+    list_sessions,
+    revoke_session,
+    revoke_all_other_sessions,
 )
 
 # Misc (tags, health)
@@ -95,6 +106,14 @@ __all__ = [
     # Notifications
     "get_notifications",
     "mark_notification_read",
+    "get_unread_count",
+    "mark_all_read",
+    "get_notification_preferences",
+    "update_notification_preferences",
+    # Session Management
+    "list_sessions",
+    "revoke_session",
+    "revoke_all_other_sessions",
     # Misc
     "tags_list_create",
     "tasks_by_tag",
