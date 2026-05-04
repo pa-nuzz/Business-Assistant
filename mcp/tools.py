@@ -11,11 +11,9 @@ then calls execute_tool() when the model requests a tool.
 """
 import logging
 from functools import wraps
-from django.core.cache import cache
 import hashlib
 import json
 from typing import Any
-from django.contrib.auth.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +23,7 @@ def cached_tool(ttl: int = 300):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            from django.core.cache import cache
             key_data = json.dumps({"fn": func.__name__, "a": args, "k": kwargs}, sort_keys=True, default=str)
             cache_key = "tool_" + hashlib.md5(key_data.encode()).hexdigest()
             cached = cache.get(cache_key)

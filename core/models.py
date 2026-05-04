@@ -5,9 +5,17 @@ Every model maps to a clear business concept.
 import uuid
 import secrets
 import hashlib
+import os
+from typing import Optional, List, Dict, Any
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+
+
+def document_file_path(instance, filename):
+    """Generate upload path for document versions."""
+    # Organize by user and document for easier management
+    return f"documents/{instance.document.user_id}/{instance.document.id}/versions/{instance.version_number}/{filename}"
 
 
 class SoftDeleteManager(models.Manager):

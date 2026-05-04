@@ -2,7 +2,6 @@
 from typing import List, Dict, Any, Optional
 from django.contrib.auth.models import User
 from core.models import Task, Document, Conversation, DocumentChunk
-from agents.orchestrator import Orchestrator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,7 +12,6 @@ class AITaskGenerationService:
 
     def __init__(self, user: User):
         self.user = user
-        self.orchestrator = Orchestrator(user)
 
     def generate_tasks_from_chat(
         self, 
