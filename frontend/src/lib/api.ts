@@ -51,6 +51,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Rate limit event handlers
+const rateLimitListeners = new Set<(info: { retryAfter: number; scope: string; message: string }) => void>();
+
+export const onRateLimit = (callback: (info: { retryAfter: number; scope: string; message: string }) => void) => {
+  rateLimitListeners.add(callback);
+  return () => rateLimitListeners.delete(callback);
+};
+
+const triggerRateLimit = (info: { retryAfter: number; scope: string; message: string }) => {
+  rateLimitListeners.forEach(cb => cb(info));
+};
+
 // Handle token refresh on 401 and network errors
 api.interceptors.response.use(
   (response) => response,
@@ -65,6 +77,16 @@ api.interceptors.response.use(
       return Promise.reject(new Error('Network error: Backend server not reachable. Please ensure the server is running.'));
     }
 
+    // Handle rate limiting (429)
+    if (error.response?.status === 429) {
+      const data = error.response?.data as { error?: string; detail?: string; retry_after?: number; scope?: string };
+      const retryAfter = data?.retry_after || parseInt(error.response?.headers['retry-after'] || '60', 10);
+      const scope = data?.scope || 'standard';
+      const message = data?.error || data?.detail || 'Rate limit exceeded. Please try again later.';
+      
+      triggerRateLimit({ retryAfter, scope, message });
+    }
+
     // SECURITY: Token refresh uses httpOnly cookie (refresh_token in cookie, not body)
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
@@ -77,12 +99,14 @@ api.interceptors.response.use(
 
         // Store new access token in memory only
         accessToken = response.data.access;
+        setSessionCookie();
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
         return api(originalRequest);
       } catch (refreshError) {
         // Clear memory token on refresh failure
         accessToken = null;
+        clearSessionCookie();
         triggerAuthRedirect();
         return Promise.reject(refreshError);
       }
@@ -91,6 +115,7 @@ api.interceptors.response.use(
     // Handle 401 after refresh failed
     if (error.response?.status === 401) {
       accessToken = null;
+      clearSessionCookie();
       triggerAuthRedirect();
     }
 
@@ -100,6 +125,19 @@ api.interceptors.response.use(
 
 export default api;
 
+// Auth session cookie helper for middleware route protection
+const setSessionCookie = () => {
+  if (typeof document !== 'undefined') {
+    document.cookie = 'aeiou-session=1; path=/; SameSite=Lax; Secure';
+  }
+};
+
+const clearSessionCookie = () => {
+  if (typeof document !== 'undefined') {
+    document.cookie = 'aeiou-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure';
+  }
+};
+
 // Auth API - Premium Auth System with Email Verification
 // SECURITY: All tokens use memory-only storage + httpOnly cookies
 export const auth = {
@@ -108,6 +146,7 @@ export const auth = {
     // SECURITY: Access token in memory only, refresh token in httpOnly cookie
     if (response.data.access) {
       accessToken = response.data.access;
+      setSessionCookie();
     }
     return response.data;
   },
@@ -122,6 +161,7 @@ export const auth = {
     // SECURITY: Access token in memory only, refresh token in httpOnly cookie
     if (response.data.access) {
       accessToken = response.data.access;
+      setSessionCookie();
     }
     return response.data;
   },
@@ -146,12 +186,13 @@ export const auth = {
     return response.data;
   },
 
-  // SECURITY: Server clears httpOnly cookie, client clears memory token
+  // SECURITY: Server clears httpOnly cookie, client clears memory token + session indicator
   logout: async () => {
     try {
       await api.post('/auth/logout/');
     } finally {
       accessToken = null;
+      clearSessionCookie();
     }
   },
 
@@ -355,6 +396,16 @@ export const profile = {
 };
 
 // User API
+export interface Session {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  is_current: boolean;
+  is_active: boolean;
+  device_info?: string;
+  ip_address?: string;
+}
+
 export const user = {
   getInfo: async () => {
     const response = await api.get('/user/info/');
@@ -371,6 +422,22 @@ export const user = {
       current_password: currentPassword,
       new_password: newPassword,
     });
+    return response.data;
+  },
+  
+  // Session Management
+  listSessions: async (): Promise<{ sessions: Session[]; total_count: number; active_count: number }> => {
+    const response = await api.get('/user/sessions/');
+    return response.data;
+  },
+  
+  revokeSession: async (sessionId: string) => {
+    const response = await api.post('/user/sessions/revoke/', { session_id: sessionId });
+    return response.data;
+  },
+  
+  revokeAllOtherSessions: async () => {
+    const response = await api.post('/user/sessions/revoke-all/');
     return response.data;
   },
 };

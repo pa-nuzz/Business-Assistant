@@ -78,7 +78,7 @@ export default function VerifyEmailPage() {
     setError('');
     
     try {
-      await auth.verifyEmail(username, fullCode);
+      const response = await auth.verifyEmail(username, fullCode);
       setIsVerified(true);
       toast.success('🎉 Email verified successfully! Welcome to AEIOU AI.');
       
@@ -206,7 +206,7 @@ export default function VerifyEmailPage() {
 
         <div className="mt-8 text-center">
           <p className="text-sm text-gray-600 mb-3">
-            Didn&apos;t receive the code?
+            Didn't receive the code?
           </p>
           <button
             onClick={handleResend}

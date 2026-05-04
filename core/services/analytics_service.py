@@ -368,3 +368,119 @@ class AnalyticsService:
         activities.sort(key=lambda x: x["timestamp"], reverse=True)
         
         return activities[:15]
+
+    def track_activity(self, event_type: str, feature: str, metadata: Dict[str, Any] = None) -> None:
+        """Track a user activity event."""
+        from core.models_analytics import UserActivity
+        
+        UserActivity.objects.create(
+            user=self.user,
+            workspace_id=metadata.get('workspace_id') if metadata else None,
+            event_type=event_type,
+            feature=feature,
+            metadata=metadata or {}
+        )
+    
+    def get_user_engagement(self, days: int = 30) -> Dict[str, Any]:
+        """Get user engagement metrics."""
+        from django.db.models import Count
+        from core.models_analytics import UserActivity, FeatureUsage
+        from datetime import datetime, timedelta
+        
+        since = datetime.now() - timedelta(days=days)
+        
+        # Activity counts by feature
+        feature_usage = (
+            UserActivity.objects.filter(
+                user=self.user,
+                created_at__gte=since
+            )
+            .values('feature')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+        
+        # Daily active usage
+        daily_activity = (
+            UserActivity.objects.filter(
+                user=self.user,
+                created_at__gte=since
+            )
+            .extra({'date': "date(created_at)"})
+            .values('date')
+            .annotate(count=Count('id'))
+            .order_by('date')
+        )
+        
+        total_actions = sum(f['count'] for f in feature_usage)
+        active_days = len(set(a['date'] for a in daily_activity))
+        
+        return {
+            'period_days': days,
+            'total_actions': total_actions,
+            'active_days': active_days,
+            'feature_breakdown': list(feature_usage),
+            'daily_activity': list(daily_activity),
+            'engagement_score': min(100, (active_days / days) * 100 + (total_actions / 100))
+        }
+    
+    def get_ai_usage_stats(self, days: int = 30) -> Dict[str, Any]:
+        """Get AI usage and cost metrics."""
+        from django.db.models import Sum, Avg, Count
+        from core.models_analytics import AIMetrics
+        from datetime import datetime, timedelta
+        
+        since = datetime.now() - timedelta(days=days)
+        
+        metrics = AIMetrics.objects.filter(
+            user=self.user,
+            created_at__gte=since
+        )
+        
+        total_calls = metrics.count()
+        if total_calls == 0:
+            return {
+                'period_days': days,
+                'total_calls': 0,
+                'total_tokens': 0,
+                'total_cost': 0,
+                'avg_response_time': 0,
+                'success_rate': 0,
+                'by_model': [],
+                'by_operation': []
+            }
+        
+        by_model = (
+            metrics.values('model')
+            .annotate(
+                calls=Count('id'),
+                tokens=Sum('total_tokens'),
+                cost=Sum('cost_usd'),
+                avg_time=Avg('response_time_ms')
+            )
+            .order_by('-calls')
+        )
+        
+        by_operation = (
+            metrics.values('operation')
+            .annotate(
+                calls=Count('id'),
+                tokens=Sum('total_tokens')
+            )
+            .order_by('-calls')
+        )
+        
+        success_rate = (
+            metrics.filter(success=True).count() / total_calls * 100
+        )
+        
+        return {
+            'period_days': days,
+            'total_calls': total_calls,
+            'total_tokens': metrics.aggregate(Sum('total_tokens'))['total_tokens__sum'] or 0,
+            'total_cost': float(metrics.aggregate(Sum('cost_usd'))['cost_usd__sum'] or 0),
+            'avg_response_time': metrics.aggregate(Avg('response_time_ms'))['response_time_ms__avg'] or 0,
+            'success_rate': round(success_rate, 2),
+            'by_model': list(by_model),
+            'by_operation': list(by_operation)
+        }

@@ -151,18 +151,17 @@ const EyeBall = ({
         overflow: 'hidden',
       }}
     >
-      {!isBlinking && (
-        <div
-          className="rounded-full"
-          style={{
-            width: `${pupilSize}px`,
-            height: `${pupilSize}px`,
-            backgroundColor: pupilColor,
-            transform: `translate(${pupilPosition.x}px, ${pupilPosition.y}px)`,
-            transition: 'transform 0.1s ease-out',
-          }}
-        />
-      )}
+      <div
+        className="rounded-full"
+        style={{
+          width: `${pupilSize}px`,
+          height: `${pupilSize}px`,
+          backgroundColor: pupilColor,
+          transform: `translate(${pupilPosition.x}px, ${pupilPosition.y}px)`,
+          transition: 'transform 0.1s ease-out',
+          opacity: isBlinking ? 0 : 1,
+        }}
+      />
     </div>
   );
 };

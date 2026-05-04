@@ -91,3 +91,94 @@ def business_profile(request):
             {"error": "Failed to update business profile"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_sessions(request):
+    """List all active sessions for the current user."""
+    service = ProfileService(request.user)
+    try:
+        result = service.get_active_sessions()
+        # Mark the current session (from the current access token)
+        current_jti = None
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from rest_framework_simplejwt.tokens import AccessToken
+                token_str = auth_header[7:]
+                token = AccessToken(token_str)
+                current_jti = token.get('jti')
+            except Exception:
+                pass
+        
+        # Mark current session
+        if current_jti:
+            for session in result.get('sessions', []):
+                if session['id'] == current_jti:
+                    session['is_current'] = True
+                    break
+        
+        return Response(result)
+    except Exception as e:
+        logger.exception("Failed to list sessions")
+        return Response(
+            {"error": "Failed to retrieve sessions"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def revoke_session(request):
+    """Revoke a specific session."""
+    service = ProfileService(request.user)
+    session_id = request.data.get("session_id")
+    
+    if not session_id:
+        return Response(
+            {"error": "session_id is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        result = service.revoke_session(session_id)
+        return Response(result)
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.exception(f"Failed to revoke session {session_id}")
+        return Response(
+            {"error": "Failed to terminate session"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def revoke_all_other_sessions(request):
+    """Revoke all sessions except the current one."""
+    service = ProfileService(request.user)
+    try:
+        # Get current token JTI from Authorization header
+        current_jti = None
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from rest_framework_simplejwt.tokens import AccessToken
+                token_str = auth_header[7:]
+                token = AccessToken(token_str)
+                current_jti = token.get('jti')
+            except Exception:
+                pass
+        
+        result = service.revoke_all_other_sessions(current_jti)
+        return Response(result)
+    except ValueError as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.exception("Failed to revoke other sessions")
+        return Response(
+            {"error": "Failed to terminate other sessions"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

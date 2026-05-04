@@ -133,18 +133,17 @@ const EyeBall = ({
         overflow: 'hidden',
       }}
     >
-      {!isBlinking && (
-        <div
-          className="rounded-full"
-          style={{
-            width: `${pupilSize}px`,
-            height: `${pupilSize}px`,
-            backgroundColor: pupilColor,
-            transform: `translate(${pupilPosition.x}px, ${pupilPosition.y}px)`,
-            transition: 'transform 0.1s ease-out',
-          }}
-        />
-      )}
+      <div
+        className="rounded-full"
+        style={{
+          width: `${pupilSize}px`,
+          height: `${pupilSize}px`,
+          backgroundColor: pupilColor,
+          transform: `translate(${pupilPosition.x}px, ${pupilPosition.y}px)`,
+          transition: 'transform 0.1s ease-out',
+          opacity: isBlinking ? 0 : 1,
+        }}
+      />
     </div>
   );
 };
@@ -417,7 +416,7 @@ export default function AnimatedForgotPasswordPage() {
                   {isLoading ? <><Loader2 className="mr-2 size-4 animate-spin" />Verifying...</> : "Verify code"}
                 </Button>
                 <div className="text-center">
-                  <button type="button" onClick={handleResend} disabled={isLoading} className="text-sm text-primary hover:underline disabled:opacity-50">Didn&apos;t receive it? Resend code</button>
+                  <button type="button" onClick={handleResend} disabled={isLoading} className="text-sm text-primary hover:underline disabled:opacity-50">Didn't receive it? Resend code</button>
                 </div>
               </form>
             </>

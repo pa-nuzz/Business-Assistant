@@ -78,7 +78,6 @@ export function CommandPalette() {
       title: 'Search Documents...',
       icon: <Search className="w-4 h-4" />,
       action: () => {
-        // TODO: Implement document search
         setOpen(false);
       },
     },

@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Optional
 from django.contrib.auth.models import User
 from django.db import transaction
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
 from core.models import BusinessProfile
 from core.cache import CacheService
@@ -85,13 +86,14 @@ class ProfileService:
     def update_password(self, current_password: str, new_password: str) -> Dict:
         """
         Change password (requires current password).
+        Invalidates all active sessions for security.
         
         Args:
             current_password: Current password for verification
             new_password: New password
             
         Returns:
-            Dict with success message
+            Dict with success message and sessions invalidated count
             
         Raises:
             ValueError: If validation fails
@@ -105,6 +107,9 @@ class ProfileService:
         self.user.set_password(new_password)
         self.user.save(update_fields=["password"])
         
+        # Invalidate all refresh tokens (sessions) for this user
+        sessions_invalidated = self._invalidate_all_sessions()
+        
         # Invalidate cache
         CacheService.invalidate_user_cache(self.user.id)
         
@@ -113,11 +118,170 @@ class ProfileService:
             EventTypes.USER_PASSWORD_RESET,
             {
                 "user_id": self.user.id,
+                "sessions_invalidated": sessions_invalidated,
             },
             source="ProfileService"
         )
         
-        return {"message": "Password updated successfully"}
+        return {
+            "message": "Password updated successfully",
+            "sessions_invalidated": sessions_invalidated,
+            "requires_relogin": True,
+        }
+    
+    def _invalidate_all_sessions(self) -> int:
+        """
+        Blacklist all outstanding refresh tokens for the user.
+        
+        Returns:
+            Number of sessions invalidated
+        """
+        try:
+            # Get all outstanding tokens for this user
+            outstanding_tokens = OutstandingToken.objects.filter(user=self.user)
+            
+            # Blacklist each token
+            invalidated_count = 0
+            for token in outstanding_tokens:
+                BlacklistedToken.objects.get_or_create(token=token)
+                invalidated_count += 1
+            
+            if invalidated_count > 0:
+                logger.info(f"Invalidated {invalidated_count} sessions for user {self.user.id}")
+            
+            return invalidated_count
+        except Exception as e:
+            logger.exception(f"Failed to invalidate sessions for user {self.user.id}: {e}")
+            return 0
+    
+    def get_active_sessions(self) -> Dict:
+        """
+        Get list of active user sessions with device/browser info.
+        
+        Returns:
+            Dict with list of active sessions
+        """
+        try:
+            # Get all outstanding tokens for this user that haven't expired
+            from django.utils import timezone
+            outstanding_tokens = OutstandingToken.objects.filter(
+                user=self.user,
+                expires_at__gt=timezone.now()
+            ).order_by('-created_at')
+            
+            sessions = []
+            for token in outstanding_tokens:
+                # Check if token is blacklisted (revoked)
+                is_blacklisted = BlacklistedToken.objects.filter(token=token).exists()
+                
+                # Extract jti (token id) as session identifier
+                sessions.append({
+                    "id": str(token.jti) if token.jti else str(token.id),
+                    "created_at": token.created_at.isoformat() if token.created_at else None,
+                    "expires_at": token.expires_at.isoformat() if token.expires_at else None,
+                    "is_current": False,  # Will be marked by API view
+                    "is_active": not is_blacklisted,
+                    "device_info": "Unknown device",  # Would parse from user agent in middleware
+                    "ip_address": None,  # Would store in token extra claims
+                })
+            
+            return {
+                "sessions": sessions,
+                "total_count": len(sessions),
+                "active_count": sum(1 for s in sessions if s["is_active"]),
+            }
+        except Exception as e:
+            logger.exception(f"Failed to get sessions for user {self.user.id}: {e}")
+            return {"sessions": [], "total_count": 0, "active_count": 0}
+    
+    def revoke_session(self, session_id: str) -> Dict:
+        """
+        Revoke a specific session by blacklisting its token.
+        
+        Args:
+            session_id: The jti or id of the token to revoke
+            
+        Returns:
+            Dict with success status
+            
+        Raises:
+            ValueError: If session not found or already revoked
+        """
+        try:
+            # Try to find by jti first, then by id
+            token = OutstandingToken.objects.filter(
+                user=self.user,
+                jti=session_id
+            ).first()
+            
+            if not token:
+                try:
+                    token = OutstandingToken.objects.get(
+                        user=self.user,
+                        id=int(session_id)
+                    )
+                except (ValueError, OutstandingToken.DoesNotExist):
+                    raise ValueError("Session not found")
+            
+            # Check if already blacklisted
+            if BlacklistedToken.objects.filter(token=token).exists():
+                raise ValueError("Session already revoked")
+            
+            # Blacklist the token
+            BlacklistedToken.objects.create(token=token)
+            logger.info(f"Revoked session {session_id} for user {self.user.id}")
+            
+            return {"success": True, "message": "Session terminated successfully"}
+            
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.exception(f"Failed to revoke session {session_id}: {e}")
+            raise ValueError("Failed to terminate session")
+    
+    def revoke_all_other_sessions(self, current_token_jti: str = None) -> Dict:
+        """
+        Revoke all sessions except the current one.
+        
+        Args:
+            current_token_jti: JTI of the current session to preserve
+            
+        Returns:
+            Dict with count of revoked sessions
+        """
+        try:
+            from django.utils import timezone
+            
+            # Get all active tokens for this user
+            outstanding_tokens = OutstandingToken.objects.filter(
+                user=self.user,
+                expires_at__gt=timezone.now()
+            )
+            
+            # Filter out the current session and already blacklisted
+            tokens_to_revoke = outstanding_tokens.exclude(
+                jti=current_token_jti
+            ).exclude(
+                blacklistedtoken__isnull=False
+            )
+            
+            revoked_count = 0
+            for token in tokens_to_revoke:
+                BlacklistedToken.objects.get_or_create(token=token)
+                revoked_count += 1
+            
+            if revoked_count > 0:
+                logger.info(f"Revoked {revoked_count} other sessions for user {self.user.id}")
+            
+            return {
+                "success": True,
+                "revoked_count": revoked_count,
+                "message": f"{revoked_count} other session(s) terminated"
+            }
+            
+        except Exception as e:
+            logger.exception(f"Failed to revoke other sessions: {e}")
+            raise ValueError("Failed to terminate other sessions")
     
     def get_business_profile(self) -> Dict:
         """

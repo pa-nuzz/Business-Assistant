@@ -9,23 +9,34 @@ import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/sidebar-new';
 import { CommandPalette } from '@/components/enhanced-command-palette';
 
-const publicPaths = ['/login', '/register', '/forgot-password', '/verify-email', '/reset-password'];
+const publicPaths = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/verify-email',
+  '/reset-password',
+  '/features',
+  '/pricing',
+  '/about',
+  '/contact',
+  '/privacy',
+  '/terms',
+];
 
 // Loading skeleton - matches both collapsed and expanded sidebar states
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
+function _LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden">
       {showSidebar && (
-        <div className="w-[72px] h-screen bg-slate-50 border-r border-slate-200 flex flex-col flex-shrink-0">
+        <div className="w-[72px] h-screen bg-muted border-r border-border flex flex-col flex-shrink-0">
           {/* Collapsed logo skeleton */}
-          <div className="h-16 flex items-center justify-center border-b border-slate-100">
-            <div className="w-8 h-8 bg-slate-200 rounded-lg animate-pulse" />
+          <div className="h-16 flex items-center justify-center border-b border-border/50">
+            <div className="w-8 h-8 bg-muted-foreground/20 rounded-lg animate-pulse" />
           </div>
           {/* Nav items skeleton - icon only */}
           <div className="p-3 space-y-2">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="w-12 h-12 mx-auto bg-slate-200 rounded-xl animate-pulse" />
+              <div key={i} className="w-12 h-12 mx-auto bg-muted-foreground/20 rounded-xl animate-pulse" />
             ))}
           </div>
         </div>
@@ -55,7 +66,7 @@ function LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
               <animate attributeName="y" values="55;65;50;55" dur="3.2s" repeatCount="indefinite" />
             </rect>
           </svg>
-          <p className="text-slate-500 text-sm font-medium">Loading AEIOU AI...</p>
+          <p className="text-muted-foreground text-sm font-medium">Loading AEIOU AI...</p>
         </div>
       </main>
     </div>
@@ -64,7 +75,6 @@ function LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [hasError, setHasError] = useState(false);
   const pathname = usePathname();
 
@@ -94,13 +104,13 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   // Error boundary fallback - after all hooks
   if (hasError) {
     return (
-      <div className="flex h-screen items-center justify-center bg-white">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <h2 className="text-lg font-semibold text-slate-900 mb-2">Something went wrong</h2>
-          <p className="text-slate-500 mb-4">Please refresh the page to continue</p>
+          <h2 className="text-lg font-semibold text-foreground mb-2">Something went wrong</h2>
+          <p className="text-muted-foreground mb-4">Please refresh the page to continue</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
           >
             Refresh Page
           </button>
@@ -112,12 +122,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   // Show loading skeleton - after all hooks
   if (!mounted) {
     return (
-      <div className="flex h-screen bg-white overflow-hidden">
+      <div className="flex h-screen bg-background overflow-hidden">
         <main className="flex-1 flex items-center justify-center min-w-0">
           <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-            <p className="text-slate-500 text-sm font-medium">Loading AEIOU AI...</p>
-            <p className="text-slate-400 text-xs">If this persists, check console for errors</p>
+            <div className="w-12 h-12 border-4 border-muted border-t-primary rounded-full animate-spin" />
+            <p className="text-muted-foreground text-sm font-medium">Loading AEIOU AI...</p>
+            <p className="text-muted-foreground/60 text-xs">If this persists, check console for errors</p>
           </div>
         </main>
       </div>

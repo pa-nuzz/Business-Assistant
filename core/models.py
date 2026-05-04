@@ -309,24 +309,64 @@ class Document(models.Model):
 
 class DocumentChunk(models.Model):
     """
-    Pre-chunked document sections. Agent fetches relevant
-    chunks by keyword search — no vector embeddings needed.
+    Pre-chunked document sections. Supports both keyword search
+    and semantic vector search (pgvector placeholder).
     """
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="chunks")
     chunk_index = models.IntegerField()
     content = models.TextField()
     page_number = models.IntegerField(default=0)
     keywords = models.JSONField(default=list)      # extracted keywords for fast lookup
+    
+    # Semantic search - vector embedding (pgvector placeholder)
+    # Stores embedding vector as JSON array for cosine similarity search
+    # In production, use pgvector extension with dedicated VectorField
+    embedding = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Vector embedding for semantic search [768-dim or 1536-dim]"
+    )
+    embedding_model = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Model used to generate embedding (e.g., 'text-embedding-3-small')"
+    )
+    embedding_generated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["chunk_index"]
         indexes = [
             models.Index(fields=["document", "chunk_index"]),
             models.Index(fields=["keywords"]),
+            models.Index(fields=["embedding_model"]),
         ]
 
     def __str__(self):
         return f"Chunk {self.chunk_index} of {self.document.title}"
+    
+    def has_embedding(self) -> bool:
+        """Check if this chunk has a valid embedding vector."""
+        return len(self.embedding) > 0
+    
+    def cosine_similarity(self, other_embedding: list) -> float:
+        """Calculate cosine similarity with another embedding vector."""
+        if not self.has_embedding() or not other_embedding:
+            return 0.0
+        
+        import math
+        
+        # Calculate dot product
+        dot_product = sum(a * b for a, b in zip(self.embedding, other_embedding))
+        
+        # Calculate magnitudes
+        mag_a = math.sqrt(sum(x * x for x in self.embedding))
+        mag_b = math.sqrt(sum(x * x for x in other_embedding))
+        
+        if mag_a == 0 or mag_b == 0:
+            return 0.0
+        
+        return dot_product / (mag_a * mag_b)
 
 
 class Conversation(models.Model):
@@ -613,3 +653,792 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.priority}: {self.message[:50]}"
+
+
+class AuditLog(models.Model):
+    """Comprehensive security audit log for compliance and forensics."""
+    
+    EVENT_TYPES = [
+        # Authentication events
+        ("login", "User Login"),
+        ("logout", "User Logout"),
+        ("login_failed", "Login Failed"),
+        ("token_refresh", "Token Refresh"),
+        ("password_change", "Password Change"),
+        ("password_reset", "Password Reset"),
+        ("mfa_enabled", "MFA Enabled"),
+        ("mfa_disabled", "MFA Disabled"),
+        ("session_revoked", "Session Revoked"),
+        ("session_revoked_all", "All Sessions Revoked"),
+        
+        # Document events
+        ("document_upload", "Document Upload"),
+        ("document_download", "Document Download"),
+        ("document_delete", "Document Delete"),
+        ("document_view", "Document View"),
+        
+        # Task events
+        ("task_create", "Task Create"),
+        ("task_update", "Task Update"),
+        ("task_delete", "Task Delete"),
+        ("task_complete", "Task Complete"),
+        ("task_reopen", "Task Reopen"),
+        
+        # AI events
+        ("ai_prompt", "AI Prompt"),
+        ("ai_response", "AI Response"),
+        ("ai_suggestion_accepted", "AI Suggestion Accepted"),
+        ("ai_suggestion_rejected", "AI Suggestion Rejected"),
+        
+        # Permission events
+        ("permission_grant", "Permission Grant"),
+        ("permission_revoke", "Permission Revoke"),
+        ("role_change", "Role Change"),
+        
+        # Data events
+        ("export", "Data Export"),
+        ("bulk_delete", "Bulk Delete"),
+        ("settings_change", "Settings Change"),
+    ]
+    
+    SEVERITY_LEVELS = [
+        ("info", "Info"),
+        ("warning", "Warning"),
+        ("critical", "Critical"),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="audit_logs"
+    )
+    
+    # Event details
+    event_type = models.CharField(max_length=30, choices=EVENT_TYPES)
+    severity = models.CharField(max_length=10, choices=SEVERITY_LEVELS, default="info")
+    description = models.TextField()
+    
+    # Request context
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    request_id = models.CharField(max_length=100, blank=True, db_index=True)
+    
+    # Resource tracking
+    resource_type = models.CharField(max_length=50, blank=True)
+    resource_id = models.CharField(max_length=100, blank=True, db_index=True)
+    
+    # Before/after for changes
+    old_values = models.JSONField(null=True, blank=True)
+    new_values = models.JSONField(null=True, blank=True)
+    
+    # Additional metadata
+    metadata = models.JSONField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "-created_at"], name="audit_user_created_idx"),
+            models.Index(fields=["event_type", "-created_at"], name="audit_event_created_idx"),
+            models.Index(fields=["severity", "-created_at"], name="audit_severity_created_idx"),
+        ]
+    
+    def __str__(self):
+        return f"{self.event_type} by {self.user.username if self.user else 'system'} at {self.created_at}"
+
+
+class WorkspaceContext(models.Model):
+    """Business context and AI memory persistence per workspace."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workspace_contexts")
+    
+    # Workspace identification
+    workspace_id = models.CharField(max_length=100, db_index=True, help_text="Unique workspace identifier")
+    workspace_name = models.CharField(max_length=200, blank=True)
+    
+    # Business context - company/business specific information
+    business_context = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Business-specific context: company info, industry, tone, etc."
+    )
+    
+    # AI Memory - persistent facts learned about the user/workspace
+    ai_memory = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Persistent AI memory: facts, preferences, learned context"
+    )
+    
+    # Conversation summaries for long-term context
+    conversation_summaries = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Summaries of past conversations for context"
+    )
+    
+    # Settings per workspace
+    preferences = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Workspace-specific preferences (tone, response style, etc.)"
+    )
+    
+    # Metadata
+    is_active = models.BooleanField(default=True)
+    last_accessed = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ["-last_accessed"]
+        indexes = [
+            models.Index(fields=["user", "workspace_id"], name="workspace_ctx_user_idx"),
+            models.Index(fields=["workspace_id"], name="workspace_ctx_id_idx"),
+        ]
+        unique_together = ["user", "workspace_id"]
+    
+    def __str__(self):
+        return f"{self.workspace_name or self.workspace_id} context for {self.user.username}"
+    
+    def add_memory(self, memory_type: str, content: str, source_conversation_id: str = None):
+        """Add a new memory entry."""
+        memory_entry = {
+            "type": memory_type,
+            "content": content,
+            "created_at": timezone.now().isoformat(),
+            "source": source_conversation_id,
+        }
+        self.ai_memory.append(memory_entry)
+        self.save(update_fields=["ai_memory"])
+        return memory_entry
+    
+    def add_conversation_summary(self, conversation_id: str, summary: str, topics: list = None):
+        """Add a conversation summary for long-term context."""
+        summary_entry = {
+            "conversation_id": conversation_id,
+            "summary": summary,
+            "topics": topics or [],
+            "created_at": timezone.now().isoformat(),
+        }
+        # Keep only last 20 summaries to prevent bloat
+        self.conversation_summaries = self.conversation_summaries[-19:] + [summary_entry]
+        self.save(update_fields=["conversation_summaries"])
+        return summary_entry
+    
+    def update_business_context(self, **kwargs):
+        """Update business context fields."""
+        self.business_context.update(kwargs)
+        self.save(update_fields=["business_context"])
+    
+    def get_context_for_prompt(self) -> dict:
+        """Get formatted context for AI prompt injection."""
+        recent_memories = self.ai_memory[-10:]  # Last 10 memories
+        recent_summaries = self.conversation_summaries[-3:]  # Last 3 conversation summaries
+        
+        return {
+            "business_context": self.business_context,
+            "recent_memories": recent_memories,
+            "conversation_history": recent_summaries,
+            "preferences": self.preferences,
+        }
+
+
+class DocumentVersion(models.Model):
+    """
+    Track document versions with diff support.
+    Each version stores the full file and metadata about changes.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="versions"
+    )
+    version_number = models.PositiveIntegerField()
+    
+    # Version metadata
+    file = models.FileField(upload_to=document_file_path)
+    file_size = models.BigIntegerField(default=0)
+    file_hash = models.CharField(max_length=64, blank=True)  # SHA-256 hash
+    
+    # Change tracking
+    change_summary = models.TextField(blank=True, default="")
+    change_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("created", "Created"),
+            ("edited", "Edited"),
+            ("replaced", "Replaced"),
+            ("minor", "Minor Update"),
+        ],
+        default="replaced"
+    )
+    
+    # Text diff (for text-based documents)
+    previous_text = models.TextField(blank=True, default="")
+    text_diff = models.TextField(blank=True, default="")  # Unified diff format
+    
+    # Who made the change
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="document_versions"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ["-version_number"]
+        unique_together = ["document", "version_number"]
+        indexes = [
+            models.Index(fields=["document", "version_number"]),
+            models.Index(fields=["file_hash"]),
+        ]
+    
+    def __str__(self):
+        return f"v{self.version_number} of {self.document.title}"
+    
+    @property
+    def is_latest(self) -> bool:
+        """Check if this is the latest version of the document."""
+        latest = DocumentVersion.objects.filter(
+            document=self.document
+        ).order_by("-version_number").first()
+        return latest == self if latest else True
+    
+    @property
+    def previous_version(self) -> Optional["DocumentVersion"]:
+        """Get the previous version of this document."""
+        if self.version_number <= 1:
+            return None
+        try:
+            return DocumentVersion.objects.get(
+                document=self.document,
+                version_number=self.version_number - 1
+            )
+        except DocumentVersion.DoesNotExist:
+            return None
+
+
+class TaskComment(models.Model):
+    """
+    Comments on tasks for collaboration.
+    Supports @mentions and threaded replies.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="comments")
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    content = models.TextField()
+    
+    # Mentions: List of user IDs mentioned in the comment
+    mentions = models.JSONField(default=list, blank=True)
+    
+    # Threading support
+    parent_comment = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="replies"
+    )
+    
+    # Editing tracking
+    is_edited = models.BooleanField(default=False)
+    edited_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["task", "created_at"]),
+            models.Index(fields=["user"]),
+        ]
+    
+    def __str__(self):
+        return f"Comment by {self.user.username} on {self.task.title[:30]}"
+
+
+class TaskSubtask(models.Model):
+    """
+    Subtasks for breaking down larger tasks.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    parent_task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="subtasks")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("todo", "To Do"),
+            ("in_progress", "In Progress"),
+            ("done", "Done"),
+        ],
+        default="todo"
+    )
+    assignee = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_subtasks"
+    )
+    due_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ["created_at"]
+    
+    def __str__(self):
+        return f"Subtask: {self.title[:50]}"
+
+
+class TimeEntry(models.Model):
+    """
+    Time tracking entries for tasks.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="time_entries")
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    
+    # Time tracking
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+    
+    # Optional description of what was done
+    description = models.TextField(blank=True, default="")
+    
+    # For manual time entry
+    is_manual = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ["-start_time"]
+        indexes = [
+            models.Index(fields=["task", "start_time"]),
+            models.Index(fields=["user", "start_time"]),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.task.title[:30]} ({self.duration_minutes}m)"
+    
+    def save(self, *args, **kwargs):
+        # Calculate duration if end_time is set
+        if self.end_time and self.start_time and not self.duration_minutes:
+            delta = self.end_time - self.start_time
+            self.duration_minutes = int(delta.total_seconds() / 60)
+        super().save(*args, **kwargs)
+
+
+class Notification(models.Model):
+    """
+    Real-time notifications for task assignments, mentions, due dates.
+    """
+    NOTIFICATION_TYPES = [
+        ('task_assigned', 'Task Assigned'),
+        ('task_mentioned', 'Task Mention'),
+        ('due_date_approaching', 'Due Date Approaching'),
+        ('due_date_overdue', 'Task Overdue'),
+        ('task_completed', 'Task Completed'),
+        ('comment_reply', 'Comment Reply'),
+        ('document_shared', 'Document Shared'),
+        ('system', 'System Notification'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    
+    # Notification content
+    notification_type = models.CharField(max_length=30, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    
+    # Link to related objects
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True)
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True)
+    comment = models.ForeignKey(TaskComment, on_delete=models.CASCADE, null=True, blank=True)
+    
+    # Actor who triggered the notification (if applicable)
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="triggered_notifications")
+    
+    # Status
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    
+    # WebSocket delivery tracking
+    websocket_delivered = models.BooleanField(default=False)
+    websocket_delivered_at = models.DateTimeField(null=True, blank=True)
+    
+    # Email/push notification tracking
+    email_sent = models.BooleanField(default=False)
+    push_sent = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read', '-created_at']),
+            models.Index(fields=['user', 'notification_type']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.notification_type} for {self.user.username}: {self.title[:50]}"
+    
+    def mark_as_read(self):
+        """Mark notification as read."""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = datetime.now()
+            self.save(update_fields=['is_read', 'read_at'])
+
+
+class NotificationPreference(models.Model):
+    """
+    User preferences for notification settings.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="notification_preferences")
+    
+    # In-app notifications
+    task_assigned_in_app = models.BooleanField(default=True)
+    task_mentioned_in_app = models.BooleanField(default=True)
+    due_date_approaching_in_app = models.BooleanField(default=True)
+    due_date_overdue_in_app = models.BooleanField(default=True)
+    comment_reply_in_app = models.BooleanField(default=True)
+    
+    # Email notifications
+    task_assigned_email = models.BooleanField(default=True)
+    task_mentioned_email = models.BooleanField(default=True)
+    due_date_approaching_email = models.BooleanField(default=True)
+    due_date_overdue_email = models.BooleanField(default=True)
+    
+    # Due date notification timing (hours before due date)
+    due_date_warning_hours = models.PositiveIntegerField(default=24)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Notification preferences for {self.user.username}"
+
+
+class Workspace(models.Model):
+    """
+    Workspace for organizing users and resources with role-based permissions.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_workspaces")
+    
+    # Settings
+    is_public = models.BooleanField(default=False)
+    allow_invite_links = models.BooleanField(default=True)
+    default_member_role = models.CharField(
+        max_length=20,
+        choices=[
+            ('viewer', 'Viewer'),
+            ('member', 'Member'),
+        ],
+        default='member'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return self.name
+    
+    def get_member_count(self):
+        return self.members.count()
+
+
+class WorkspaceMember(models.Model):
+    """
+    Workspace membership with role-based permissions.
+    Roles: owner > admin > member > viewer
+    """
+    ROLES = [
+        ('owner', 'Owner'),
+        ('admin', 'Admin'),
+        ('member', 'Member'),
+        ('viewer', 'Viewer'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="members")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workspace_memberships")
+    role = models.CharField(max_length=20, choices=ROLES, default='member')
+    
+    # Invite tracking
+    invited_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invited_members"
+    )
+    invited_at = models.DateTimeField(null=True, blank=True)
+    
+    joined_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['workspace', 'user']
+        ordering = ['-role', 'joined_at']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.role} in {self.workspace.name}"
+    
+    def has_permission(self, permission: str) -> bool:
+        """Check if member has a specific permission."""
+        role_permissions = {
+            'owner': ['create', 'read', 'update', 'delete', 'manage_members', 'manage_settings', 'manage_roles'],
+            'admin': ['create', 'read', 'update', 'delete', 'manage_members'],
+            'member': ['create', 'read', 'update', 'delete_own'],
+            'viewer': ['read'],
+        }
+        return permission in role_permissions.get(self.role, [])
+    
+    def can_manage_member(self, target_role: str) -> bool:
+        """Check if this member can manage another member with target_role."""
+        hierarchy = {'owner': 4, 'admin': 3, 'member': 2, 'viewer': 1}
+        return hierarchy.get(self.role, 0) > hierarchy.get(target_role, 0)
+
+
+class ResourcePermission(models.Model):
+    """
+    Granular permissions for specific resources (tasks, documents, etc.)
+    """
+    PERMISSION_TYPES = [
+        ('view', 'View'),
+        ('edit', 'Edit'),
+        ('delete', 'Delete'),
+        ('share', 'Share'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Resource being protected (generic foreign key pattern)
+    resource_type = models.CharField(max_length=50)  # 'task', 'document', 'conversation'
+    resource_id = models.UUIDField()
+    
+    # Who has access
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="resource_permissions"
+    )
+    workspace_member = models.ForeignKey(
+        WorkspaceMember,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="resource_permissions"
+    )
+    
+    permission = models.CharField(max_length=20, choices=PERMISSION_TYPES)
+    granted_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="granted_permissions")
+    granted_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['resource_type', 'resource_id', 'user', 'permission']
+    
+    def __str__(self):
+        target = self.user.username if self.user else f"{self.workspace_member.role} in {self.workspace_member.workspace.name}"
+        return f"{self.permission} on {self.resource_type}:{self.resource_id} for {target}"
+
+
+class APIToken(models.Model):
+    """
+    API tokens for third-party integrations (Zapier, Make, etc.)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_tokens")
+    name = models.CharField(max_length=255, help_text="e.g., 'Zapier Production'")
+    token_hash = models.CharField(max_length=255, unique=True)
+    
+    # Scopes for granular permissions
+    scopes = models.JSONField(default=list, help_text="['tasks:read', 'tasks:write', 'documents:read']")
+    
+    # Rate limiting per token
+    rate_limit = models.PositiveIntegerField(default=1000, help_text="Requests per hour")
+    
+    # Usage tracking
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    request_count = models.PositiveIntegerField(default=0)
+    
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.name} ({self.user.username})"
+    
+    def is_valid(self):
+        if not self.is_active:
+            return False
+        if self.expires_at and self.expires_at < datetime.now():
+            return False
+        return True
+
+
+class Webhook(models.Model):
+    """
+    Webhook subscriptions for event-driven integrations.
+    """
+    EVENT_TYPES = [
+        ('task.created', 'Task Created'),
+        ('task.updated', 'Task Updated'),
+        ('task.deleted', 'Task Deleted'),
+        ('task.completed', 'Task Completed'),
+        ('document.created', 'Document Created'),
+        ('document.updated', 'Document Updated'),
+        ('comment.created', 'Comment Created'),
+        ('member.invited', 'Member Invited'),
+        ('member.joined', 'Member Joined'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="webhooks")
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="webhooks"
+    )
+    
+    # Configuration
+    name = models.CharField(max_length=255)
+    url = models.URLField()
+    events = models.JSONField(default=list, help_text="List of event types to subscribe to")
+    
+    # Security
+    secret = models.CharField(max_length=255, help_text="Secret for HMAC signature")
+    headers = models.JSONField(default=dict, blank=True, help_text="Custom headers")
+    
+    # Delivery settings
+    is_active = models.BooleanField(default=True)
+    retry_count = models.PositiveIntegerField(default=3)
+    timeout_seconds = models.PositiveIntegerField(default=30)
+    
+    # Delivery tracking
+    last_delivered_at = models.DateTimeField(null=True, blank=True)
+    last_status_code = models.PositiveIntegerField(null=True, blank=True)
+    failure_count = models.PositiveIntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.name} -> {self.url}"
+
+
+class WebhookDelivery(models.Model):
+    """
+    Log of webhook delivery attempts.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    webhook = models.ForeignKey(Webhook, on_delete=models.CASCADE, related_name="deliveries")
+    
+    # Delivery details
+    event_type = models.CharField(max_length=50)
+    payload = models.JSONField()
+    
+    # Attempt tracking
+    attempt_number = models.PositiveIntegerField(default=1)
+    status_code = models.PositiveIntegerField(null=True, blank=True)
+    response_body = models.TextField(blank=True, default="")
+    error_message = models.TextField(blank=True, default="")
+    
+    # Timing
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    duration_ms = models.PositiveIntegerField(null=True, blank=True)
+    
+    # Status
+    SUCCESS = 'success'
+    FAILED = 'failed'
+    PENDING = 'pending'
+    RETRYING = 'retrying'
+    
+    STATUS_CHOICES = [
+        (SUCCESS, 'Success'),
+        (FAILED, 'Failed'),
+        (PENDING, 'Pending'),
+        (RETRYING, 'Retrying'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
+    
+    class Meta:
+        ordering = ['-started_at']
+        indexes = [
+            models.Index(fields=['webhook', '-started_at']),
+            models.Index(fields=['event_type', '-started_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.webhook.name} - {self.event_type} ({self.status})"
+
+
+class ConversationMemory(models.Model):
+    """Per-conversation memory for maintaining context within a chat session."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    conversation = models.OneToOneField(
+        Conversation, 
+        on_delete=models.CASCADE, 
+        related_name="memory"
+    )
+    
+    # Extracted facts and entities from the conversation
+    extracted_facts = models.JSONField(default=list, blank=True)
+    user_intents = models.JSONField(default=list, blank=True)
+    
+    # Running summary of the conversation
+    running_summary = models.TextField(blank=True)
+    
+    # Key topics discussed
+    topics = models.JSONField(default=list, blank=True)
+    
+    # Last updated
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ["-updated_at"]
+    
+    def __str__(self):
+        return f"Memory for conversation {self.conversation.id}"
+    
+    def add_fact(self, fact: str, confidence: float = 1.0):
+        """Add an extracted fact."""
+        self.extracted_facts.append({
+            "fact": fact,
+            "confidence": confidence,
+            "added_at": timezone.now().isoformat(),
+        })
+        self.save(update_fields=["extracted_facts", "updated_at"])
+    
+    def update_summary(self, summary: str):
+        """Update the running conversation summary."""
+        self.running_summary = summary
+        self.save(update_fields=["running_summary", "updated_at"])

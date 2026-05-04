@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Sparkles } from "lucide-react";
+import { Building2, Sparkles, Check, Copy, Check as CheckIcon } from "lucide-react";
 import api from "@/lib/api";
 
 interface OnboardingStatus {
@@ -25,7 +25,7 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
   const [companyName, setCompanyName] = useState("");
   const [industry, setIndustry] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, setShowCopied] = useState(false);
+  const [showCopied, setShowCopied] = useState(false);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -94,7 +94,6 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText("");

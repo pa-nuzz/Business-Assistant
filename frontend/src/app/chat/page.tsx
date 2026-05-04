@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { chat, user } from "@/lib/api";
 import { useChat } from "@/components/chat-context";
-import ReactMarkdown from "react-markdown";
+import ChatMessage from "@/components/chat-message";
 import {
   Search,
   Mic,
@@ -18,6 +18,7 @@ import {
   Copy,
   Check,
   RefreshCw,
+  WifiOff,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -58,6 +59,8 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [activeSources, setActiveSources] = useState<Set<SourceType>>(new Set());
   const [userName, setUserName] = useState<string>("");
   const [, setHasInitialized] = useState(false);
@@ -223,6 +226,8 @@ export default function ChatPage() {
     }
     setIsStreaming(true);
     setError(null);
+    setIsReconnecting(false);
+    setRetryCount(0);
     streamingContentRef.current = "";
 
     // Add empty assistant message that will be filled as we stream
@@ -231,77 +236,99 @@ export default function ChatPage() {
       { role: "assistant", content: "", isStreaming: true },
     ]);
 
-    // Small animation grace period only on first message
-    if (messages.length <= 1) {
-      await new Promise(resolve => setTimeout(resolve, 400));
-    }
-
-    try {
-      await chat.sendMessageStream(
-        messageToSend,
-        contextConversationId,
-        (token) => {
-          streamingContentRef.current += token;
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage?.role === "assistant") {
-              lastMessage.content = streamingContentRef.current;
+    // Streaming with exponential backoff retry
+    const attemptStream = async (attempt: number): Promise<void> => {
+      try {
+        await chat.sendMessageStream(
+          messageToSend,
+          contextConversationId,
+          (token) => {
+            setRetryCount(0);
+            setIsReconnecting(false);
+            streamingContentRef.current += token;
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+              if (lastMessage?.role === "assistant") {
+                lastMessage.content = streamingContentRef.current;
+              }
+              return newMessages;
+            });
+          },
+          (metadata) => {
+            if (metadata?.conversation_id && metadata.conversation_id !== currentConversationIdRef.current) {
+              setCurrentConversationId(metadata.conversation_id);
+              currentConversationIdRef.current = metadata.conversation_id;
+              router.replace(`/chat?id=${metadata.conversation_id}`, { scroll: false });
             }
-            return newMessages;
-          });
-        },
-        (metadata) => {
-          // Update URL with new conversation_id if provided
-          // Use ref to get latest value, not stale closure
-          if (metadata?.conversation_id && metadata.conversation_id !== currentConversationIdRef.current) {
-            setCurrentConversationId(metadata.conversation_id);
-            currentConversationIdRef.current = metadata.conversation_id; // Update ref immediately
-            router.replace(`/chat?id=${metadata.conversation_id}`, { scroll: false });
+          },
+          () => {
+            setIsStreaming(false);
+            setIsReconnecting(false);
+            setRetryCount(0);
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+              if (lastMessage?.role === "assistant") {
+                lastMessage.isStreaming = false;
+              }
+              return newMessages;
+            });
+            window.dispatchEvent(new CustomEvent("refresh-conversations"));
+          },
+          (err) => {
+            if (attempt < 3 && (err.includes("Network Error") || err.includes("stream") || err.includes("timeout") || err.includes("Connection"))) {
+              const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+              setIsReconnecting(true);
+              setRetryCount(attempt + 1);
+              setTimeout(() => {
+                attemptStream(attempt + 1);
+              }, delay);
+            } else {
+              setError(err);
+              setIsStreaming(false);
+              setIsReconnecting(false);
+              setRetryCount(0);
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const lastMessage = newMessages[newMessages.length - 1];
+                if (lastMessage?.role === "assistant") {
+                  lastMessage.isStreaming = false;
+                  lastMessage.content = streamingContentRef.current || "Error: " + err;
+                }
+                return newMessages;
+              });
+            }
           }
-        },
-        () => {
-          // Streaming done
+        );
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        if (attempt < 3 && (errorMessage.includes("Network") || errorMessage.includes("stream") || errorMessage.includes("Connection"))) {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+          setIsReconnecting(true);
+          setRetryCount(attempt + 1);
+          setTimeout(() => {
+            attemptStream(attempt + 1);
+          }, delay);
+        } else {
+          setError(errorMessage);
           setIsStreaming(false);
+          setIsReconnecting(false);
+          setRetryCount(0);
           setMessages((prev) => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
             if (lastMessage?.role === "assistant") {
               lastMessage.isStreaming = false;
-            }
-            return newMessages;
-          });
-          // Trigger sidebar refresh
-          window.dispatchEvent(new CustomEvent("refresh-conversations"));
-        },
-        (err) => {
-          setError(err);
-          setIsStreaming(false);
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage?.role === "assistant") {
-              lastMessage.isStreaming = false;
-              lastMessage.content = streamingContentRef.current || "Error: " + err;
+              lastMessage.content = "Error: " + errorMessage;
             }
             return newMessages;
           });
         }
-      );
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      setError(errorMessage);
-      setIsStreaming(false);
-      setMessages((prev) => {
-        const newMessages = [...prev];
-        const lastMessage = newMessages[newMessages.length - 1];
-        if (lastMessage?.role === "assistant") {
-          lastMessage.isStreaming = false;
-          lastMessage.content = "Error: " + errorMessage;
-        }
-        return newMessages;
-      });
-    }
+      }
+    };
+
+    attemptStream(0);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -539,18 +566,6 @@ export default function ChatPage() {
                       >
                         {message.role === "assistant" ? (
                           <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-p:my-1 text-slate-800">
-                            {message.isStreaming ? (
-                              <div className="text-sm leading-relaxed whitespace-pre-wrap flex items-end">
-                                {message.content}
-                                <span className="inline-block w-0.5 h-4 bg-indigo-500 ml-0.5 animate-pulse" />
-                              </div>
-                            ) : (
-                              <ReactMarkdown>{message.content}</ReactMarkdown>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
-                        )}
                       </div>
                       {/* Copy button for assistant messages */}
                       {message.role === "assistant" && !message.isStreaming && message.content && (
@@ -579,7 +594,19 @@ export default function ChatPage() {
                   </motion.div>
                 ))}
               </AnimatePresence>
-              
+
+              {/* Reconnecting indicator */}
+              {isReconnecting && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 text-sm text-muted-foreground mb-4"
+                >
+                  <WifiOff className="h-4 w-4 text-orange-500" />
+                  <span>Connection interrupted. Retrying... (attempt {retryCount}/3)</span>
+                </motion.div>
+              )}
+
               {/* Typing indicator with animated logo */}
               {isStreaming && messages[messages.length - 1]?.role === "assistant" && (
                 <motion.div

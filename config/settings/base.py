@@ -75,6 +75,8 @@ MIDDLEWARE = [
     "utils.middleware.SecurityHeadersMiddleware",
     "utils.middleware_compression.CompressionMiddleware",
     "utils.middleware_cache.CacheHeadersMiddleware",
+    "utils.middleware_performance.PerformanceMonitoringMiddleware",
+    "utils.middleware_performance.QueryCountAlertMiddleware",
 ]
 
 # Security Headers
@@ -248,6 +250,10 @@ CACHES = {
         "TIMEOUT": 300,
     }
 }
+
+# Use Redis for session storage
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "sessions"
 
 # ─── Channels (WebSocket) Configuration ─────────────────────────────────────────
 ASGI_APPLICATION = "config.asgi.application"

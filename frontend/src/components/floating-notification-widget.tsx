@@ -50,6 +50,7 @@ export function FloatingNotificationWidget({
     } catch (err: unknown) {
       // Silently ignore auth errors (user not logged in)
       if ((err as AxiosApiError).response?.status === 401) return;
+       
       console.error('Failed to fetch notifications:', err);
     }
   }, []);
@@ -95,7 +96,7 @@ export function FloatingNotificationWidget({
       setUnreadCount(prev => Math.max(0, prev - 1));
       
       toast.success('Marked as read');
-    } catch {
+    } catch (err) {
       toast.error('Failed to mark as read');
     } finally {
       setMarkingRead(null);
@@ -117,7 +118,7 @@ export function FloatingNotificationWidget({
       setUnreadCount(0);
       
       toast.success('All notifications marked as read');
-    } catch {
+    } catch (err) {
       toast.error('Failed to mark all as read');
     } finally {
       setIsLoading(false);

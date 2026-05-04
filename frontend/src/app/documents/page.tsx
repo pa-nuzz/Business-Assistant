@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { documents } from '@/lib/api';
 import api from '@/lib/api';
 import { FileText, Upload, Trash2, Search, Loader2, X, MessageSquare, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageSkeleton } from '@/components/loading-skeletons';
+import { FileDropzone } from '@/components/file-dropzone';
+import { toast } from 'sonner';
 
 interface Document {
   id: string;
@@ -34,13 +36,12 @@ export default function DocumentsPage() {
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [docSummary, setDocSummary] = useState<DocumentSummary | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [searchResults, setSearchResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const pageSize = 20;
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Set page title
   useEffect(() => {
@@ -95,18 +96,8 @@ export default function DocumentsPage() {
     return () => clearInterval(interval);
   }, [docs]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleUpload = async (file: File) => {
     if (!file) return;
-
-    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
-    const allowedExts = ['pdf', 'docx', 'txt'];
-    const ext = file.name.split('.').pop()?.toLowerCase();
-
-    if (!ext || !allowedExts.includes(ext)) {
-      alert('Only PDF, DOCX, and TXT files are supported.');
-      return;
-    }
 
     setIsUploading(true);
     setUploadProgress(0);
@@ -123,9 +114,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      setPendingFiles([]);
     }
   };
 
@@ -220,11 +209,11 @@ export default function DocumentsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Progress bar for upload */}
+      {/* Progress bar */}
       {isUploading && (
         <div className="fixed top-0 left-0 right-0 h-[3px] bg-muted z-50">
           <motion.div 
-            className="h-full bg-blue-600"
+            className="h-full bg-primary"
             initial={{ width: 0 }}
             animate={{ width: `${uploadProgress}%` }}
             transition={{ duration: 0.3 }}
@@ -239,22 +228,12 @@ export default function DocumentsPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-2xl p-8 text-center cursor-pointer transition-colors bg-gray-50/50 hover:bg-blue-50/30"
-          >
-            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
-              <Upload className="w-6 h-6 text-blue-600" />
-            </div>
-            <p className="text-sm font-medium text-slate-900 mb-1">Click to upload documents</p>
-            <p className="text-xs text-slate-500">Drop files here or click to browse</p>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.txt"
-            onChange={handleUpload}
-            className="hidden"
+          <FileDropzone
+            onFilesAccepted={(files) => setPendingFiles(files)}
+            onUpload={handleUpload}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            maxSizeMB={50}
           />
         </motion.div>
 

@@ -5,6 +5,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.models import Notification
+from core.services.notification_service import NotificationService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])

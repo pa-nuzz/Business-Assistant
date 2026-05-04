@@ -484,7 +484,6 @@ function TaskCard({
   task, 
   getPriorityColor, 
   getPriorityBg,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   getStatusIcon,
   onUpdate 
 }: { 

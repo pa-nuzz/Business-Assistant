@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,18 +155,17 @@ const EyeBall = ({
         overflow: 'hidden',
       }}
     >
-      {!isBlinking && (
-        <div
-          className="rounded-full"
-          style={{
-            width: `${pupilSize}px`,
-            height: `${pupilSize}px`,
-            backgroundColor: pupilColor,
-            transform: `translate(${pupilPosition.x}px, ${pupilPosition.y}px)`,
-            transition: 'transform 0.1s ease-out',
-          }}
-        />
-      )}
+      <div
+        className="rounded-full"
+        style={{
+          width: `${pupilSize}px`,
+          height: `${pupilSize}px`,
+          backgroundColor: pupilColor,
+          transform: `translate(${pupilPosition.x}px, ${pupilPosition.y}px)`,
+          transition: 'transform 0.1s ease-out',
+          opacity: isBlinking ? 0 : 1,
+        }}
+      />
     </div>
   );
 };
@@ -190,6 +189,7 @@ export default function AnimatedLoginPage() {
   const orangeRef = useRef<HTMLDivElement>(null);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showLoading } = useLoading();
 
   useEffect(() => {
@@ -309,9 +309,10 @@ export default function AnimatedLoginPage() {
       await auth.login(username.trim(), password);
       toast.success('Welcome back! 👋');
       showLoading(); // Show loading before redirect
+      const redirect = searchParams.get('redirect') || '/chat';
       // Small delay to let loading screen render before navigation
       setTimeout(() => {
-        router.push('/chat');
+        router.push(redirect);
       }, 100);
     } catch (err: unknown) {
       const apiError = err as AxiosApiError;
@@ -338,7 +339,7 @@ export default function AnimatedLoginPage() {
       <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-primary/90 via-primary to-primary/80 p-12 text-primary-foreground">
         <div className="relative z-20">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-primary to-primary/80">
               <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
             </div>
             <span>AEIOU AI</span>
@@ -517,8 +518,8 @@ export default function AnimatedLoginPage() {
         </div>
 
         <div className="relative z-20 flex items-center gap-8 text-sm text-white/80">
-          <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
-          <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
+          <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+          <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
         </div>
 
         {/* Decorative elements */}
@@ -528,11 +529,11 @@ export default function AnimatedLoginPage() {
       </div>
 
       {/* Right Login Section */}
-      <div className="flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #e0f2fe 100%)' }}>
+      <div className="flex items-center justify-center p-8 bg-gradient-to-br from-muted/40 via-background to-muted/30">
         <div className="w-full max-w-[420px]">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-2 text-lg font-semibold mb-12">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-primary to-primary/80">
               <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
             </div>
             <span>AEIOU AI</span>
@@ -540,14 +541,14 @@ export default function AnimatedLoginPage() {
 
           {/* Header */}
           <div className="text-center mb-10">
-            <h1 className="text-3xl font-bold tracking-tight mb-2 text-slate-900">Welcome back!</h1>
-            <p className="text-slate-600 text-sm">Please enter your details</p>
+            <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground">Welcome back!</h1>
+            <p className="text-muted-foreground text-sm">Please enter your details</p>
           </div>
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium text-slate-700">Username</Label>
+              <Label htmlFor="username" className="text-sm font-medium text-muted-foreground">Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -563,7 +564,7 @@ export default function AnimatedLoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium text-slate-700">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium text-muted-foreground">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -577,7 +578,7 @@ export default function AnimatedLoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="size-5" />
@@ -593,7 +594,7 @@ export default function AnimatedLoginPage() {
                 <Checkbox id="remember" />
                 <Label
                   htmlFor="remember"
-                  className="text-sm font-normal cursor-pointer text-slate-700"
+                  className="text-sm font-normal cursor-pointer text-muted-foreground"
                 >
                   Remember for 30 days
                 </Label>
@@ -604,7 +605,7 @@ export default function AnimatedLoginPage() {
             </div>
 
             {error && (
-              <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg">
                 {typeof error === 'string' ? error : JSON.stringify(error)}
               </div>
             )}
@@ -620,11 +621,11 @@ export default function AnimatedLoginPage() {
           </form>
 
           {/* Sign Up Link */}
-          <div className="text-center text-sm text-slate-600 mt-8">
+          <div className="text-center text-sm text-muted-foreground mt-8">
             Don&apos;t have an account?{" "}
-            <a href="/register" className="text-slate-900 font-medium hover:underline">
+            <Link href="/register" className="text-foreground font-medium hover:underline">
               Sign Up
-            </a>
+            </Link>
           </div>
         </div>
       </div>

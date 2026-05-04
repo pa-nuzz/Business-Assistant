@@ -4,7 +4,20 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { auth } from '@/lib/api';
 
-const publicPaths = ['/login', '/register', '/forgot-password', '/verify-email', '/reset-password'];
+const publicPaths = [
+  '/',
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/verify-email',
+  '/reset-password',
+  '/features',
+  '/pricing',
+  '/about',
+  '/contact',
+  '/privacy',
+  '/terms',
+];
 
 function isPublicPath(path: string): boolean {
   if (!path) return false;
