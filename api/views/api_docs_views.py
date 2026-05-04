@@ -507,7 +507,8 @@ tasks = response.json()['tasks']"""
                 "code": """curl -X POST https://api.aeiou.ai/v1/documents/ \\
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \\
   -F "file=@report.pdf" \\
-  -F "title=Quarterly Report""""
+  -F "title=Quarterly Report"
+"""
             },
             "webhook_verification": {
                 "description": "Verify webhook signature",
