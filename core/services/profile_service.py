@@ -3,6 +3,7 @@ Profile service for handling user and business profile business logic.
 Extracted from views to enable testing and reusability.
 """
 import logging
+import json
 from typing import Dict, Optional
 from django.contrib.auth.models import User
 from django.db import transaction
@@ -44,6 +45,7 @@ class ProfileService:
             "username": self.user.username,
             "email": self.user.email,
             "avatar_url": avatar_url,
+            "avatar": avatar_url,
         }
         
         # Cache for 5 minutes
@@ -321,6 +323,7 @@ class ProfileService:
     def update_business_profile(self, data: Dict, avatar_file=None) -> Dict:
         """
         Update business profile with transaction safety.
+        Allows avatar-only uploads without requiring other fields.
         
         Args:
             data: Business profile data
@@ -335,6 +338,8 @@ class ProfileService:
         with transaction.atomic():
             profile, created = BusinessProfile.objects.get_or_create(user=self.user)
             
+            # Only update fields if they are present in data
+            # This allows avatar-only uploads without touching other fields
             if "company_name" in data:
                 profile.company_name = data["company_name"]
             if "industry" in data:
@@ -346,11 +351,11 @@ class ProfileService:
             if "description" in data:
                 profile.description = data["description"]
             if "key_metrics" in data:
-                profile.key_metrics = data["key_metrics"] if isinstance(data["key_metrics"], dict) else {}
+                profile.key_metrics = self._coerce_json_value(data["key_metrics"], dict, {})
             if "goals" in data:
-                profile.goals = data["goals"] if isinstance(data["goals"], list) else []
+                profile.goals = self._coerce_json_value(data["goals"], list, [])
             
-            # Handle avatar upload
+            # Handle avatar upload - this works even if no other data provided
             if avatar_file:
                 if profile.avatar:
                     try:
@@ -383,7 +388,22 @@ class ProfileService:
                 "goals": profile.goals or [],
                 "key_metrics": profile.key_metrics or {},
                 "avatar_url": profile.avatar.url if profile.avatar else None,
+                "avatar": profile.avatar.url if profile.avatar else None,
             }
+
+    @staticmethod
+    def _coerce_json_value(value, expected_type, default):
+        """Accept JSON objects from JSONParser and JSON strings from multipart forms."""
+        if isinstance(value, expected_type):
+            return value
+        if isinstance(value, str) and value.strip():
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, expected_type):
+                    return parsed
+            except json.JSONDecodeError:
+                return default
+        return default
     
     def delete_account(self, password: str) -> bool:
         """

@@ -1,73 +1,65 @@
 # API v1 URL Configuration
 from django.urls import path
 from api import views
-from api.auth_views import (
+from api.views import (
+    # Auth
     register, login, logout, verify_email, resend_verification,
-    forgot_password, verify_reset_code, reset_password, token_refresh
-)
-from api.views import *  # Import all modular views
-from api.views.analytics_views import (
-    get_analytics, get_user_engagement, get_ai_usage,
-    get_workspace_analytics, get_admin_dashboard, get_retention_report,
-    request_analytics_export, get_export_status, delete_analytics_data
-)
-from api.task_views import (
+    forgot_password, verify_reset_code, reset_password, token_refresh,
+    # Tasks
     list_tasks, create_task, get_task, update_task, delete_task,
     complete_task, reopen_task, list_comments, create_comment, delete_comment,
-    list_activities, task_dashboard, task_stats
-)
-from api.views.async_views import (
-    async_process_document, async_bulk_task_update, async_job_status
-)
-from api.views.workspace_views import (
-    list_workspaces, get_workspace_context, update_business_context,
+    list_activities, task_dashboard, task_stats,
+    # Analytics
+    get_analytics, get_user_engagement, get_ai_usage,
+    get_workspace_analytics, get_admin_dashboard, get_retention_report,
+    request_analytics_export, get_export_status, delete_analytics_data,
+    # Async
+    async_process_document, async_bulk_task_update, async_job_status,
+    # Workspace
+    get_workspace_context, update_business_context,
     add_memory, get_memories, delete_memory, add_conversation_summary,
-    update_preferences, archive_workspace
-)
-from api.views.ai_task_views import (
+    update_preferences, archive_workspace,
+    # AI Tasks
     generate_tasks_from_chat, generate_tasks_from_document,
-    get_pending_ai_tasks, accept_ai_task, reject_ai_task
-)
-from api.views.task_detail_views import (
+    get_pending_ai_tasks, accept_ai_task, reject_ai_task,
+    # Task Detail
     get_task_details, add_comment, edit_comment, reply_to_comment,
     add_subtask, update_subtask, delete_subtask,
-    start_timer, stop_timer, add_manual_time, delete_time_entry, get_active_timer
-)
-from api.views.notification_views import (
+    start_timer, stop_timer, add_manual_time, delete_time_entry, get_active_timer,
+    # Notifications
     get_notifications, get_unread_count, mark_notification_read,
-    mark_all_read, get_notification_preferences, update_notification_preferences
-)
-from api.views.webhook_views import (
+    mark_all_read, get_notification_preferences, update_notification_preferences,
+    # Webhooks
     list_webhooks, create_webhook, get_webhook, update_webhook, delete_webhook,
-    test_webhook, list_deliveries, regenerate_secret, get_available_events
-)
-from api.views.api_token_views import (
+    test_webhook, list_deliveries, regenerate_secret, get_available_events,
+    # API Tokens
     list_api_tokens, create_api_token, revoke_api_token,
-    zapier_triggers, zapier_actions, zapier_sample_data, integration_status
-)
-from api.views.api_docs_views import (
-    get_openapi_spec, api_documentation, get_api_examples
-)
-from api.views.permission_views import (
+    zapier_triggers, zapier_actions, zapier_sample_data, integration_status,
+    # API Docs
+    get_openapi_spec, api_documentation, get_api_examples,
+    # Permissions
     list_workspaces, create_workspace, get_workspace, update_workspace, delete_workspace,
     list_members, invite_member, update_member_role, remove_member,
-    check_permission, check_resource_permission, grant_permission, revoke_permission
-)
-from api.views.semantic_search_views import (
-    semantic_search, conversational_retrieval, generate_embeddings
-)
-from api.views.document_analysis_views import (
-    analyze_document, auto_extract_tasks, get_document_insights
-)
-from api.views.document_version_views import (
+    check_permission, check_resource_permission, grant_permission, revoke_permission,
+    # Semantic Search
+    semantic_search, conversational_retrieval, generate_embeddings,
+    # Document Analysis & Auto-Extraction
+    analyze_document, auto_extract_tasks, get_document_insights,
+    # Document Verification
+    document_status, documents_status_summary, reprocess_document,
+    # Smart Actions
+    smart_action_view,
+    # Document Versioning
     list_document_versions, get_version_diff, compare_versions, create_version
 )
-
 app_name = "api_v1"
 
 urlpatterns = [
+    # Smart Actions (Command Palette)
+    path("actions/smart/", smart_action_view, name="smart-action"),
     # Health
     path("health/", views.health_check, name="health-check"),
+    path("health/ai/", views.ai_health, name="ai-health"),
 
     # Auth (Premium Auth System with JWT + httpOnly cookies)
     path("auth/register/", register, name="register"),
@@ -91,9 +83,12 @@ urlpatterns = [
     # Documents
     path("documents/", views.document_list, name="document-list"),
     path("documents/upload/", views.upload_document, name="upload-document"),
-    path("documents/<uuid:doc_id>/status/", views.document_status, name="document-status"),
+    path("documents/<uuid:doc_id>/summary/", views.document_summary, name="document-summary"),
+    path("documents/<uuid:doc_id>/status/", document_status, name="document-status"),
     path("documents/<uuid:doc_id>/delete/", views.delete_document, name="document-delete"),
     path("documents/<uuid:doc_id>/download/", views.document_download, name="document-download"),
+    path("documents/status-summary/", documents_status_summary, name="documents-status-summary"),
+    path("documents/<uuid:doc_id>/reprocess/", reprocess_document, name="document-reprocess"),
 
     # Business Profile
     path("profile/", views.business_profile, name="business-profile"),
@@ -171,10 +166,6 @@ urlpatterns = [
     path("analytics/export/<uuid:export_id>/status/", get_export_status, name="analytics-export-status"),
     path("analytics/delete-data/", delete_analytics_data, name="analytics-delete"),
     
-    # Notifications
-    path("notifications/", views.get_notifications, name="notifications-list"),
-    path("notifications/<int:notification_id>/read/", views.mark_notification_read, name="notification-mark-read"),
-
     # Async Operations
     path("async/process-document/", async_process_document, name="async-process-document"),
     path("async/bulk-task-update/", async_bulk_task_update, name="async-bulk-task-update"),
@@ -254,7 +245,6 @@ urlpatterns = [
     path("documents/<uuid:document_id>/versions/create/", create_version, name="document-version-create"),
 
     # Workspace Context & AI Memory
-    path("workspaces/", list_workspaces, name="workspace-list"),
     path("workspaces/<str:workspace_id>/context/", get_workspace_context, name="workspace-context"),
     path("workspaces/<str:workspace_id>/context/update/", update_business_context, name="workspace-context-update"),
     path("workspaces/<str:workspace_id>/memories/", get_memories, name="workspace-memories"),

@@ -141,7 +141,7 @@ async function cacheFirst(request) {
       cache.put(request, response.clone());
     }
     return response;
-  } catch (error) {
+  } catch {
     return cached || offlineResponse();
   }
 }
@@ -154,7 +154,7 @@ async function networkFirst(request) {
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
-  } catch (error) {
+  } catch {
     const cached = await caches.match(request);
     return cached || offlineResponse();
   }
@@ -168,7 +168,7 @@ async function apiStrategy(request) {
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
-  } catch (error) {
+  } catch {
     const cached = await caches.match(request);
     if (cached) {
       // Return cached data with stale header
@@ -242,7 +242,7 @@ async function syncTasks() {
 
 async function syncDocuments() {
   // Similar to syncTasks but for documents
-  console.log('Document sync triggered');
+  // Document sync triggered (silent in production)
 }
 
 function openIndexedDB() {

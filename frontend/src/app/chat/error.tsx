@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 export default function ChatError({
   error,
@@ -13,7 +14,7 @@ export default function ChatError({
   const router = useRouter();
 
   useEffect(() => {
-    console.error('Chat page error:', error);
+    logger.error('Chat page error', error);
   }, [error]);
 
   return (

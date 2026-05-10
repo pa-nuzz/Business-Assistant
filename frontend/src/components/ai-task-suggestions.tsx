@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Sparkles, Check, X, AlertCircle, Clock, 
+  Sparkles, X, Clock, 
   FileText, MessageSquare, ArrowRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,9 +38,8 @@ export function AITaskSuggestions({
   const [suggestions, setSuggestions] = useState<AITaskSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [createdCount, setCreatedCount] = useState(0);
 
-  const generateSuggestions = async () => {
+  const generateSuggestions = useCallback(async () => {
     setLoading(true);
     try {
       let response;
@@ -60,12 +59,12 @@ export function AITaskSuggestions({
       if (data.suggestions?.length === 0) {
         toast.info("No task suggestions found in this content");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to generate task suggestions");
     } finally {
       setLoading(false);
     }
-  };
+  }, [sourceType, sourceId, messageContent]);
 
   const createAllTasks = async () => {
     setLoading(true);
@@ -81,7 +80,6 @@ export function AITaskSuggestions({
       }
       
       const data = response.data;
-      setCreatedCount(data.tasks_created || 0);
       setSuggestions([]);
       setShowSuggestions(false);
       
@@ -89,7 +87,7 @@ export function AITaskSuggestions({
         toast.success(`Created ${data.tasks_created} tasks from AI suggestions`);
         onTasksCreated?.();
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to create tasks");
     } finally {
       setLoading(false);
@@ -105,7 +103,7 @@ export function AITaskSuggestions({
     if (autoTrigger && (messageContent || sourceType === 'document')) {
       generateSuggestions();
     }
-  }, [autoTrigger, messageContent, sourceId]);
+  }, [autoTrigger, messageContent, sourceId, sourceType, generateSuggestions]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {

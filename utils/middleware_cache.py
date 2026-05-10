@@ -32,6 +32,8 @@ class CacheHeadersMiddleware:
             cache_type = self.get_cache_type(request)
             if cache_type and cache_type != 'none':
                 self.add_cache_headers(response, cache_type)
+            else:
+                self.add_cache_headers(response, 'none')
         
         return response
     

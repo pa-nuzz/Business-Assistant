@@ -13,9 +13,13 @@ class TestProfileService:
     
     def test_get_user_info(self):
         """Test getting user info."""
-        user = User.objects.create_user(username='testuser', password='testpass123', email='test@example.com')
-        service = ProfileService(user)
+        from core.cache import CacheService
         
+        user = User.objects.create_user(username='testuser', password='testpass123', email='test@example.com')
+        # Clear any existing cache for this user
+        CacheService.delete(f"user_info:{user.id}")
+        
+        service = ProfileService(user)
         result = service.get_user_info()
         
         assert result['id'] == user.id

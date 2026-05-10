@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { documents } from '@/lib/api';
-import api from '@/lib/api';
-import { FileText, Upload, Trash2, Search, Loader2, X, MessageSquare, Eye } from 'lucide-react';
+import { FileText, Trash2, Search, Loader2, X, MessageSquare, Eye, Sparkles, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageSkeleton } from '@/components/loading-skeletons';
 import { FileDropzone } from '@/components/file-dropzone';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 interface Document {
   id: string;
@@ -17,6 +17,10 @@ interface Document {
   status: 'pending' | 'processing' | 'ready' | 'failed';
   page_count: number;
   created_at: string;
+  visual_analysis?: {
+    insights?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface DocumentSummary {
@@ -33,14 +37,14 @@ export default function DocumentsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [docSummary, setDocSummary] = useState<DocumentSummary | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any>(null);
+  const [searchResults, setSearchResults] = useState<{ results?: Document[]; total_pages?: number; response?: string; text?: string } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const pageSize = 20;
 
   // Set page title
@@ -48,21 +52,22 @@ export default function DocumentsPage() {
     document.title = 'Documents | AEIOU AI';
   }, []);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     try {
       const data = await documents.list(currentPage, pageSize);
       setDocs(data.results || []);
       setTotalPages(data.total_pages || 1);
     } catch (err) {
-      console.error('Failed to fetch documents:', err);
+      logger.error('Failed to fetch documents', err);
+      toast.error('Unable to load documents. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, pageSize]);
 
   useEffect(() => {
     fetchDocuments();
-  }, [currentPage]);
+  }, [currentPage, fetchDocuments]);
 
   // Poll document status while processing
   useEffect(() => {
@@ -73,7 +78,7 @@ export default function DocumentsPage() {
       const updatedDocs = await Promise.all(
         processingDocs.map(async (doc) => {
           try {
-            const response = await api.get(`/documents/${doc.id}/status/`);
+            const response = await documents.getStatus(doc.id);
             return { ...doc, status: response.data.status, page_count: response.data.pages };
           } catch {
             return doc;
@@ -107,14 +112,13 @@ export default function DocumentsPage() {
         setUploadProgress(progress);
       });
       await fetchDocuments();
-    } catch (err: any) {
-      console.error('Upload failed:', err);
-      const errorMsg = err.response?.data?.error || err.message || 'Upload failed. Please try again.';
-      alert(errorMsg);
+    } catch (err: unknown) {
+      logger.error('Upload failed', err);
+      const errorMsg = (err as { response?: { data?: { error?: string } }; message?: string }).response?.data?.error || (err as { message?: string }).message || 'Upload failed. Please try again.';
+      toast.error(errorMsg);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
-      setPendingFiles([]);
     }
   };
 
@@ -123,11 +127,11 @@ export default function DocumentsPage() {
 
     setDeletingId(id);
     try {
-      await api.delete(`/documents/${id}/delete/`);
+      await documents.delete(id);
       setDocs(prev => prev.filter(d => d.id !== id));
     } catch (err) {
-      console.error('Delete failed:', err);
-      alert('Failed to delete document.');
+      logger.error('Delete failed', err);
+      toast.error('Failed to delete document.');
     } finally {
       setDeletingId(null);
     }
@@ -144,7 +148,8 @@ export default function DocumentsPage() {
         const summary = await documents.getSummary(doc.id);
         setDocSummary(summary);
       } catch (err) {
-        console.error('Failed to fetch summary:', err);
+        logger.error('Failed to fetch summary', err);
+        toast.error('Unable to load summary. Please try again.');
       }
     }
   };
@@ -154,14 +159,27 @@ export default function DocumentsPage() {
     
     setIsSearching(true);
     try {
-      const response = await api.post('/chat/', {
-        message: `Search in document "${selectedDoc.title}" for: ${searchQuery}`,
-      });
-      setSearchResults(response.data);
+      const response = await documents.search(selectedDoc.id, searchQuery);
+      setSearchResults(response);
     } catch (err) {
-      console.error('Search failed:', err);
+      logger.error('Document search failed', err);
+      toast.error('Search failed. Please try again.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleReprocess = async (doc: Document) => {
+    setReprocessingId(doc.id);
+    try {
+      const response = await documents.reprocess(doc.id);
+      setDocs(prev => prev.map(d => d.id === doc.id ? { ...d, status: response.status || 'pending' } : d));
+      toast.success(response.warning || 'Document reprocessing started');
+    } catch (err) {
+      logger.error('Reprocess failed', err);
+      toast.error('Failed to reprocess document.');
+    } finally {
+      setReprocessingId(null);
     }
   };
 
@@ -208,7 +226,7 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background grid-dna">
       {/* Progress bar */}
       {isUploading && (
         <div className="fixed top-0 left-0 right-0 h-[3px] bg-muted z-50">
@@ -229,11 +247,15 @@ export default function DocumentsPage() {
           className="mb-8"
         >
           <FileDropzone
-            onFilesAccepted={(files) => setPendingFiles(files)}
+            onFilesAccepted={async (files) => {
+              for (const file of files) {
+                await handleUpload(file);
+              }
+            }}
             onUpload={handleUpload}
             isUploading={isUploading}
             uploadProgress={uploadProgress}
-            maxSizeMB={50}
+            maxSizeMB={25}
           />
         </motion.div>
 
@@ -309,6 +331,22 @@ export default function DocumentsPage() {
                         >
                           <Eye size={14} />
                           View
+                        </motion.button>
+                      )}
+                      {doc.status === 'failed' && (
+                        <motion.button
+                          onClick={() => handleReprocess(doc)}
+                          disabled={reprocessingId === doc.id}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {reprocessingId === doc.id ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <RotateCcw size={14} />
+                          )}
+                          Retry
                         </motion.button>
                       )}
                       <motion.button
@@ -410,6 +448,19 @@ export default function DocumentsPage() {
                         </h3>
                         <div className="p-4 bg-muted rounded-xl text-sm text-slate-700 leading-relaxed">
                           {docSummary.summary}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* NEW: Visual Intelligence Section */}
+                    {selectedDoc.visual_analysis?.insights && (
+                      <div className="mb-6">
+                        <h3 className="text-sm font-semibold text-indigo-600 mb-3 flex items-center gap-2">
+                          <Sparkles size={16} />
+                          Visual Intelligence (AI Analysis)
+                        </h3>
+                        <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl text-sm text-slate-700 leading-relaxed">
+                          {selectedDoc.visual_analysis.insights}
                         </div>
                       </div>
                     )}

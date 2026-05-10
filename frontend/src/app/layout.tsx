@@ -1,23 +1,8 @@
 import type { Metadata, Viewport } from 'next';
-import { Syne, DM_Sans } from 'next/font/google';
 import './globals.css';
 import '@/styles/tokens.css';
 import { ClientLayout } from '@/components/client-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
-
-// Display font for headlines
-const syne = Syne({
-  subsets: ['latin'],
-  variable: '--font-display',
-  weight: ['400', '600', '700', '800'],
-});
-
-// Body font for UI and content
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  variable: '--font-body',
-  weight: ['400', '500', '600', '700'],
-});
 
 export const metadata: Metadata = {
   title: 'AEIOU AI - Your Business Assistant',
@@ -41,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${syne.variable} ${dmSans.variable} h-full antialiased`}>
+    <html lang="en" className="h-full antialiased" data-scroll-behavior="smooth">
       <body className="min-h-full bg-background text-foreground font-sans">
         <ErrorBoundary>
           <ClientLayout>{children}</ClientLayout>

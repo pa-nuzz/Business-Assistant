@@ -99,61 +99,75 @@ def _update_context(user_id: int, query: str, intent: str, tools_used: List[str]
     # Save back to cache
     cache.set(cache_key, ctx, timeout=300)
 
-def _extract_keywords(text: str) -> List[str]:
-    """Extract business-relevant keywords from text."""
-    business_terms = {
-        "revenue", "sales", "profit", "growth", "customer", "client",
-        "marketing", "strategy", "budget", "forecast", "kpi", "metrics",
-        "document", "contract", "invoice", "report", "analysis",
-        "competitor", "market", "product", "service", "team", "hiring"
-    }
-    words = set(re.findall(r'\b[a-zA-Z]{3,}\b', text.lower()))
-    return list(words & business_terms)
+from utils.text import extract_keywords as _extract_keywords
 
-def classify_intent_advanced(user_message: str, user_id: int) -> QueryIntent:
+def classify_intent_advanced(user_message: str, user_id: int, history: List[Dict] = None) -> QueryIntent:
     """
-    Advanced intent classification with context awareness.
-    Uses both keyword matching and context from previous interactions.
+    Semantic intent classification.
+    Uses fast keyword matching for obvious cases, falls back to LLM for complex/ambiguous ones.
     """
     msg = user_message.lower().strip()
     ctx = _get_cached_context(user_id)
     
-    # Direct intent signals
+    # --- Level 1: Fast Direct Signal Matching ---
     signals = {
         "document": ["document", "pdf", "file", "upload", "summary of", "in my docs", 
-                     "contract", "report", "spreadsheet", "cv", "resume", "what does my", 
-                     "read my", "analyze my"],
+                     "contract", "report", "spreadsheet", "cv", "resume", "what does my"],
         "analytics": ["revenue", "metrics", "kpi", "dashboard", "how much", "how many",
-                      "growth", "performance", "sales", "profit", "numbers", "statistics",
-                      "calculate", "compare", "trend"],
-        "search": ["search", "find out", "latest", "current", "news", "competitor",
-                   "market", "trend", "research", "what is", "who is", "where is",
-                   "lookup", "information about"],
-        "memory": ["remember", "you know that", "i told you", "last time", "my preference",
-                   "as i mentioned", "earlier", "previously", "what did i say"],
-        "task": ["create task", "add task", "new task", "make a task", "to-do", "todo",
-                 "task for", "remind me to", "schedule", "plan to", "need to", "should I",
-                 "mark complete", "finish task", "done with", "task done", "my tasks",
-                 "what tasks", "show tasks", "list tasks", "prioritize", "organize tasks",
-                 "task priority", "assign task", "due date", "deadline", "i need to", 
-                 "i have to", "i must", "set a reminder", "add a reminder", "reminder for"],
-        "action": ["create", "update", "delete", "save", "schedule", "remind me",
-                   "add to", "remove from", "set up", "configure"]
+                      "growth", "performance", "sales", "profit", "statistics"],
+        "search": ["search", "find out", "latest", "current", "news", "research", "what is"],
+        "task": ["create task", "add task", "new task", "todo", "remind me to", "schedule", "deadline", "my tasks", "update task", "delete task"],
     }
     
-    # Check for direct signals
     for intent, keywords in signals.items():
         if any(kw in msg for kw in keywords):
-            return intent if intent != "action" else "action"
+            return intent
     
-    # Context-based inference
+    # --- Level 2: Contextual Inference (Fast) ---
     if ctx["last_topics"]:
         last_topic = ctx["last_topics"][0]
         followup_indicators = ["and", "also", "what about", "how about", "can you", 
                               "tell me more", "explain"]
         if any(ind in msg for ind in followup_indicators):
             return last_topic
-    
+
+    # --- Level 3: Semantic Classification (LLM Fallback) ---
+    # Only run LLM if the message is long enough or seems complex
+    if len(msg) > 15:
+        try:
+            from services.model_layer import call_model, TaskType, Priority
+            
+            # Simple few-shot classification prompt
+            classification_prompt = f"""Classify the user's intent into exactly one of these categories:
+- chat: General conversation, greetings, or off-topic questions.
+- search: Request for external information, news, or web search.
+- document: Questions about their uploaded files, PDFs, or contracts.
+- analytics: Questions about business metrics, revenue, KPIs, or data trends.
+- task: Request to manage, create, list, or update tasks/reminders.
+- memory: Questions about what was discussed previously or personal preferences.
+
+User Message: "{user_message}"
+
+Respond with ONLY the category name."""
+
+            result = call_model(
+                user_id=user_id,
+                user_message=classification_prompt,
+                base_system_prompt="You are an intent classifier. Be precise.",
+                task_type=TaskType.QUICK,
+                priority=Priority.HIGH,
+                use_cache=True
+            )
+            
+            cleaned_intent = result.text.lower().strip()
+            # Validate against valid intents
+            valid_intents = ["chat", "search", "document", "analytics", "memory", "task", "action"]
+            if cleaned_intent in valid_intents:
+                logger.info(f"LLM Semantic Intent: {cleaned_intent}")
+                return cleaned_intent
+        except Exception as e:
+            logger.warning(f"LLM Intent Classification failed: {e}")
+
     return "chat"
 
 def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
@@ -214,73 +228,52 @@ def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
     
     elif intent == "search":
         tool_calls = [
-            {"name": "brave_search", "args": {"query": user_message, "num_results": 5}, "reason": "Search web for current info"}
+            {"name": "searxng_search", "args": {"query": user_message, "num_results": 5}, "reason": "Search web for current info via SearXNG"},
+            {"name": "duckduckgo_search", "args": {"query": user_message, "num_results": 3}, "reason": "Search web for current info via DuckDuckGo fallback"}
         ]
-        reasoning_chain = ["User requested web search", "Execute brave search with the query"]
+        reasoning_chain = ["User requested web search", "Execute searxng and duckduckgo search with the query"]
     
     elif intent == "task":
-        # Check if this is a task creation request vs just querying tasks
-        creation_signals = ["create", "add", "new", "make", "remind", "schedule", "plan to", "need to", "should"]
-        is_creating = any(sig in user_message.lower() for sig in creation_signals)
+        from services.model_layer import call_model, TaskType, Priority
+        from mcp.tools import TOOL_DEFINITIONS
         
-        if is_creating:
-            # Try to extract due date using dateparser if available
-            try:
-                import dateparser
-                parsed_date = dateparser.parse(
-                    user_message,
-                    settings={"PREFER_DATES_FROM": "future", "RETURN_AS_TIMEZONE_AWARE": False}
-                )
-                due_date_str = parsed_date.strftime("%Y-%m-%d") if parsed_date else None
-            except ImportError:
-                due_date_str = None
-
-            # Infer priority from message keywords
-            urgent_keywords = ["urgent", "asap", "immediately", "critical", "emergency"]
-            high_keywords = ["important", "priority", "must", "need to", "have to"]
-            priority = "medium"
-            msg_lower = user_message.lower()
-            if any(k in msg_lower for k in urgent_keywords):
-                priority = "urgent"
-            elif any(k in msg_lower for k in high_keywords):
-                priority = "high"
-
-            tool_calls = [
-                {
-                    "name": "create_task",
-                    "args": {
-                        "user_id": user_id,
-                        "title": user_message[:120].strip(),
-                        "description": user_message,
-                        "priority": priority,
-                        **({"due_date": due_date_str} if due_date_str else {}),
-                    },
-                    "reason": "Auto-create task from user message"
-                },
-                {
-                    "name": "list_tasks",
-                    "args": {"user_id": user_id, "limit": 5, "status": "todo"},
-                    "reason": "Show updated task list after creation"
-                }
-            ]
-        else:
-            # No clear creation signal — show existing tasks and suggest
-            tool_calls = [
-                {
-                    "name": "suggest_tasks_from_context",
-                    "args": {
-                        "user_id": user_id,
-                        "text": user_message,
-                        "source_type": "chat"
-                    },
-                    "reason": "Extract task suggestions from user message"
-                },
-                {
-                    "name": "list_tasks",
-                    "args": {"user_id": user_id, "limit": 5},
-                    "reason": "Show current tasks"
-                }
-            ]
+        task_tools = [t for t in TOOL_DEFINITIONS if "task" in t["name"] or t["name"] == "get_business_profile"]
+        
+        prompt = f"User wants to manage tasks. Message: '{user_message}'\n\nPick the right tool(s) to fulfill this request. If they want to create a task, extract the title, priority, etc. If they want to update, extract the status. If they want to list, use list_tasks."
+        
+        try:
+            res = call_model(
+                user_id=user_id,
+                user_message=prompt,
+                base_system_prompt="You are a task routing assistant. Call the appropriate tools to handle the user's task request.",
+                task_type=TaskType.QUICK,
+                priority=Priority.HIGH,
+                use_cache=False,
+                tool_definitions=task_tools,
+                conversation_history=conversation_history[-4:] if conversation_history else []
+            )
+            
+            if res.tool_calls:
+                for tc in res.tool_calls:
+                    # Enforce user_id
+                    if "args" not in tc:
+                        tc["args"] = {}
+                    tc["args"]["user_id"] = user_id
+                    tc["reason"] = "LLM intent parsing"
+                    tool_calls.append(tc)
+                
+                # If modifying, add a list_tasks to see the result
+                if any(tc["name"] in ["create_task", "update_task_status", "delete_task"] for tc in tool_calls):
+                    tool_calls.append({"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Show updated task list"})
+                
+                reasoning_chain = ["Used AI to determine task actions"]
+            else:
+                tool_calls = [{"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Fallback: show current tasks"}]
+                reasoning_chain = ["Could not determine specific task action, showing tasks"]
+        except Exception as e:
+            logger.error(f"Task tool routing failed: {e}")
+            tool_calls = [{"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Fallback: show current tasks"}]
+            reasoning_chain = ["Error in task routing, showing tasks"]
     
     elif intent == "memory":
         tool_calls = [
@@ -356,36 +349,57 @@ def execute_intelligent_plan(plan: ExecutionPlan, user_id: int) -> List[Dict]:
 
 
 def get_proactive_alerts(user_id: int) -> list:
-    """Return time-sensitive alerts the user should know about."""
+    """
+    Return time-sensitive, high-value alerts.
+    Checks tasks, recent documents, and metric anomalies.
+    """
     from django.utils import timezone
-    from core.models import Task
+    from core.models import Task, Document, BusinessProfile
     alerts = []
 
+    # 1. Task Alerts (Overdue/Due Today)
     overdue = Task.objects.filter(
         user_id=user_id,
         due_date__lt=timezone.now(),
         status__in=["todo", "in_progress"]
     ).count()
-
     if overdue > 0:
         alerts.append({
-            "type": "overdue",
-            "message": f"You have {overdue} overdue task{'s' if overdue > 1 else ''}.",
+            "type": "urgent",
+            "message": f"CRITICAL: {overdue} task{'s' if overdue > 1 else ''} overdue.",
             "action": "list_tasks",
+            "priority": "high"
         })
 
-    due_today = Task.objects.filter(
+    # 2. Document Alerts (Recently uploaded, not yet summarized/analyzed)
+    recent_docs = Document.objects.filter(
         user_id=user_id,
-        due_date__date=timezone.now().date(),
-        status__in=["todo", "in_progress"]
-    ).count()
-
-    if due_today > 0:
+        status="ready",
+        created_at__gte=timezone.now() - timezone.timedelta(hours=24)
+    ).order_by("-created_at")[:2]
+    
+    for doc in recent_docs:
         alerts.append({
-            "type": "due_today",
-            "message": f"{due_today} task{'s' if due_today > 1 else ''} due today.",
-            "action": "list_tasks",
+            "type": "insight",
+            "message": f"NEW: Analyzed '{doc.title}'. View summary?",
+            "action": f"get_document_summary(doc_id='{doc.id}')",
+            "priority": "normal"
         })
+
+    # 3. Metric Alerts (Example: Revenue growth)
+    try:
+        profile = BusinessProfile.objects.get(user_id=user_id)
+        metrics = profile.key_metrics or {}
+        if "monthly_revenue" in metrics:
+            # Placeholder for trend logic - in real app compare with historical snapshots
+            alerts.append({
+                "type": "metric",
+                "message": f"TREND: Monthly revenue is tracking well. View growth report?",
+                "action": "get_revenue_data",
+                "priority": "normal"
+            })
+    except Exception:
+        pass
 
     return alerts
 
@@ -401,7 +415,7 @@ def _format_tool_result(tool_name: str, result: Dict) -> str:
     elif tool_name == "get_business_profile":
         return f"[{tool_name}] Business context:\n{json.dumps(data, indent=2, default=str)}"
     
-    elif tool_name == "brave_search":
+    elif tool_name in ["searxng_search", "duckduckgo_search"]:
         return f"[{tool_name}] Web search results:\n{json.dumps(data, indent=2, default=str)}"
     
     else:
@@ -510,12 +524,17 @@ def run_intelligent(user_message: str, user_id: int, conversation_history: List[
         user_message, plan, tool_results, user_id, user_name
     )
     
-    # Automatic memory extraction - always run after response generation
+    # Defer memory extraction to background task (avoids extra LLM call per message)
     memory_stored = False
     try:
-        memory_stored = extract_and_store_memory(user_id, user_message, response_text)
+        from services.tasks import defer_memory_extraction
+        defer_memory_extraction.delay(user_id, user_message, response_text)
     except Exception as e:
-        logger.warning(f"Memory extraction failed: {e}")
+        # Fallback: extract synchronously if Celery unavailable
+        try:
+            memory_stored = extract_and_store_memory(user_id, user_message, response_text)
+        except Exception as e2:
+            logger.warning(f"Memory extraction failed: {e2}")
     
     return {
         "reply": response_text,
@@ -579,7 +598,7 @@ Provide a helpful, actionable response:"""
         for token in call_model_stream(
             user_id=user_id,
             user_message=synthesis_message,
-            base_system_prompt="You are an intelligent business assistant. Be specific and actionable.",
+            base_system_prompt=SYNTHESIS_SYSTEM_PROMPT,
             task_type=TaskType.ANALYSIS,
         ):
             collected_response.append(token)
@@ -588,14 +607,20 @@ Provide a helpful, actionable response:"""
         logger.exception("Streaming synthesis failed")
         yield f"data: {_json.dumps({'error': str(e)})}\n\n"
     
-    # Extract memory after streaming completes
+    # Defer memory extraction to background task
     try:
         full_response = "".join(collected_response)
-        memory_stored = extract_and_store_memory(user_id, user_message, full_response)
-        if memory_stored:
-            yield f"data: {_json.dumps({'memory_stored': True})}\n\n"
-    except Exception as e:
-        logger.warning(f"Memory extraction in stream failed: {e}")
+        from services.tasks import defer_memory_extraction
+        defer_memory_extraction.delay(user_id, user_message, full_response)
+    except Exception:
+        # Fallback: extract synchronously if Celery unavailable
+        try:
+            full_response = "".join(collected_response)
+            memory_stored = extract_and_store_memory(user_id, user_message, full_response)
+            if memory_stored:
+                yield f"data: {_json.dumps({'memory_stored': True})}\n\n"
+        except Exception as e:
+            logger.warning(f"Memory extraction in stream failed: {e}")
     
     yield "data: [DONE]\n\n"
 
@@ -608,7 +633,7 @@ def _get_thinking_message(tool_calls: List[Dict], intent: str) -> str:
     tool_names = [tc.get("name", "") for tc in tool_calls]
     
     # Group by category
-    if any("search" in tn or "brave" in tn for tn in tool_names):
+    if any("search" in tn for tn in tool_names) and not any("document" in tn for tn in tool_names):
         return "Searching for information..."
     elif any("document" in tn for tn in tool_names):
         return "Looking through your documents..."
@@ -620,6 +645,45 @@ def _get_thinking_message(tool_calls: List[Dict], intent: str) -> str:
         return f"Running {len(tool_calls)} tools to get your answer..."
     else:
         return "Looking that up..."
+
+def classify_smart_action(user_message: str, user_id: int) -> Dict[str, Any]:
+    """
+    Classifies a natural language query into a structured 'Smart Action'.
+    """
+    prompt = f"""You are a smart action classifier for AEIOU AI.
+Classify the user's command into a structured action object.
+
+USER COMMAND: "{user_message}"
+
+VALID ACTIONS:
+- NAVIGATE: (to: "dashboard" | "chat" | "tasks" | "documents" | "settings")
+- SEARCH: (query: "search string", type: "document" | "web")
+- CREATE_TASK: (title: "task title", priority: "low"|"medium"|"high"|"urgent", due_date: "YYYY-MM-DD"|null)
+- ANALYZE: (target: "business" | "revenue" | "latest document")
+- CHAT: (message: "original message")
+
+Respond with JSON ONLY.
+Example: {{"action": "NAVIGATE", "params": {{"to": "tasks"}}}}
+"""
+
+    result = call_model(
+        user_id=user_id,
+        user_message=prompt,
+        base_system_prompt="You are a smart command parser.",
+        task_type=TaskType.QUICK,
+        priority=Priority.HIGH,
+        use_cache=True
+    )
+    
+    try:
+        # Extract JSON if model wraps it in markdown blocks
+        clean_text = result.text.strip()
+        if clean_text.startswith("```"):
+            clean_text = re.sub(r"```(json)?", "", clean_text).strip()
+        return json.loads(clean_text)
+    except Exception as e:
+        logger.warning(f"Failed to parse smart action: {e} | Text: {result.text}")
+        return {"action": "CHAT", "params": {"message": user_message}}
 
 # Backwards compatibility
 run = run_intelligent

@@ -18,7 +18,7 @@ if SENTRY_DSN:
         environment=config("ENVIRONMENT", default="production"),
         traces_sample_rate=0.2,  # 20% of requests for performance monitoring
         profiles_sample_rate=0.1,  # 10% of requests for profiling
-        send_default_pii=True,  # Include user context (email, username) in errors
+        send_default_pii=False,
     )
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -26,15 +26,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # Security: Validate SECRET_KEY is properly configured
 SECRET_KEY = config("SECRET_KEY", default="")
 if not SECRET_KEY or SECRET_KEY == "your-secret-key-here-generate-with-python-c-":
-    import secrets
     import warnings
-    warnings.warn(
-        "WARNING: Using auto-generated SECRET_KEY. This is insecure for production. "
-        "Set a proper SECRET_KEY in your .env file using: python -c \"import secrets; print(secrets.token_hex(50))\"",
-        RuntimeWarning
-    )
-    # Auto-generate a temporary key for development only
-    SECRET_KEY = secrets.token_hex(50)
+    if os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(".dev"):
+        import secrets
+
+        warnings.warn(
+            "WARNING: Using auto-generated SECRET_KEY. This is insecure for production. "
+            "Set a proper SECRET_KEY in your environment using: python -c \"import secrets; print(secrets.token_hex(50))\"",
+            RuntimeWarning,
+        )
+        # Auto-generate a temporary key for development only
+        SECRET_KEY = secrets.token_hex(50)
+    else:
+        from django.core.exceptions import ImproperlyConfigured
+
+        raise ImproperlyConfigured(
+            "SECRET_KEY is not configured. Set it in your production environment."
+        )
 
 DEBUG = config("DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost", cast=Csv())
@@ -52,6 +60,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",  # API documentation
     "channels",  # WebSocket support
     # "dbbackup",  # Database backups - install package first
     # "storages",  # S3 storage for backups - install package first
@@ -63,11 +72,16 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Enhanced security middleware
+    "utils.security_middleware.SecurityMiddleware",
+    "utils.security_middleware.InputValidationMiddleware",
+    "utils.security_middleware.SessionSecurityMiddleware",
     "utils.middleware.IPRateLimitMiddleware",
     "utils.middleware.RequestIDMiddleware",
     "utils.middleware.DeviceFingerprintMiddleware",
@@ -100,16 +114,18 @@ ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
 # ─── Database ─────────────────────────────────────────────────────────────────
+default_database_url = f"sqlite:///{BASE_DIR / 'db.sqlite3'}" if os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(".dev") or DEBUG else config("DATABASE_URL")
 DATABASES = {
     "default": dj_database_url.config(
-        default=config("DATABASE_URL"),  # NO FALLBACK - must be set
+        default=default_database_url,
         conn_max_age=600,
         ssl_require=config("DB_SSL", default=False, cast=bool),
     )
 }
 
 # Hard check: SQLite cannot be used in production
-if "sqlite" in DATABASES["default"].get("ENGINE", "") and not DEBUG:
+settings_module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+if "sqlite" in DATABASES["default"].get("ENGINE", "") and not DEBUG and not settings_module.endswith(".dev"):
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured("SQLite cannot be used in production. Set DATABASE_URL to a PostgreSQL database.")
 
@@ -161,6 +177,42 @@ REST_FRAMEWORK = {
         "task_write": "30/min",
         "conversation": "100/min",
     },
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
+}
+
+# ─── API Documentation (drf-spectacular) ──────────────────────────────────────────
+SPECTACULAR_SETTINGS = {
+    "TITLE": "AEIOU AI API",
+    "DESCRIPTION": "Business Assistant API with task management, document processing, and AI capabilities",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "DISABLE_ERRORS_AND_WARNINGS": config("SPECTACULAR_DISABLE_WARNINGS", default=False, cast=bool),
+    "SCHEMA_PATH_PREFIX": "/api",
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": True,
+    },
+    "REDOC_UI_SETTINGS": {
+        "hideDownloadButton": True,
+        "hideHostname": True,
+    },
+    "PREPROCESSING_HOOKS": [],
+    "POSTPROCESSING_HOOKS": [],
+    "SERVERS": [
+        {"url": "http://localhost:8000", "description": "Development server"},
+        {"url": "https://api.aeiou.ai", "description": "Production server"},
+    ],
+    "TAGS": [
+        {"name": "Authentication", "description": "User authentication and authorization"},
+        {"name": "Tasks", "description": "Task management operations"},
+        {"name": "Documents", "description": "Document upload and processing"},
+        {"name": "Profiles", "description": "User profile management"},
+        {"name": "Chat", "description": "AI chat and conversation features"},
+    ],
 }
 
 # ─── CORS (Phase 3.5) ───────────────────────────────────────────────────────────
@@ -176,7 +228,18 @@ CORS_ALLOW_CREDENTIALS = True  # Required for httpOnly cookies
 AI_CONFIG = {
     "gemini": {
         "api_key": config("GEMINI_API_KEY", default=""),
+        "api_key2": config("GEMINI_API_KEY2", default=""),
+        "api_key1": config("GEMINI_API_KEY1", default=config("Gemini_API_KEYS1", default="")),
+        "api_key3": config("GEMINI_API_KEY3", default=config("Gemini_API_KEYS3", default="")),
+        "api_key4": config("GEMINI_API_KEY4", default=config("Gemini_API_KEYS4", default="")),
+        "api_keys1": config("GEMINI_API_KEYS1", default=config("Gemini_API_KEYS1", default="")),
+        "api_keys2": config("GEMINI_API_KEYS2", default=config("Gemini_API_KEYS2", default="")),
+        "api_keys3": config("GEMINI_API_KEYS3", default=config("Gemini_API_KEYS3", default="")),
+        "api_keys4": config("GEMINI_API_KEYS4", default=config("Gemini_API_KEYS4", default="")),
+        "api_keys": config("GEMINI_API_KEYS", default=""),
+        "chat_enabled": config("GEMINI_CHAT_ENABLED", default=False, cast=bool),
         "model": config("GEMINI_MODEL", default="gemini-1.5-flash"),
+        "embedding_model": config("GEMINI_EMBEDDING_MODEL", default="models/gemini-embedding-001"),
         "timeout": config("GEMINI_TIMEOUT", default=15, cast=int),
     },
     "groq": {
@@ -184,9 +247,15 @@ AI_CONFIG = {
         "model": config("GROQ_MODEL", default="llama3-8b-8192"),
         "timeout": config("GROQ_TIMEOUT", default=10, cast=int),
     },
+    "nvidia": {
+        "api_key": config("NVIDIA_API_KEY", default=""),
+        "model": config("NVIDIA_MODEL", default="moonshotai/kimi-k2.6"),
+        "timeout": config("NVIDIA_TIMEOUT", default=20, cast=int),
+        "base_url": "https://integrate.api.nvidia.com/v1",
+    },
     "openrouter": {
         "api_key": config("OPENROUTER_API_KEY", default=""),
-        "model": config("OPENROUTER_MODEL", default="mistralai/mistral-7b-instruct:free"),
+        "model": config("OPENROUTER_MODEL", default="openrouter/free"),
         "timeout": config("OPENROUTER_TIMEOUT", default=20, cast=int),
         "base_url": "https://openrouter.ai/api/v1",
     },
@@ -253,7 +322,7 @@ CACHES = {
 
 # Use Redis for session storage
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_CACHE_ALIAS = "sessions"
+SESSION_CACHE_ALIAS = "default"
 
 # ─── Channels (WebSocket) Configuration ─────────────────────────────────────────
 ASGI_APPLICATION = "config.asgi.application"

@@ -1,11 +1,9 @@
 # Notification views
-from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.models import Notification
-from core.services.notification_service import NotificationService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,7 +22,7 @@ def get_notifications(request):
     unread = Notification.objects.filter(
         user=request.user,
         is_read=False
-    ).values("id", "message", "priority", "created_at", "action_url")
+    ).order_by("-created_at").values("id", "title", "message", "notification_type", "created_at")
     
     paginator = Paginator(unread, page_size)
     page_obj = paginator.get_page(page)

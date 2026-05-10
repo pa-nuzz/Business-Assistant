@@ -2,7 +2,7 @@
 Audit logging utilities for security-sensitive actions.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 # Create audit logger
@@ -30,7 +30,7 @@ def log_audit_action(
     """
     try:
         audit_logger.info({
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'user_id': getattr(user, 'id', None),
             'username': getattr(user, 'username', 'anonymous'),
             'action': action,

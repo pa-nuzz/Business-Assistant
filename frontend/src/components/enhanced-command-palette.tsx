@@ -9,6 +9,7 @@ import {
   History, Clock
 } from 'lucide-react';
 import { auth } from '@/lib/api';
+import { toast } from 'sonner';
 import Fuse from 'fuse.js';
 
 interface CommandItem {
@@ -20,7 +21,6 @@ interface CommandItem {
   action: () => void;
 }
 
-// Keyboard shortcuts help component with glassmorphism
 function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
   const shortcuts = [
     { key: '⌘ K', description: 'Open command palette' },
@@ -40,12 +40,10 @@ function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
       transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
       className="fixed top-1/4 left-1/2 -translate-x-1/2 w-full max-w-md z-50 overflow-hidden"
     >
-      {/* Glassmorphism card */}
       <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/40 overflow-hidden">
-        {/* Header gradient */}
-        <div className="px-6 py-4 bg-gradient-to-r from-indigo-500/10 to-violet-400/10 border-b border-white/30 flex items-center justify-between">
+        <div className="px-6 py-4 bg-linear-to-r from-indigo-500/10 to-violet-400/10 border-b border-white/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-400 flex items-center justify-center shadow-lg">
+            <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-violet-400 flex items-center justify-center shadow-lg">
               <Keyboard className="w-5 h-5 text-slate-900" />
             </div>
             <div>
@@ -53,15 +51,10 @@ function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
               <p className="text-xs text-slate-500">Press any key to navigate</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white/50 rounded-xl transition-colors"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-white/50 rounded-xl transition-colors">
             <X className="w-5 h-5 text-slate-500" />
           </button>
         </div>
-
-        {/* Shortcuts grid */}
         <div className="p-6">
           <div className="grid grid-cols-2 gap-3">
             {shortcuts.map((shortcut, index) => (
@@ -73,15 +66,13 @@ function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
                 className="flex items-center justify-between p-3 rounded-xl bg-white/60 hover:bg-white/80 transition-colors border border-white/40"
               >
                 <span className="text-sm text-slate-600">{shortcut.description}</span>
-                <kbd className="px-2.5 py-1 bg-gradient-to-b from-slate-100 to-slate-200 border border-slate-300 rounded-lg text-xs font-mono font-semibold text-slate-700 shadow-sm">
+                <kbd className="px-2.5 py-1 bg-linear-to-b from-slate-100 to-slate-200 border border-slate-300 rounded-lg text-xs font-mono font-semibold text-slate-700 shadow-sm">
                   {shortcut.key}
                 </kbd>
               </motion.div>
             ))}
           </div>
         </div>
-
-        {/* Footer */}
         <div className="px-6 py-3 bg-slate-50/50 border-t border-white/30 text-center">
           <p className="text-xs text-slate-400">Pro tip: Use Cmd/Ctrl + letter for quick navigation</p>
         </div>
@@ -94,26 +85,20 @@ export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [search, setSearch] = useState('');
-
-  // Listen for help trigger event from chat
-  useEffect(() => {
-    const handleOpenHelp = () => {
-      setShowHelp(true);
-    };
-    
-    window.addEventListener('open-help', handleOpenHelp);
-    return () => window.removeEventListener('open-help', handleOpenHelp);
-  }, []);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [recentCommands, setRecentCommands] = useState<string[]>([]);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load recent commands from localStorage
+  useEffect(() => {
+    const handleOpenHelp = () => setShowHelp(true);
+    window.addEventListener('open-help', handleOpenHelp);
+    return () => window.removeEventListener('open-help', handleOpenHelp);
+  }, []);
+
   useEffect(() => {
     const saved = localStorage.getItem('recent-commands');
-    if (saved) {
-      setRecentCommands(JSON.parse(saved));
-    }
+    if (saved) setRecentCommands(JSON.parse(saved));
   }, []);
 
   const saveRecentCommand = (commandId: string) => {
@@ -123,6 +108,14 @@ export function CommandPalette() {
   };
 
   const commands: CommandItem[] = [
+    {
+      id: 'search',
+      label: 'Global Semantic Search',
+      icon: <Search size={16} />,
+      shortcut: '/',
+      keywords: ['search', 'find', 'rag', 'ask'],
+      action: () => router.push('/chat?action=search'),
+    },
     {
       id: 'chat',
       label: 'Go to Chat',
@@ -164,13 +157,6 @@ export function CommandPalette() {
       action: () => router.push('/chat'),
     },
     {
-      id: 'profile',
-      label: 'View Profile',
-      icon: <User size={16} />,
-      keywords: ['profile', 'user', 'account', 'me'],
-      action: () => router.push('/settings'),
-    },
-    {
       id: 'logout',
       label: 'Logout',
       icon: <LogOut size={16} />,
@@ -182,7 +168,6 @@ export function CommandPalette() {
     },
   ];
 
-  // Fuzzy search setup
   const fuse = new Fuse(commands, {
     keys: ['label', 'keywords'],
     threshold: 0.4,
@@ -192,22 +177,69 @@ export function CommandPalette() {
     ? fuse.search(search).map(result => result.item)
     : recentCommands.length > 0
       ? [
-          // Show recent commands first
-          ...recentCommands
-            .map(id => commands.find(c => c.id === id))
-            .filter(Boolean) as CommandItem[],
-          // Then show remaining commands
+          ...recentCommands.map(id => commands.find(c => c.id === id)).filter(Boolean) as CommandItem[],
           ...commands.filter(c => !recentCommands.includes(c.id)),
         ]
       : commands;
 
+  const handleCommand = (cmd: CommandItem) => {
+    saveRecentCommand(cmd.id);
+    setIsOpen(false);
+    cmd.action();
+    setSearch('');
+  };
+
+  const handleSmartAction = async (query: string) => {
+    if (!query.trim() || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const response = await fetch('/api/v1/actions/smart/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${auth.getToken()}`,
+        },
+        body: JSON.stringify({ query }),
+      });
+      const data = await response.json();
+      if (data.action === 'NAVIGATE') {
+        router.push(`/${data.params.to}`);
+      } else if (data.action === 'CREATE_TASK') {
+        toast.success(`Task Created: ${data.params.title}`);
+      } else if (data.action === 'SEARCH') {
+        router.push(`/chat?query=${encodeURIComponent(data.params.query)}&type=${data.params.type}`);
+      } else if (data.action === 'ANALYZE') {
+        toast.info(`Analyzing ${data.params.target}...`);
+        router.push('/dashboard');
+      } else {
+        router.push(`/chat?query=${encodeURIComponent(query)}`);
+      }
+      setIsOpen(false);
+    } catch (err) {
+      toast.error('Failed to execute smart command');
+    } finally {
+      setIsProcessing(false);
+      setSearch('');
+    }
+  };
+
+  const handleKeyDownInInput = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (filteredCommands.length > 0 && search.length > 0) {
+        const topMatch = filteredCommands[0];
+        if (topMatch.label.toLowerCase() === search.toLowerCase()) {
+          handleCommand(topMatch);
+          return;
+        }
+      }
+      if (search.trim()) handleSmartAction(search);
+    }
+  };
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Cmd+K or Ctrl+K to open - only if authenticated
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
-      // Check if user is authenticated before opening
       if (!auth.isAuthenticated()) {
-        // Redirect to login if not logged in
         router.push('/login');
         return;
       }
@@ -215,39 +247,25 @@ export function CommandPalette() {
       setShowHelp(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-    // Escape to close
     if (e.key === 'Escape') {
-      if (showHelp) {
-        setShowHelp(false);
-      } else {
-        setIsOpen(false);
-      }
+      if (showHelp) setShowHelp(false);
+      else setIsOpen(false);
     }
-  }, [isOpen, showHelp, router]);
+  }, [showHelp, router]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const handleCommand = (cmd: CommandItem) => {
-    if (cmd.id !== 'shortcuts') {
-      saveRecentCommand(cmd.id);
-      setIsOpen(false);
-    }
-    cmd.action();
-    setSearch('');
-  };
-
   return (
     <>
-      {/* Keyboard shortcut hint - only show when authenticated */}
       {auth.isAuthenticated() && (
         <motion.button
           onClick={() => setIsOpen(true)}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 px-3 py-2 bg-white/80 backdrop-blur-md border border-slate-200/80 rounded-xl shadow-lg text-sm text-slate-600 hover:text-slate-900 hover:border-slate-300 hover:shadow-xl transition-all"
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 px-3 py-2 bg-white/80 backdrop-blur-md border border-slate-200/80 rounded-xl shadow-lg text-sm text-slate-600 hover:text-slate-900 transition-all"
         >
           <Command size={14} className="text-indigo-500" />
           <span className="font-medium">Cmd K</span>
@@ -257,7 +275,6 @@ export function CommandPalette() {
       <AnimatePresence>
         {isOpen && (
           <>
-            {/* Backdrop with blur */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -265,8 +282,6 @@ export function CommandPalette() {
               onClick={() => setIsOpen(false)}
               className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50"
             />
-
-            {/* Command Palette - Glassmorphism style */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -274,27 +289,28 @@ export function CommandPalette() {
               transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
               className="fixed top-1/4 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white/85 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/40 z-50 overflow-hidden"
             >
-              {/* Search Input with gradient background */}
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200/50 bg-gradient-to-r from-indigo-50/50 to-violet-50/50">
-                <Search size={20} className="text-indigo-500" />
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200/50 bg-linear-to-r from-indigo-50/50 to-violet-50/50">
+                {isProcessing ? (
+                  <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Search size={20} className="text-indigo-500" />
+                )}
                 <input
                   ref={inputRef}
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search commands..."
+                  onKeyDown={handleKeyDownInInput}
+                  placeholder={isProcessing ? "Processing command..." : "Search or type a command (e.g. 'Go to tasks')..."}
                   className="flex-1 bg-transparent border-none outline-none text-sm text-slate-800 placeholder:text-slate-400"
+                  disabled={isProcessing}
                   autoFocus
                 />
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="p-1.5 hover:bg-white/80 rounded-lg transition-colors"
-                >
+                <button onClick={() => setIsOpen(false)} className="p-1.5 hover:bg-white/80 rounded-lg transition-colors">
                   <X size={16} className="text-slate-400" />
                 </button>
               </div>
 
-              {/* Recent commands indicator */}
               {!search && recentCommands.length > 0 && (
                 <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-200/30 flex items-center gap-2">
                   <History size={12} className="text-slate-400" />
@@ -302,11 +318,10 @@ export function CommandPalette() {
                 </div>
               )}
 
-              {/* Commands List */}
               <div className="max-h-[300px] overflow-y-auto py-2">
                 {filteredCommands.length === 0 ? (
                   <div className="px-4 py-8 text-center text-sm text-slate-500">
-                    No commands found
+                    {search ? `Press Enter to run "${search}" as a smart command` : "No commands found"}
                   </div>
                 ) : (
                   filteredCommands.map((cmd, index) => {
@@ -318,18 +333,12 @@ export function CommandPalette() {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.03 }}
                         onClick={() => handleCommand(cmd)}
-                        className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-indigo-50/60 transition-colors text-left group ${
-                          isRecent ? 'bg-indigo-50/30' : ''
-                        }`}
+                        className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-indigo-50/60 transition-colors text-left group ${isRecent ? 'bg-indigo-50/30' : ''}`}
                       >
                         <div className="flex items-center gap-3">
-                          <span className="text-indigo-500/70 group-hover:text-indigo-600 transition-colors">
-                            {cmd.icon}
-                          </span>
+                          <span className="text-indigo-500/70 group-hover:text-indigo-600 transition-colors">{cmd.icon}</span>
                           <span className="text-sm text-slate-700 group-hover:text-slate-900">{cmd.label}</span>
-                          {isRecent && (
-                            <Clock size={12} className="text-indigo-400" />
-                          )}
+                          {isRecent && <Clock size={12} className="text-indigo-400" />}
                         </div>
                         {cmd.shortcut && (
                           <kbd className="px-2 py-0.5 bg-slate-100 group-hover:bg-white border border-slate-200 rounded text-xs text-slate-500 font-medium">
@@ -342,16 +351,18 @@ export function CommandPalette() {
                 )}
               </div>
 
-              {/* Footer */}
               <div className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-200/50 flex items-center justify-between text-xs text-slate-500">
-                <span>Press <kbd className="px-1.5 py-0.5 bg-white rounded border border-slate-200">Enter</kbd> to select</span>
+                <span>{search ? "AI-Powered Command Active" : "Press Enter to select"}</span>
+                <div className="flex items-center gap-1">
+                  <Command size={10} />
+                  <span>K to close</span>
+                </div>
               </div>
             </motion.div>
           </>
         )}
       </AnimatePresence>
 
-      {/* Keyboard Shortcuts Help Overlay */}
       <AnimatePresence>
         {showHelp && (
           <>

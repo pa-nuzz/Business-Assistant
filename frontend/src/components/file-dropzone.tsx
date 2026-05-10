@@ -18,13 +18,14 @@ interface ValidationError {
   error: string;
 }
 
-const DEFAULT_MAX_SIZE = 50; // 50MB
+const DEFAULT_MAX_SIZE = 25; // Keep this aligned with backend validation.
 const DEFAULT_ACCEPTED_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/plain",
+  "text/markdown",
 ];
-const DEFAULT_ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
+const DEFAULT_ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
 
 export function FileDropzone({
   onFilesAccepted,
@@ -50,7 +51,7 @@ export function FileDropzone({
     const isValidExt = DEFAULT_ACCEPTED_EXTENSIONS.includes(ext);
 
     if (!isValidType && !isValidExt) {
-      return "Only PDF, DOCX, and TXT files are supported";
+      return "Only PDF, DOCX, TXT, and MD files are supported";
     }
 
     return null;
@@ -99,7 +100,7 @@ export function FileDropzone({
       }
 
       if (validFiles.length > 0) {
-        setPendingFiles(validFiles);
+        setPendingFiles([]);
         onFilesAccepted(validFiles);
       }
     },
@@ -127,10 +128,8 @@ export function FileDropzone({
       }
 
       if (validFiles.length > 0) {
-        setPendingFiles(validFiles);
+        setPendingFiles([]);
         onFilesAccepted(validFiles);
-        // Auto-upload the first valid file
-        onUpload(validFiles[0]);
       }
 
       // Reset input
@@ -201,7 +200,7 @@ export function FileDropzone({
               {isDragActive ? "Drop files here" : "Drag & drop files here"}
             </p>
             <p className="text-sm text-muted-foreground">
-              or click to browse (PDF, DOCX, TXT up to {maxSizeMB}MB)
+              or click to browse (PDF, DOCX, TXT, MD up to {maxSizeMB}MB)
             </p>
           </div>
 

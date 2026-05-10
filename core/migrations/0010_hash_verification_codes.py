@@ -66,39 +66,7 @@ class Migration(migrations.Migration):
         # Step 2: Migrate existing data
         migrations.RunPython(hash_existing_codes, migrations.RunPython.noop),
         
-        # Step 3: Remove old code field
-        migrations.RemoveField(
-            model_name='emailverification',
-            name='code',
-        ),
-        migrations.RemoveField(
-            model_name='passwordresetcode',
-            name='code',
-        ),
-        
-        # Step 4: Make new fields non-nullable
-        migrations.AlterField(
-            model_name='emailverification',
-            name='code_hash',
-            field=models.CharField(max_length=64),
-        ),
-        migrations.AlterField(
-            model_name='emailverification',
-            name='salt',
-            field=models.CharField(max_length=32),
-        ),
-        migrations.AlterField(
-            model_name='passwordresetcode',
-            name='code_hash',
-            field=models.CharField(max_length=64),
-        ),
-        migrations.AlterField(
-            model_name='passwordresetcode',
-            name='salt',
-            field=models.CharField(max_length=32),
-        ),
-        
-        # Step 5: Update indexes (remove code index, add created_at index)
+        # Step 3: Remove old code indexes before dropping columns (SQLite safe)
         migrations.RemoveIndex(
             model_name='emailverification',
             name='core_emailv_code_1f7a1e_idx',
@@ -107,6 +75,40 @@ class Migration(migrations.Migration):
             model_name='passwordresetcode',
             name='core_passwo_code_7922de_idx',
         ),
+
+        # Step 4: Remove old code field
+        migrations.RemoveField(
+            model_name='emailverification',
+            name='code',
+        ),
+        migrations.RemoveField(
+            model_name='passwordresetcode',
+            name='code',
+        ),
+        
+        # Step 5: Make new fields non-nullable
+        migrations.AlterField(
+            model_name='emailverification',
+            name='code_hash',
+            field=models.CharField(max_length=64),
+        ),
+        migrations.AlterField(
+            model_name='emailverification',
+            name='salt',
+            field=models.CharField(max_length=32),
+        ),
+        migrations.AlterField(
+            model_name='passwordresetcode',
+            name='code_hash',
+            field=models.CharField(max_length=64),
+        ),
+        migrations.AlterField(
+            model_name='passwordresetcode',
+            name='salt',
+            field=models.CharField(max_length=32),
+        ),
+        
+        # Step 6: Add created_at indexes
         migrations.AddIndex(
             model_name='emailverification',
             index=models.Index(fields=['created_at'], name='core_emailver_created_idx'),

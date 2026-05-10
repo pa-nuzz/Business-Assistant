@@ -82,65 +82,73 @@ class AITaskGenerationService:
         text: str, 
         context: str = 'chat'
     ) -> List[Dict[str, Any]]:
-        """Extract task suggestions from text using keyword patterns."""
-        suggestions = []
-        text_lower = text.lower()
+        """
+        Extract task suggestions from text using LLM.
+        Decomposes complex tasks into manageable sub-tasks.
+        """
+        from services.model_layer import call_model, TaskType, Priority
         
-        # Detect action keywords
-        action_keywords = [
-            ('schedule', 'Schedule a meeting/call'),
-            ('remind', 'Set a reminder'),
-            ('follow up', 'Follow up on this'),
-            ('review', 'Review required'),
-            ('approve', 'Approval needed'),
-            ('send', 'Send email/document'),
-            ('call', 'Make a phone call'),
-            ('deadline', 'Deadline approaching'),
-            ('todo', 'Action item'),
-            ('task', 'New task identified'),
-        ]
+        # Limit text for analysis
+        analysis_text = text[:8000]
         
-        for keyword, action_type in action_keywords:
-            if keyword in text_lower:
-                # Extract surrounding context (sentence containing keyword)
-                idx = text_lower.find(keyword)
-                start = max(0, text.rfind('.', 0, idx) + 1)
-                end = text.find('.', idx)
-                if end == -1:
-                    end = len(text)
+        prompt = f"""Analyze the following {context} content and identify actionable tasks.
+1. Provide a clear, professional title.
+2. Provide a detailed description.
+3. Assign a priority (low, medium, high, urgent).
+4. Assign a work_mode:
+   - "deep_work": Requires high focus (writing, coding, strategy).
+   - "creative": Ideation, design, brainstorming.
+   - "admin": Emails, scheduling, simple updates.
+   - "quick": Tasks taking < 10 mins.
+5. Extract a due date if mentioned (use YYYY-MM-DD format).
+6. If the task is complex, break it down into 3-5 logical sub-tasks.
+
+Content to analyze:
+"{analysis_text}"
+
+Return the result as a JSON list of tasks, like this:
+[
+  {{
+    "title": "Task title",
+    "description": "Task description",
+    "priority": "medium",
+    "work_mode": "deep_work",
+    "due_date": "2026-05-20",
+    "subtasks": ["Subtask 1", "Subtask 2"]
+  }}
+]
+If no tasks are found, return an empty list []. Respond ONLY with the JSON."""
+
+        try:
+            result = call_model(
+                user_id=self.user.id,
+                user_message=prompt,
+                base_system_prompt="You are an expert project manager and task extractor.",
+                task_type=TaskType.ANALYSIS,
+                priority=Priority.HIGH,
+                use_cache=True
+            )
+            
+            import json
+            # Clean response if it contains markdown code blocks
+            clean_text = result.text.strip()
+            if "```json" in clean_text:
+                clean_text = clean_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_text:
+                clean_text = clean_text.split("```")[1].split("```")[0].strip()
                 
-                context_text = text[start:end].strip()
+            suggestions = json.loads(clean_text)
+            
+            # Enrich suggestions with metadata
+            for s in suggestions:
+                s['source_context'] = context
+                s['confidence'] = 0.9
                 
-                # Determine priority based on keywords
-                priority = 'medium'
-                if any(word in text_lower for word in ['urgent', 'asap', 'emergency', 'critical']):
-                    priority = 'urgent'
-                elif any(word in text_lower for word in ['important', 'high priority']):
-                    priority = 'high'
-                
-                # Try to extract due date
-                due_date = self._extract_due_date(text_lower)
-                
-                suggestion = {
-                    'title': f"{action_type}: {context_text[:60]}..." if len(context_text) > 60 else action_type,
-                    'description': context_text,
-                    'priority': priority,
-                    'due_date': due_date,
-                    'source_context': context,
-                    'confidence': 0.7,
-                    'extracted_keywords': [keyword]
-                }
-                suggestions.append(suggestion)
-        
-        # Remove duplicates based on title
-        seen_titles = set()
-        unique_suggestions = []
-        for s in suggestions:
-            if s['title'] not in seen_titles:
-                seen_titles.add(s['title'])
-                unique_suggestions.append(s)
-        
-        return unique_suggestions[:5]  # Limit to top 5 suggestions
+            return suggestions[:5]
+            
+        except Exception as e:
+            logger.error(f"LLM task extraction failed: {e}")
+            return []
 
     def _extract_due_date(self, text: str) -> Optional[str]:
         """Extract due date from text using simple patterns."""
@@ -197,29 +205,53 @@ class AITaskGenerationService:
         self, 
         suggestions: List[Dict], 
         source_document: Optional[Document] = None
-    ) -> List[Task]:
-        """Create actual Task objects from suggestions."""
-        created = []
+    ) -> List[Dict[str, Any]]:
+        """Create actual Task objects and their sub-tasks from suggestions."""
+        from core.models import TaskSubtask, BusinessProfile
+        created_data = []
+        
+        try:
+            profile = BusinessProfile.objects.get(user=self.user)
+        except BusinessProfile.DoesNotExist:
+            profile = BusinessProfile.objects.create(user=self.user, company_name="Personal")
         
         for suggestion in suggestions:
             task = Task.objects.create(
                 user=self.user,
+                created_by=self.user,
+                business_profile=profile,
                 title=suggestion['title'],
                 description=suggestion['description'],
                 priority=suggestion.get('priority', 'medium'),
+                work_mode=suggestion.get('work_mode', 'quick'),
                 due_date=suggestion.get('due_date'),
                 status='todo',
                 auto_extracted=True,
                 source_document=source_document,
                 ai_metadata={
                     'confidence': suggestion.get('confidence'),
-                    'extracted_keywords': suggestion.get('extracted_keywords'),
-                    'source_context': suggestion.get('source_context')
+                    'source_context': suggestion.get('source_context'),
+                    'has_subtasks': bool(suggestion.get('subtasks'))
                 }
             )
-            created.append(task)
+            
+            # Create sub-tasks if present
+            subtasks = suggestion.get('subtasks', [])
+            for st_title in subtasks:
+                TaskSubtask.objects.create(
+                    parent_task=task,
+                    title=st_title,
+                    status='todo'
+                )
+            
+            created_data.append({
+                'id': str(task.id),
+                'title': task.title,
+                'work_mode': task.work_mode,
+                'subtask_count': len(subtasks)
+            })
         
-        return created
+        return created_data
 
     def get_pending_ai_tasks(self) -> List[Dict[str, Any]]:
         """Get all AI-generated tasks that are pending review."""

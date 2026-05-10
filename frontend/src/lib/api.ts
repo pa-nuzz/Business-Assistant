@@ -4,6 +4,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/
 
 // SECURITY: Access token stored in memory only (never localStorage)
 let accessToken: string | null = null;
+let refreshSessionPromise: Promise<boolean> | null = null;
 
 // Event emitter for auth failures (components should listen and use Next.js router)
 const authErrorListeners: Set<() => void> = new Set();
@@ -48,6 +49,10 @@ api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
+  // When sending FormData, let the browser set Content-Type with the correct multipart boundary
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
   return config;
 });
 
@@ -71,10 +76,15 @@ api.interceptors.response.use(
 
     // Handle network errors
     if (!error.response) {
+      console.error("No response from backend:", error.message, error.code);
+      
+      // If it's a known network error type, handle it
       if (error.code === 'ECONNABORTED' || error.message?.includes('Network Error')) {
-        // Network errors handled silently
+        return Promise.reject(new Error('Network error: Backend server not reachable. Please ensure the server is running.'));
       }
-      return Promise.reject(new Error('Network error: Backend server not reachable. Please ensure the server is running.'));
+      
+      // Fallback for other errors where response is missing
+      return Promise.reject(error);
     }
 
     // Handle rate limiting (429)
@@ -87,8 +97,12 @@ api.interceptors.response.use(
       triggerRateLimit({ retryAfter, scope, message });
     }
 
+    const isAuthRoute = originalRequest.url?.includes('/auth/login/') || 
+                        originalRequest.url?.includes('/auth/register/') ||
+                        originalRequest.url?.includes('/auth/token/refresh/');
+
     // SECURITY: Token refresh uses httpOnly cookie (refresh_token in cookie, not body)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true;
 
       try {
@@ -112,8 +126,8 @@ api.interceptors.response.use(
       }
     }
 
-    // Handle 401 after refresh failed
-    if (error.response?.status === 401) {
+    // Handle 401 after refresh failed (but not for auth routes)
+    if (error.response?.status === 401 && !isAuthRoute) {
       accessToken = null;
       clearSessionCookie();
       triggerAuthRedirect();
@@ -127,13 +141,21 @@ export default api;
 
 // Auth session cookie helper for middleware route protection
 const setSessionCookie = () => {
-  if (typeof document !== 'undefined') {
-    document.cookie = 'aeiou-session=1; path=/; SameSite=Lax; Secure';
+  if (typeof window !== 'undefined') {
+    const isSecure = window.location.protocol === 'https:';
+    const cookieValue = `aeiou-session=true; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax${isSecure ? '; Secure' : ''}`;
+    
+    // Attempt to clear any old cookie that might have different flags (like Secure)
+    document.cookie = 'aeiou-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    document.cookie = 'aeiou-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure';
+    
+    document.cookie = cookieValue;
   }
 };
 
 const clearSessionCookie = () => {
   if (typeof document !== 'undefined') {
+    document.cookie = 'aeiou-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     document.cookie = 'aeiou-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure';
   }
 };
@@ -147,9 +169,14 @@ export const auth = {
     if (response.data.access) {
       accessToken = response.data.access;
       setSessionCookie();
+      if (typeof window !== 'undefined' && response.data.user) {
+        localStorage.setItem('aeiou_user', JSON.stringify(response.data.user));
+      }
     }
     return response.data;
   },
+
+  getToken: () => accessToken,
 
   register: async (username: string, password: string, email: string) => {
     const response = await api.post('/auth/register/', { username, password, email });
@@ -193,12 +220,46 @@ export const auth = {
     } finally {
       accessToken = null;
       clearSessionCookie();
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('aeiou_user');
+        localStorage.removeItem('aeiou-chat-state');
+      }
     }
   },
 
   // SECURITY: Check memory-only token (not localStorage)
   isAuthenticated: () => {
     return !!accessToken;
+  },
+
+  // Restore session from httpOnly cookie on page reload
+  // Deduplicate token refresh requests to prevent React Strict Mode / parallel request token rotation race conditions
+  refreshSession: async () => {
+    if (refreshSessionPromise) {
+      return refreshSessionPromise;
+    }
+    
+    refreshSessionPromise = (async () => {
+      try {
+        // IMPORTANT: Use raw axios, NOT the intercepted `api` instance.
+        // The intercepted instance has a 401 handler that calls refreshSession(),
+        // which would cause an infinite loop.
+        const response = await axios.post(`${API_BASE}/auth/token/refresh/`, {}, {
+          withCredentials: true,
+        });
+        accessToken = response.data.access;
+        setSessionCookie();
+        return true;
+      } catch (error) {
+        accessToken = null;
+        clearSessionCookie();
+        throw error;
+      } finally {
+        refreshSessionPromise = null;
+      }
+    })();
+    
+    return refreshSessionPromise;
   },
 };
 
@@ -302,6 +363,11 @@ export const chat = {
     return response.data;
   },
 
+  updateConversation: async (id: string, data: { title?: string; archived?: boolean }) => {
+    const response = await api.patch(`/conversations/${id}/`, data);
+    return response.data;
+  },
+
   deleteConversation: async (id: string) => {
     const response = await api.delete(`/conversations/${id}/delete/`);
     return response.data;
@@ -313,12 +379,8 @@ export const documents = {
   upload: async (file: File, onProgress?: (progress: number) => void) => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const response = await api.post('/documents/upload/', formData, {
-      headers: {
-        // Must delete Content-Type to let browser set multipart boundary automatically
-        'Content-Type': undefined,
-      },
       onUploadProgress: (progressEvent) => {
         if (onProgress && progressEvent.total) {
           const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -341,10 +403,25 @@ export const documents = {
     const response = await api.get(`/documents/${docId}/summary/`);
     return response.data;
   },
+
+  getStatus: async (docId: string) => {
+    const response = await api.get(`/documents/${docId}/status/`);
+    return response.data;
+  },
+
+  delete: async (docId: string) => {
+    const response = await api.delete(`/documents/${docId}/delete/`);
+    return response.data;
+  },
+
+  reprocess: async (docId: string) => {
+    const response = await api.post(`/documents/${docId}/reprocess/`);
+    return response.data;
+  },
   
   search: async (docId: string, query: string) => {
     const response = await api.post('/chat/', {
-      message: `Search in document for: ${query}`,
+      message: `Search in document ${docId} for: ${query}`,
       doc_id: docId,
     });
     return response.data;
@@ -375,22 +452,18 @@ export const profile = {
   
   updateWithAvatar: async (data: ProfileData, avatarFile: File) => {
     const formData = new FormData();
-    
+
     // Add all data fields
     Object.keys(data).forEach(key => {
       if (data[key] !== undefined && data[key] !== null) {
         formData.append(key, typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key]);
       }
     });
-    
+
     // Add avatar file
     formData.append('avatar', avatarFile);
-    
-    const response = await api.post('/profile/', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+
+    const response = await api.post('/profile/', formData);
     return response.data;
   },
 };
@@ -446,6 +519,30 @@ export const user = {
 export const analytics = {
   get: async () => {
     const response = await api.get('/analytics/');
+    return response.data;
+  },
+};
+
+export interface AiProviderHealth {
+  name: string;
+  configured: boolean;
+  enabled: boolean;
+  model: string;
+  timeout: number;
+  status: 'ready' | 'ok' | 'missing_key' | 'disabled' | 'failed' | string;
+  detail: string;
+  latency_ms?: number | null;
+}
+
+export const system = {
+  aiHealth: async (): Promise<{
+    status: string;
+    ready_provider_count: number;
+    providers: AiProviderHealth[];
+    recommended_order: string[];
+    notes: string[];
+  }> => {
+    const response = await api.get('/health/ai/');
     return response.data;
   },
 };

@@ -1,6 +1,7 @@
 """Task Detail Service - Manages task details, comments, subtasks, and time tracking."""
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import timedelta
+from django.utils import timezone
 from django.contrib.auth.models import User
 from django.db import transaction
 from core.models import Task, TaskComment, TaskSubtask, TimeEntry, Document, Conversation
@@ -225,7 +226,7 @@ class TaskDetailService:
             if status:
                 subtask.status = status
                 if status == 'done' and not subtask.completed_at:
-                    subtask.completed_at = datetime.now()
+                    subtask.completed_at = timezone.now()
                 elif status != 'done':
                     subtask.completed_at = None
             

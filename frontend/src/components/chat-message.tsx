@@ -94,7 +94,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                code({ node, inline, className, children, ...props }: any) {
+                code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode; [key: string]: any }) {
                   const match = /language-(\w+)/.exec(className || "");
                   const code = String(children).replace(/\n$/, "");
 
@@ -135,7 +135,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                     </code>
                   );
                 },
-                a({ children, href, ...props }: any) {
+                a({ children, href, ...props }: { children?: React.ReactNode; href?: string; [key: string]: any }) {
                   return (
                     <a
                       href={href}
@@ -148,7 +148,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                     </a>
                   );
                 },
-                table({ children, ...props }: any) {
+                table({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) {
                   return (
                     <div className="overflow-x-auto my-3">
                       <table
@@ -160,7 +160,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                     </div>
                   );
                 },
-                th({ children, ...props }: any) {
+                th({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) {
                   return (
                     <th
                       className="border border-border bg-muted px-3 py-2 font-semibold text-left"
@@ -170,7 +170,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                     </th>
                   );
                 },
-                td({ children, ...props }: any) {
+                td({ children, ...props }: { children?: React.ReactNode; [key: string]: any }) {
                   return (
                     <td className="border border-border px-3 py-2" {...props}>
                       {children}

@@ -1,28 +1,22 @@
-# Chat and conversation views
-import json
+"""Chat and conversation views."""
 import logging
-from datetime import datetime
 
-from django.db.models import Count, Prefetch
 from django.http import StreamingHttpResponse
-from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
-from core.models import Conversation, Message
 from core.services.chat_service import ChatService
 from core.services.conversation_service import ConversationService
-from agents import orchestrator
-from utils.sanitization import sanitize_plain_text
 
 logger = logging.getLogger(__name__)
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+@throttle_classes([])
 def health_check(request):
     """Quick status check for load balancers."""
     return Response({"status": "ok"})
@@ -104,12 +98,42 @@ def conversation_list(request):
         )
 
 
-@api_view(["GET"])
+@api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def conversation_detail(request, conversation_id):
-    """Get single chat with all messages."""
+    """Get or update a single conversation."""
+    conversation_service = ConversationService(request.user)
+
+    if request.method == "DELETE":
+        try:
+            deleted = conversation_service.delete_conversation(conversation_id)
+            if not deleted:
+                return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"deleted": True})
+        except Exception:
+            logger.exception("Failed to delete conversation")
+            return Response(
+                {"error": "Failed to delete conversation"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    if request.method == "PATCH":
+        try:
+            result = conversation_service.update_conversation(
+                str(conversation_id), request.data
+            )
+            if result is None:
+                return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(result)
+        except Exception as e:
+            logger.exception("Failed to update conversation")
+            return Response(
+                {"error": "Failed to update conversation"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    # GET
     try:
-        conversation_service = ConversationService(request.user)
         result = conversation_service.get_conversation(conversation_id)
         return Response(result)
     except ValueError as e:

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { tasks } from '@/lib/api';
 import { 
@@ -17,16 +17,29 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { KanbanBoard } from '@/components/kanban-board';
 import { toast } from 'sonner';
 import { PageSkeleton } from '@/components/loading-skeletons';
+import { logger } from '@/lib/logger';
 
 interface Task {
   id: string;
   title: string;
   status: 'todo' | 'in_progress' | 'review' | 'done';
   priority: 'low' | 'medium' | 'high' | 'urgent';
+  work_mode: 'deep_work' | 'creative' | 'admin' | 'quick';
   due_date?: string;
   assignee?: string;
   tags: string[];
+  ai_metadata?: {
+    has_subtasks?: boolean;
+    [key: string]: any;
+  };
 }
+
+const WORK_MODE_CONFIG = {
+  deep_work: { label: 'Deep Work', icon: '🧠', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  creative: { label: 'Creative', icon: '🎨', color: 'text-purple-600', bg: 'bg-purple-50' },
+  admin: { label: 'Admin', icon: '📎', color: 'text-slate-600', bg: 'bg-slate-50' },
+  quick: { label: 'Quick', icon: '⚡', color: 'text-amber-600', bg: 'bg-amber-50' },
+};
 
 interface DashboardData {
   counts: {
@@ -66,11 +79,8 @@ export default function TasksPage() {
     document.title = 'Tasks | AEIOU AI';
   }, []);
 
-  useEffect(() => {
-    fetchDashboard();
-  }, [currentPage]);
-
-  const fetchDashboard = async () => {
+  
+  const fetchDashboard = useCallback(async () => {
     try {
       const [dashboard, tasksList] = await Promise.all([
         tasks.getDashboard(),
@@ -80,11 +90,16 @@ export default function TasksPage() {
       setAllTasks(tasksList.results || []);
       setTotalPages(tasksList.total_pages || 1);
     } catch (err) {
-      console.error('Failed to fetch dashboard:', err);
+      logger.error('Failed to fetch dashboard', err);
+      toast.error('Unable to load tasks. Please refresh and try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, pageSize]);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [currentPage, fetchDashboard]);
 
   const handleCreateTask = async () => {
     if (!newTaskTitle.trim()) return;
@@ -99,7 +114,7 @@ export default function TasksPage() {
       setShowNewTaskModal(false);
       fetchDashboard();
     } catch (err) {
-      console.error('Failed to create task:', err);
+      logger.error('Failed to create task', err);
       toast.error('Failed to create task');
     }
   };
@@ -142,8 +157,8 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-background p-6 grid-dna">
+      <div className="p-6 max-w-7xl mx-auto space-y-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -276,7 +291,7 @@ export default function TasksPage() {
                 <h2 className="text-lg font-semibold text-slate-900 mb-4">Today</h2>
                 <div className="space-y-2">
                   {dashboardData.today.map((task) => (
-                    <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
+                    <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} onUpdate={fetchDashboard} />
                   ))}
                 </div>
               </div>
@@ -288,7 +303,7 @@ export default function TasksPage() {
                 <h2 className="text-lg font-semibold text-slate-900 mb-4">Upcoming</h2>
                 <div className="space-y-2">
                   {dashboardData.upcoming.map((task) => (
-                    <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} getStatusIcon={getStatusIcon} onUpdate={fetchDashboard} />
+                    <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getPriorityBg={getPriorityBg} onUpdate={fetchDashboard} />
                   ))}
                 </div>
               </div>
@@ -314,7 +329,6 @@ export default function TasksPage() {
                               task={task} 
                               getPriorityColor={getPriorityColor} 
                               getPriorityBg={getPriorityBg} 
-                              getStatusIcon={getStatusIcon} 
                               onUpdate={fetchDashboard} 
                             />
                           ))}
@@ -484,13 +498,11 @@ function TaskCard({
   task, 
   getPriorityColor, 
   getPriorityBg,
-  getStatusIcon,
   onUpdate 
 }: { 
   task: Task; 
   getPriorityColor: (p: string) => string;
   getPriorityBg: (p: string) => string;
-  getStatusIcon: (s: string) => React.ReactNode;
   onUpdate: () => void;
 }) {
   const [isCompleting, setIsCompleting] = useState(false);
@@ -519,6 +531,7 @@ function TaskCard({
   };
 
   const isDone = localStatus === 'done';
+  const mode = WORK_MODE_CONFIG[task.work_mode] || WORK_MODE_CONFIG.quick;
 
   return (
     <motion.div 
@@ -544,9 +557,35 @@ function TaskCard({
         <Check size={14} className={isDone ? 'text-white' : 'text-green-600 opacity-0 group-hover:opacity-100'} />
       </motion.button>
 
-      <span className={`ml-3 flex-1 text-sm ${isDone ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
-        {task.title}
-      </span>
+      <div className="ml-3 flex-1 flex flex-col">
+        <div className="flex items-center gap-2">
+          <span className={`text-sm font-medium ${isDone ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+            {task.title}
+          </span>
+          {task.ai_metadata?.has_subtasks && !isDone && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">
+              <LayoutGrid size={10} />
+              Multi-step
+            </div>
+          )}
+        </div>
+        
+        {!isDone && (
+          <div className="flex items-center gap-3 mt-1">
+             <div className={`flex items-center gap-1 text-[10px] font-bold ${mode.color} uppercase tracking-widest`}>
+                <span>{mode.icon}</span>
+                <span>{mode.label}</span>
+             </div>
+             {task.tags.length > 0 && (
+                <div className="flex gap-1">
+                  {task.tags.slice(0, 2).map((tag) => (
+                    <span key={tag} className="text-[9px] text-slate-400 font-bold uppercase">#{tag}</span>
+                  ))}
+                </div>
+             )}
+          </div>
+        )}
+      </div>
       
       {isDone && (
         <span className="mr-2 px-2 py-0.5 text-xs font-medium text-green-600 bg-green-100 rounded-full">
@@ -554,22 +593,9 @@ function TaskCard({
         </span>
       )}
 
-      {task.tags.length > 0 && !isDone && (
-        <div className="flex gap-1 mr-3">
-          {task.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="px-2 py-1 text-xs bg-muted text-slate-600 rounded-md"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
       {!isDone && (
         <span
-          className={`px-2.5 py-1 text-xs font-medium rounded-md capitalize ${getPriorityBg(task.priority)}`}
+          className={`px-2.5 py-1 text-[10px] font-bold rounded-md capitalize tracking-widest ${getPriorityBg(task.priority)}`}
           style={{ color: getPriorityColor(task.priority) }}
         >
           {task.priority}

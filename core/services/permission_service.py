@@ -59,8 +59,8 @@ class PermissionService:
             return True
 
         # Check if user is assigned to the task
-        if resource_type == 'task' and hasattr(resource, 'assigned_to'):
-            if resource.assigned_to == user:
+        if resource_type == 'task' and hasattr(resource, 'assignee'):
+            if resource.assignee == user:
                 return action in ['read', 'update', 'delete_own']
 
         # Check workspace permissions

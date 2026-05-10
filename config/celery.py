@@ -1,13 +1,14 @@
 """
 Celery configuration for the business assistant.
 """
+import logging
 import os
 from celery import Celery
-from django.conf import settings
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
 
 app = Celery("business_assistant")
+logger = logging.getLogger(__name__)
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.
@@ -19,4 +20,4 @@ app.autodiscover_tasks()
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):
-    print(f"Request: {self.request!r}")
+    logger.debug("Celery debug task request: %r", self.request)

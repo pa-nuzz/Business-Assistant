@@ -9,6 +9,7 @@ import {
   Search, Edit2, Archive, MoreVertical
 } from 'lucide-react';
 import { chat, auth } from '@/lib/api';
+import { AnimatedLogo } from '@/components/ui/animated-logo';
 import { toast } from 'sonner';
 import Fuse from 'fuse.js';
 
@@ -137,8 +138,14 @@ function RecentChatsSection({
       setConversations(prev => prev.map(c => 
         c.id === id ? { ...c, title: editTitle.trim() } : c
       ));
+      // Persist to backend
+      await chat.updateConversation(id, { title: editTitle.trim() });
       toast.success('Conversation renamed');
     } catch {
+      // Revert on failure
+      setConversations(prev => prev.map(c => 
+        c.id === id ? { ...c, title: c.title } : c
+      ));
       toast.error('Failed to rename');
     } finally {
       setEditingId(null);
@@ -150,11 +157,21 @@ function RecentChatsSection({
     setEditTitle('');
   }, []);
 
-  const handleArchiveToggle = useCallback((id: string, currentStatus: boolean) => {
+  const handleArchiveToggle = useCallback(async (id: string, currentStatus: boolean) => {
+    // Optimistic update
     setConversations(prev => prev.map(c => 
       c.id === id ? { ...c, archived: !currentStatus } : c
     ));
-    toast.success(currentStatus ? 'Conversation unarchived' : 'Conversation archived');
+    try {
+      await chat.updateConversation(id, { archived: !currentStatus });
+      toast.success(currentStatus ? 'Conversation unarchived' : 'Conversation archived');
+    } catch {
+      // Revert
+      setConversations(prev => prev.map(c => 
+        c.id === id ? { ...c, archived: currentStatus } : c
+      ));
+      toast.error('Failed to update');
+    }
     setOpenMenuId(null);
   }, [setConversations]);
 
@@ -259,7 +276,7 @@ function RecentChatsSection({
                     >
                       {isEditing ? (
                         <div className="flex-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          <MessageSquare className="w-4 h-4 flex-shrink-0 text-slate-400" />
+                          <MessageSquare className="w-4 h-4 shrink-0 text-slate-400" />
                           <input
                             ref={editInputRef}
                             type="text"
@@ -280,7 +297,7 @@ function RecentChatsSection({
                             className="flex-1 flex items-center gap-2 min-w-0 cursor-pointer"
                             onClick={() => router.push(`/chat?id=${conv.id}`)}
                           >
-                            <MessageSquare className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+                            <MessageSquare className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
                             <span className="flex-1 truncate min-w-0">{conv.title || 'Untitled'}</span>
                           </div>
                           
@@ -291,7 +308,7 @@ function RecentChatsSection({
                                 e.stopPropagation();
                                 setOpenMenuId(openMenuId === conv.id ? null : conv.id);
                               }}
-                              className="flex-shrink-0 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-all"
+                              className="shrink-0 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-all"
                             >
                               <MoreVertical className="w-3.5 h-3.5" />
                             </button>
@@ -350,49 +367,6 @@ function RecentChatsSection({
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-// Animated Logo Component - works in both expanded and collapsed modes
-function AnimatedLogo({ className = '', size = 32 }: { className?: string; size?: number }) {
-  return (
-    <svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 100 100" 
-      fill="none" 
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-    >
-      <circle cx="50" cy="50" r="48" fill="white"/>
-      <circle cx="50" cy="50" r="48" fill="url(#brandGradient)" fillOpacity="0.1"/>
-      <rect x="20" y="45" width="8" height="35" rx="4" fill="#6366F1">
-        <animate attributeName="height" values="35;25;45;35" dur="3s" repeatCount="indefinite" />
-        <animate attributeName="y" values="45;55;35;45" dur="3s" repeatCount="indefinite" />
-      </rect>
-      <rect x="35" y="30" width="8" height="50" rx="4" fill="#8B5CF6">
-        <animate attributeName="height" values="50;35;55;50" dur="2.5s" repeatCount="indefinite" />
-        <animate attributeName="y" values="30;45;25;30" dur="2.5s" repeatCount="indefinite" />
-      </rect>
-      <rect x="50" y="20" width="8" height="60" rx="4" fill="#6366F1">
-        <animate attributeName="height" values="60;40;70;60" dur="2s" repeatCount="indefinite" />
-        <animate attributeName="y" values="20;40;10;20" dur="2s" repeatCount="indefinite" />
-      </rect>
-      <rect x="65" y="35" width="8" height="45" rx="4" fill="#8B5CF6">
-        <animate attributeName="height" values="45;30;50;45" dur="2.7s" repeatCount="indefinite" />
-        <animate attributeName="y" values="35;50;25;35" dur="2.7s" repeatCount="indefinite" />
-      </rect>
-      <rect x="80" y="50" width="8" height="30" rx="4" fill="#6366F1">
-        <animate attributeName="height" values="30;20;40;30" dur="3.2s" repeatCount="indefinite" />
-        <animate attributeName="y" values="50;60;40;50" dur="3.2s" repeatCount="indefinite" />
-      </rect>
-      <defs>
-        <linearGradient id="brandGradient" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#6366F1"/>
-          <stop offset="1" stopColor="#8B5CF6"/>
-        </linearGradient>
-      </defs>
-    </svg>
   );
 }
 
@@ -536,14 +510,14 @@ export default function Sidebar() {
       return (
         <div className="flex flex-col h-full bg-white border-r border-slate-200 w-[72px]">
           {/* Logo - Centered */}
-          <div className="h-16 flex items-center justify-center border-b border-slate-100 flex-shrink-0">
+          <div className="h-16 flex items-center justify-center border-b border-slate-100 shrink-0">
             <Tooltip text="AEIOU AI">
               <AnimatedLogo size={28} />
             </Tooltip>
           </div>
 
           {/* New Chat Button - Icon only */}
-          <div className="p-3 flex-shrink-0">
+          <div className="p-3 shrink-0">
             <Tooltip text="New Chat">
               <button
                 onClick={handleNewChat}
@@ -555,7 +529,7 @@ export default function Sidebar() {
           </div>
 
           {/* Navigation - Icons only */}
-          <nav className="px-3 py-2 flex-shrink-0 space-y-1">
+          <nav className="px-3 py-2 shrink-0 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.path || pathname?.startsWith(`${item.path}/`);
@@ -581,7 +555,7 @@ export default function Sidebar() {
           <div className="flex-1" />
           
           {/* Footer */}
-          <div className="p-3 border-t border-slate-100 flex-shrink-0">
+          <div className="p-3 border-t border-slate-100 shrink-0">
             <Tooltip text={isAuthenticated ? "Logout" : "Login"}>
               <button
                 onClick={isAuthenticated ? handleLogout : () => router.push('/login')}
@@ -603,9 +577,9 @@ export default function Sidebar() {
     return (
       <div className="flex flex-col h-full bg-white border-r border-slate-200">
         {/* Logo / Brand with collapse toggle */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 flex-shrink-0">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-3">
-            <AnimatedLogo className="w-8 h-8 flex-shrink-0" />
+            <AnimatedLogo className="w-8 h-8 shrink-0" />
             <span className="font-semibold text-slate-900 text-base">AEIOU AI</span>
           </div>
           <button
@@ -618,7 +592,7 @@ export default function Sidebar() {
         </div>
 
         {/* New Chat Button */}
-        <div className="p-4 flex-shrink-0">
+        <div className="p-4 shrink-0">
           <button
             onClick={handleNewChat}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98]"
@@ -629,7 +603,7 @@ export default function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="px-3 pb-2 flex-shrink-0">
+        <nav className="px-3 pb-2 shrink-0">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.path || pathname?.startsWith(`${item.path}/`);
@@ -644,7 +618,7 @@ export default function Sidebar() {
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`} />
+                <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`} />
                 <span className="truncate">{item.label}</span>
               </button>
             );
@@ -665,13 +639,13 @@ export default function Sidebar() {
         )}
 
         {/* Footer */}
-        <div className="p-3 border-t border-slate-100 flex-shrink-0 mt-auto">
+        <div className="p-3 border-t border-slate-100 shrink-0 mt-auto">
           {isAuthenticated ? (
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-all duration-200"
             >
-              <LogOut className="w-4 h-4 flex-shrink-0" />
+              <LogOut className="w-4 h-4 shrink-0" />
               <span className="truncate">Logout</span>
             </button>
           ) : (
@@ -679,7 +653,7 @@ export default function Sidebar() {
               onClick={() => router.push('/login')}
               className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-all duration-200"
             >
-              <User className="w-4 h-4 flex-shrink-0" />
+              <User className="w-4 h-4 shrink-0" />
               <span className="truncate">Login</span>
             </button>
           )}
@@ -704,7 +678,7 @@ export default function Sidebar() {
         initial={false}
         animate={{ width: isCollapsed ? 72 : 280 }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="hidden lg:flex flex-shrink-0 h-screen flex-col sticky top-0 overflow-hidden"
+        className="hidden lg:flex shrink-0 h-screen flex-col sticky top-0 overflow-hidden"
       >
         <SidebarContent />
       </motion.aside>
@@ -742,9 +716,9 @@ export default function Sidebar() {
               className="lg:hidden fixed top-0 left-0 w-[280px] h-screen flex flex-col bg-white border-r border-slate-200 z-50"
             >
               {/* Mobile close button header */}
-              <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 flex-shrink-0">
+              <div className="h-16 flex items-center justify-between px-4 border-b border-slate-100 shrink-0">
                 <div className="flex items-center gap-3">
-                  <AnimatedLogo className="w-8 h-8 flex-shrink-0" />
+                  <AnimatedLogo className="w-8 h-8 shrink-0" />
                   <span className="font-semibold text-slate-900 text-base">AEIOU AI</span>
                 </div>
                 <button

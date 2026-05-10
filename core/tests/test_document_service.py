@@ -42,7 +42,7 @@ class TestDocumentService:
         assert result['count'] == 1
         assert result['results'][0]['title'] == 'Test Doc'
     
-    @patch('core.services.document_service.process_document')
+    @patch('core.services.document_service.process_document_task.delay')
     def test_upload_document_success(self, mock_process):
         """Test successful document upload."""
         user = User.objects.create_user(username='testuser', password='testpass123')

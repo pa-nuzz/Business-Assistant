@@ -106,7 +106,7 @@ class SemanticSearchService:
         chunks = DocumentChunk.objects.filter(
             document__user_id=user_id,
             embedding__isnull=False
-        ).exclude(embedding=[]).select_related('document')
+        ).select_related('document')
         
         if document_ids:
             chunks = chunks.filter(document_id__in=document_ids)
@@ -157,7 +157,7 @@ class SemanticSearchService:
         logger.info(f"Generating embeddings for model: {embedding_model}")
         
         # Get chunks without embeddings
-        chunks = DocumentChunk.objects.filter(embedding=[])
+        chunks = DocumentChunk.objects.filter(embedding__isnull=True)
         if chunk_ids:
             chunks = chunks.filter(id__in=chunk_ids)
         

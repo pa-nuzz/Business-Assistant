@@ -14,7 +14,7 @@ class QueryOptimizer:
     def optimize_task_queryset(
         queryset: QuerySet,
         include_user: bool = True,
-        include_workspace: bool = True,
+        include_business_profile: bool = True,
         include_tags: bool = True
     ) -> QuerySet:
         """Optimize task queryset with select_related and prefetch_related."""
@@ -23,10 +23,10 @@ class QueryOptimizer:
         
         if include_user:
             select_related.append('user')
-            select_related.append('assigned_to')
+            select_related.append('assignee')
         
-        if include_workspace:
-            select_related.append('workspace')
+        if include_business_profile:
+            select_related.append('business_profile')
         
         if include_tags and hasattr(queryset.model, 'tags'):
             prefetch_related.append('tags')
@@ -41,17 +41,13 @@ class QueryOptimizer:
     @staticmethod
     def optimize_document_queryset(
         queryset: QuerySet,
-        include_user: bool = True,
-        include_workspace: bool = True
+        include_user: bool = True
     ) -> QuerySet:
         """Optimize document queryset."""
         select_related = []
         
         if include_user:
             select_related.append('user')
-        
-        if include_workspace:
-            select_related.append('workspace')
         
         if select_related:
             queryset = queryset.select_related(*select_related)

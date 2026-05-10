@@ -139,7 +139,7 @@ class ToolDecisionEngine:
                         name="search_documents",
                         args={"query": user_message, "user_id": uid},
                         reason="Search internal documents first",
-                        on_empty_fallback="brave_search"
+                        on_empty_fallback="searxng_search"
                     )
                 ],
                 reasoning="Search internal docs first, fall back to web search if empty."

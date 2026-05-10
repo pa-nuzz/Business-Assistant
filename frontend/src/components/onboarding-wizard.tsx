@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Building2, Sparkles, Check, Copy, Check as CheckIcon } from "lucide-react";
 import api from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 interface OnboardingStatus {
   has_business_profile: boolean;
@@ -20,12 +21,14 @@ interface OnboardingWizardProps {
 }
 
 export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [isVisible, setIsVisible] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [industry, setIndustry] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -36,12 +39,27 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
       try {
         const response = await api.get("/onboarding/status/");
         const status: OnboardingStatus = response.data;
-        
+
         if (status.completion_pct < 100) {
           setIsVisible(true);
         }
       } catch {
         // Silently fail - don't show wizard if API fails
+        return;
+      }
+
+      // Pre-fill profile fields if user already has a business profile
+      try {
+        const profileResponse = await api.get("/profile/");
+        const profileData = profileResponse.data;
+        if (profileData.company_name) {
+          setCompanyName(profileData.company_name);
+        }
+        if (profileData.industry) {
+          setIndustry(profileData.industry);
+        }
+      } catch {
+        // No profile yet — leave fields empty
       }
     };
 
@@ -57,26 +75,31 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
   const handleComplete = () => {
     localStorage.setItem("onboarding_dismissed", "true");
     setIsVisible(false);
+    api.post("/onboarding/complete/").catch(() => {});
     // Dispatch events to refresh the app
     window.dispatchEvent(new CustomEvent("refresh-conversations"));
     // Refresh onboarding status for badges
     api.get("/onboarding/status/").catch(() => {});
     onClose();
+    router.push("/chat");
   };
 
   const saveProfile = async () => {
     if (!companyName.trim()) return;
-    
+
     setIsSubmitting(true);
+    setSaveError(null);
     try {
       await api.post("/profile/", {
         company_name: companyName,
         industry: industry || undefined,
       });
       setStep(3);
-    } catch {
-      // Continue anyway
-      setStep(3);
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        "Failed to save profile. Please try again.";
+      setSaveError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -198,7 +221,10 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
                   <input
                     type="text"
                     value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
+                    onChange={(e) => {
+                      setCompanyName(e.target.value);
+                      setSaveError(null);
+                    }}
                     placeholder="Enter your company name"
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
@@ -209,7 +235,10 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
                   </label>
                   <select
                     value={industry}
-                    onChange={(e) => setIndustry(e.target.value)}
+                    onChange={(e) => {
+                      setIndustry(e.target.value);
+                      setSaveError(null);
+                    }}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white"
                   >
                     <option value="">Select an industry</option>
@@ -223,6 +252,12 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
                   </select>
                 </div>
               </div>
+
+              {saveError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+                  {saveError}
+                </div>
+              )}
 
               <button
                 onClick={saveProfile}
@@ -248,10 +283,10 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps) {
                 </div>
               </div>
               <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                We&apos;ve loaded sample data
+                Add sample data?
               </h2>
               <p className="text-gray-600 mb-8">
-                Explore AEIOU with pre-loaded conversations, tasks, and examples — or jump straight in with your own data.
+                Explore AEIOU with sample conversations and tasks, or jump straight in with your own data.
               </p>
 
               <div className="flex gap-3">

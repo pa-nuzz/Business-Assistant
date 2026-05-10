@@ -13,6 +13,7 @@ import {
   PenTool,
   BrainCircuit,
 } from "lucide-react";
+import logger from "@/lib/logger";
 import { motion, AnimatePresence } from "framer-motion";
 
 export function AIAssistantInterface() {
@@ -68,7 +69,7 @@ export function AIAssistantInterface() {
 
   const handleSendMessage = () => {
     if (inputValue.trim()) {
-      console.log("Sending message:", inputValue);
+      logger.info("Sending message:", inputValue);
       setInputValue("");
     }
   };

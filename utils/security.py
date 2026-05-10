@@ -6,15 +6,358 @@ Key rules enforced here:
   2. File uploads are validated before touching the filesystem
   3. Tool args are sanitized before execution
   4. No raw SQL ever reaches the DB through tools
+  5. Enhanced input validation and XSS prevention
 """
 import re
 import os
 import logging
 import zipfile
-from typing import Any
+import hashlib
+import secrets
+from typing import Any, Dict, List
 from io import BytesIO
+from django.core.exceptions import ValidationError
+from django.utils.encoding import force_str
+from bleach import clean
+from bleach.css_sanitizer import CSSSanitizer
 
 logger = logging.getLogger(__name__)
+
+# ─── Input Validation & Sanitization ────────────────────────────────────────────
+
+# XSS prevention patterns
+XSS_PATTERNS = [
+    r'<script[^>]*>.*?</script>',
+    r'javascript:',
+    r'on\w+\s*=',  # onclick=, onload=, etc.
+    r'<iframe[^>]*>',
+    r'<object[^>]*>',
+    r'<embed[^>]*>',
+    r'<link[^>]*>',
+    r'<meta[^>]*>',
+]
+
+# SQL injection patterns
+SQL_INJECTION_PATTERNS = [
+    r'(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)',
+    r'(--|#|\/\*|\*\/)',
+    r'(\bOR\b.*\b1\s*=\s*1\b)',
+    r'(\bAND\b.*\b1\s*=\s*1\b)',
+    r'(\'\s*OR\s*\'.*\'.*\')',
+    r'(\".*OR.*\".*=.*\")',
+]
+
+# CSS sanitizer for safe HTML
+CSS_SANITIZER = CSSSanitizer(
+    allowed_css_properties=[
+        'color', 'background-color', 'font-size', 'font-weight', 'text-align',
+        'margin', 'padding', 'border', 'width', 'height', 'display', 'position'
+    ]
+)
+
+def sanitize_html(content: str, allowed_tags: List[str] = None, allowed_attributes: Dict[str, List[str]] = None) -> str:
+    """
+    Sanitize HTML content to prevent XSS attacks.
+    
+    Args:
+        content: HTML content to sanitize
+        allowed_tags: List of allowed HTML tags
+        allowed_attributes: Dict of allowed attributes per tag
+    
+    Returns:
+        Sanitized HTML content
+    """
+    if allowed_tags is None:
+        allowed_tags = ['p', 'br', 'strong', 'em', 'u', 'ul', 'ol', 'li', 'a', 'span']
+    
+    if allowed_attributes is None:
+        allowed_attributes = {
+            'a': ['href', 'title'],
+            'span': ['class'],
+            '*': ['class']
+        }
+    
+    return clean(
+        content,
+        tags=allowed_tags,
+        attributes=allowed_attributes,
+        strip=True,
+        css_sanitizer=CSS_SANITIZER
+    )
+
+def validate_text_input(text: str, max_length: int = 1000, allow_empty: bool = False) -> str:
+    """
+    Validate and sanitize text input.
+    
+    Args:
+        text: Text to validate
+        max_length: Maximum allowed length
+        allow_empty: Whether empty strings are allowed
+    
+    Returns:
+        Sanitized text
+    
+    Raises:
+        ValidationError: If input is invalid
+    """
+    if not allow_empty and not text.strip():
+        raise ValidationError("This field is required.")
+    
+    if len(text) > max_length:
+        raise ValidationError(f"Text cannot exceed {max_length} characters.")
+    
+    # Check for XSS patterns
+    text_lower = text.lower()
+    for pattern in XSS_PATTERNS:
+        if re.search(pattern, text_lower, re.IGNORECASE):
+            raise ValidationError("Invalid characters detected.")
+    
+    # Sanitize the text
+    sanitized = force_str(text)
+    sanitized = sanitized.strip()
+    
+    return sanitized
+
+def validate_email(email: str) -> str:
+    """
+    Validate email format and prevent email injection.
+    
+    Args:
+        email: Email address to validate
+    
+    Returns:
+        Normalized email
+    
+    Raises:
+        ValidationError: If email is invalid
+    """
+    email = email.strip().lower()
+    
+    # Basic email validation
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, email):
+        raise ValidationError("Invalid email format.")
+    
+    # Check for injection attempts
+    dangerous_chars = ['\n', '\r', '\0', '<', '>', '|', '&', ';']
+    if any(char in email for char in dangerous_chars):
+        raise ValidationError("Invalid characters in email.")
+    
+    return email
+
+def validate_url(url: str, allowed_schemes: List[str] = None) -> str:
+    """
+    Validate URL and prevent malicious URLs.
+    
+    Args:
+        url: URL to validate
+        allowed_schemes: List of allowed URL schemes
+    
+    Returns:
+        Normalized URL
+    
+    Raises:
+        ValidationError: If URL is invalid
+    """
+    if allowed_schemes is None:
+        allowed_schemes = ['http', 'https']
+    
+    url = url.strip()
+    
+    # Check for dangerous protocols
+    dangerous_schemes = ['javascript:', 'data:', 'vbscript:', 'file:', 'ftp:']
+    for scheme in dangerous_schemes:
+        if url.lower().startswith(scheme):
+            raise ValidationError(f"URL scheme '{scheme}' is not allowed.")
+    
+    # Basic URL validation
+    url_pattern = r'^https?://[^\s/$.?#].[^\s]*$'
+    if not re.match(url_pattern, url):
+        raise ValidationError("Invalid URL format.")
+    
+    return url
+
+def detect_sql_injection(input_text: str) -> bool:
+    """
+    Detect potential SQL injection attempts.
+    
+    Args:
+        input_text: Text to analyze
+    
+    Returns:
+        True if SQL injection pattern detected
+    """
+    text_upper = input_text.upper()
+    for pattern in SQL_INJECTION_PATTERNS:
+        if re.search(pattern, text_upper):
+            return True
+    return False
+
+def generate_secure_token(length: int = 32) -> str:
+    """
+    Generate cryptographically secure random token.
+    
+    Args:
+        length: Token length
+    
+    Returns:
+        Secure random token
+    """
+    return secrets.token_urlsafe(length)
+
+def hash_sensitive_data(data: str, salt: str = None) -> str:
+    """
+    Hash sensitive data for logging/auditing.
+    
+    Args:
+        data: Data to hash
+        salt: Optional salt
+    
+    Returns:
+        Hashed data
+    """
+    if salt is None:
+        salt = "aeiou_ai_default_salt"
+    
+    return hashlib.sha256(f"{salt}{data}".encode()).hexdigest()
+
+def validate_file_size(file_size: int, max_size_mb: int = 10) -> bool:
+    """
+    Validate file size against maximum allowed size.
+    
+    Args:
+        file_size: File size in bytes
+        max_size_mb: Maximum size in MB
+    
+    Returns:
+        True if file size is valid
+    """
+    max_size_bytes = max_size_mb * 1024 * 1024
+    return file_size <= max_size_bytes
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize filename to prevent path traversal attacks.
+    
+    Args:
+        filename: Original filename
+    
+    Returns:
+        Sanitized filename
+    """
+    # Remove path components
+    filename = os.path.basename(filename)
+    
+    # Remove dangerous characters
+    filename = re.sub(r'[^\w\-_.]', '', filename)
+    
+    # Limit length
+    filename = filename[:255]
+    
+    return filename or "file"
+
+# ─── Rate Limiting Utilities ─────────────────────────────────────────────────────
+
+class RateLimiter:
+    """
+    Simple in-memory rate limiter for development/testing.
+    In production, use Redis-based rate limiting.
+    """
+    
+    def __init__(self):
+        self.requests = {}
+    
+    def is_allowed(self, key: str, limit: int, window: int) -> bool:
+        """
+        Check if request is allowed based on rate limit.
+        
+        Args:
+            key: Unique identifier (IP, user ID, etc.)
+            limit: Maximum requests allowed
+            window: Time window in seconds
+        
+        Returns:
+            True if request is allowed
+        """
+        import time
+        
+        now = time.time()
+        window_start = now - window
+        
+        if key not in self.requests:
+            self.requests[key] = []
+        
+        # Remove old requests outside the window
+        self.requests[key] = [req_time for req_time in self.requests[key] if req_time > window_start]
+        
+        # Check if under limit
+        if len(self.requests[key]) < limit:
+            self.requests[key].append(now)
+            return True
+        
+        return False
+
+# ─── Security Headers Middleware ─────────────────────────────────────────────────
+
+def get_security_headers() -> Dict[str, str]:
+    """
+    Get security headers for HTTP responses.
+    
+    Returns:
+        Dictionary of security headers
+    """
+    return {
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'X-XSS-Protection': '1; mode=block',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Content-Security-Policy': (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        ),
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+        'Permissions-Policy': (
+            'camera=(), microphone=(), geolocation=(), '
+            'payment=(), usb=(), vr=(), magnetometer=(), gyroscope=()'
+        )
+    }
+
+# ─── Audit Logging ───────────────────────────────────────────────────────────
+
+def log_security_event(event_type: str, details: Dict[str, Any], user_id: int = None):
+    """
+    Log security events for audit trail.
+    
+    Args:
+        event_type: Type of security event
+        details: Event details
+        user_id: User ID if applicable
+    """
+    # Hash sensitive data for logging
+    safe_details = {}
+    for key, value in details.items():
+        if 'password' in key.lower() or 'token' in key.lower() or 'secret' in key.lower():
+            safe_details[key] = hash_sensitive_data(str(value))
+        else:
+            safe_details[key] = value
+    
+    logger.warning(
+        f"Security Event: {event_type}",
+        extra={
+            'event_type': event_type,
+            'user_id': user_id,
+            'details': safe_details,
+            'ip_address': details.get('ip_address'),
+            'user_agent': details.get('user_agent')
+        }
+    )
 
 # ─── File Upload Security ─────────────────────────────────────────────────────
 

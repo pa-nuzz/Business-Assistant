@@ -105,6 +105,7 @@ class TestChatService:
         service = ChatService(user)
         history = service._build_conversation_history(conversation)
         
-        assert len(history) == 2
-        assert history[0]['role'] == 'user'
-        assert history[1]['role'] == 'assistant'
+        assert len(history) == 3
+        assert history[0]['role'] == 'system'
+        assert history[1]['role'] == 'user'
+        assert history[2]['role'] == 'assistant'

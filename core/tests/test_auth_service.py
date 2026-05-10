@@ -108,3 +108,25 @@ class TestAuthService:
         assert result['success'] is True
         user.refresh_from_db()
         assert user.check_password('newpass123')
+
+    def test_verify_reset_code_code_only_signature(self):
+        """Code-only verify_reset_code form remains supported for compatibility."""
+        user = User.objects.create_user(username='testuser', password='testpass123', email='test@example.com')
+        reset_code = PasswordResetCode.objects.create(user=user)
+        reset_code.set_code('123456')
+        reset_code.save()
+
+        assert AuthService.verify_reset_code('123456') is True
+
+    def test_reset_password_code_only_signature(self):
+        """Code-only reset_password form remains supported for compatibility."""
+        user = User.objects.create_user(username='testuser', password='testpass123', email='test@example.com')
+        reset_code = PasswordResetCode.objects.create(user=user)
+        reset_code.set_code('123456')
+        reset_code.save()
+
+        result = AuthService.reset_password('123456', 'newpass123')
+
+        assert result['success'] is True
+        user.refresh_from_db()
+        assert user.check_password('newpass123')

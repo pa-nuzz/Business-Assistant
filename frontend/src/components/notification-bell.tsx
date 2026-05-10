@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, Check, X, Loader2 } from 'lucide-react';
+import { Bell, Check, X, Loader2, Sparkles, AlertCircle, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { notifications, auth } from '@/lib/api';
 import { toast } from 'sonner';
@@ -27,7 +27,6 @@ export function NotificationBell({ className }: NotificationBellProps) {
   const [markingRead, setMarkingRead] = useState<number | null>(null);
 
   const fetchNotifications = useCallback(async () => {
-    // Only fetch if user is authenticated
     if (!auth.isAuthenticated()) return;
     
     try {
@@ -37,25 +36,18 @@ export function NotificationBell({ className }: NotificationBellProps) {
         setUnreadCount(data.count || 0);
       }
     } catch (_err: unknown) {
-      // Silently ignore auth errors
       const error = _err as { response?: { status?: number } };
       if (error?.response?.status === 401) return;
       console.error('Failed to fetch notifications:', _err);
     }
   }, []);
 
-  // Fetch on mount and periodically
   useEffect(() => {
     fetchNotifications();
-    
-    // Refresh every 30 seconds
     const interval = setInterval(fetchNotifications, 30000);
     
-    // Refresh when window becomes visible
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchNotifications();
-      }
+      if (document.visibilityState === 'visible') fetchNotifications();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
@@ -65,11 +57,8 @@ export function NotificationBell({ className }: NotificationBellProps) {
     };
   }, [fetchNotifications]);
 
-  // Listen for custom refresh event
   useEffect(() => {
-    const handleRefresh = () => {
-      fetchNotifications();
-    };
+    const handleRefresh = () => fetchNotifications();
     window.addEventListener('refresh-notifications', handleRefresh);
     return () => window.removeEventListener('refresh-notifications', handleRefresh);
   }, [fetchNotifications]);
@@ -80,13 +69,8 @@ export function NotificationBell({ className }: NotificationBellProps) {
     
     try {
       await notifications.markAsRead(notificationId);
-      
-      // Optimistically update UI
-      setNotificationsList(prev => 
-        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
-      );
+      setNotificationsList(prev => prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
-      
       toast.success('Marked as read');
     } catch {
       toast.error('Failed to mark as read');
@@ -97,20 +81,12 @@ export function NotificationBell({ className }: NotificationBellProps) {
 
   const handleMarkAllAsRead = async () => {
     setIsLoading(true);
-    
     try {
-      // Mark all unread notifications as read
       const unreadNotifications = notificationsList.filter(n => !n.is_read);
-      await Promise.all(
-        unreadNotifications.map(n => notifications.markAsRead(n.id))
-      );
+      await Promise.all(unreadNotifications.map(n => notifications.markAsRead(n.id)));
       
-      // Update UI
-      setNotificationsList(prev => 
-        prev.map(n => ({ ...n, is_read: true }))
-      );
+      setNotificationsList(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
-      
       toast.success('All notifications marked as read');
     } catch {
       toast.error('Failed to mark all as read');
@@ -119,23 +95,21 @@ export function NotificationBell({ className }: NotificationBellProps) {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityIcon = (priority: string) => {
     switch (priority) {
-      case 'urgent': return 'bg-red-500';
-      case 'high': return 'bg-orange-500';
-      case 'normal': return 'bg-blue-500';
-      case 'low': return 'bg-gray-400';
-      default: return 'bg-blue-500';
+      case 'urgent': return <AlertCircle className="w-4 h-4 text-rose-500" />;
+      case 'high': return <Sparkles className="w-4 h-4 text-orange-500" />;
+      case 'normal': return <Info className="w-4 h-4 text-indigo-500" />;
+      default: return <Info className="w-4 h-4 text-slate-400" />;
     }
   };
 
-  const getPriorityBg = (priority: string) => {
+  const getPriorityBg = (priority: string, isRead: boolean) => {
+    if (isRead) return 'bg-white/40 border-white/20 hover:bg-white/60';
     switch (priority) {
-      case 'urgent': return 'bg-red-50 border-red-100';
-      case 'high': return 'bg-orange-50 border-orange-100';
-      case 'normal': return 'bg-blue-50 border-blue-100';
-      case 'low': return 'bg-gray-50 border-gray-100';
-      default: return 'bg-blue-50 border-blue-100';
+      case 'urgent': return 'bg-rose-50/80 border-rose-100 shadow-sm hover:bg-rose-50';
+      case 'high': return 'bg-orange-50/80 border-orange-100 shadow-sm hover:bg-orange-50';
+      default: return 'bg-indigo-50/80 border-indigo-100 shadow-sm hover:bg-indigo-50';
     }
   };
 
@@ -143,7 +117,6 @@ export function NotificationBell({ className }: NotificationBellProps) {
     const date = new Date(dateString);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
@@ -157,31 +130,27 @@ export function NotificationBell({ className }: NotificationBellProps) {
 
   return (
     <div className={`relative ${className}`}>
-      {/* Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        className="relative p-2.5 rounded-xl bg-white/70 backdrop-blur-xl border border-white/50 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md group"
         aria-label="Notifications"
       >
-        <Bell className="w-5 h-5 text-gray-500" />
+        <Bell className="w-5 h-5 text-slate-600 group-hover:text-indigo-600 transition-colors" />
         
-        {/* Unread Badge */}
         {unreadCount > 0 && (
           <motion.span
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1"
+            className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] flex items-center justify-center bg-linear-to-tr from-indigo-600 to-violet-500 text-white text-[10px] font-bold rounded-full px-1 shadow-md shadow-indigo-500/20"
           >
             {unreadCount > 99 ? '99+' : unreadCount}
           </motion.span>
         )}
       </button>
 
-      {/* Dropdown */}
       <AnimatePresence>
         {isOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -190,68 +159,73 @@ export function NotificationBell({ className }: NotificationBellProps) {
               className="fixed inset-0 z-40"
             />
             
-            {/* Notification Panel */}
             <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              initial={{ opacity: 0, y: 15, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className="absolute right-0 top-full mt-2 w-[360px] bg-white rounded-xl border border-gray-200 shadow-xl z-50 overflow-hidden"
+              exit={{ opacity: 0, y: 15, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="absolute right-0 top-full mt-3 w-[380px] bg-white/80 backdrop-blur-2xl rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50 overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50/50">
-                <h3 className="font-semibold text-sm text-gray-900">Notifications</h3>
-                <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/50 bg-white/50">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-base text-slate-900">Notifications</h3>
+                  {unreadCount > 0 && (
+                    <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                      {unreadCount} new
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
                   {unreadCount > 0 && (
                     <button
                       onClick={handleMarkAllAsRead}
                       disabled={isLoading}
-                      className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 transition-colors disabled:opacity-50"
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors disabled:opacity-50"
                     >
-                      {isLoading ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        'Mark all read'
-                      )}
+                      {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Mark all read'}
                     </button>
                   )}
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                   >
-                    <X className="w-4 h-4 text-gray-500" />
+                    <X className="w-4 h-4 text-slate-500" />
                   </button>
                 </div>
               </div>
 
               {/* Notifications List */}
-              <div className="max-h-[400px] overflow-y-auto">
+              <div className="max-h-[420px] overflow-y-auto p-3 space-y-2 scrollbar-thin scrollbar-thumb-slate-200">
                 {notificationsList.length === 0 ? (
-                  <div className="px-4 py-8 text-center">
-                    <Bell className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">No notifications yet</p>
+                  <div className="py-12 px-6 text-center flex flex-col items-center">
+                    <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                      <Bell className="w-8 h-8 text-slate-300" />
+                    </div>
+                    <h4 className="text-slate-900 font-medium mb-1">All caught up!</h4>
+                    <p className="text-sm text-slate-500">You don't have any new notifications.</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-200">
-                    {notificationsList.map((notification) => (
-                      <motion.div
-                        key={notification.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className={`relative p-3 hover:bg-gray-50 transition-colors ${
-                          !notification.is_read ? getPriorityBg(notification.priority) : ''
-                        }`}
-                      >
-                        {/* Priority indicator */}
-                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${getPriorityColor(notification.priority)}`} />
+                  notificationsList.map((notification) => (
+                    <motion.div
+                      key={notification.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`relative p-4 rounded-xl border transition-all duration-300 ${getPriorityBg(notification.priority, notification.is_read)}`}
+                    >
+                      <div className="flex gap-3">
+                        <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${notification.is_read ? 'bg-slate-100' : 'bg-white shadow-sm'}`}>
+                          {getPriorityIcon(notification.priority)}
+                        </div>
                         
-                        <div className="pl-3">
-                          <p className="text-sm text-gray-900 pr-8">
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm leading-relaxed ${notification.is_read ? 'text-slate-600' : 'text-slate-900 font-medium'}`}>
                             {notification.message}
                           </p>
                           
-                          <div className="flex items-center justify-between mt-2">
-                            <span className="text-xs text-gray-500">
+                          <div className="flex items-center justify-between mt-3">
+                            <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
                               {formatTime(notification.created_at)}
                             </span>
                             
@@ -259,7 +233,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
                               <button
                                 onClick={(e) => handleMarkAsRead(e, notification.id)}
                                 disabled={markingRead === notification.id}
-                                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-100/50 transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 px-2.5 py-1 rounded-md hover:bg-indigo-50 transition-colors disabled:opacity-50"
                               >
                                 {markingRead === notification.id ? (
                                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -273,30 +247,27 @@ export function NotificationBell({ className }: NotificationBellProps) {
                             )}
                           </div>
                           
-                          {/* Action URL if present */}
                           {notification.action_url && (
                             <a
                               href={notification.action_url}
-                              className="inline-block mt-2 text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                              className="inline-flex items-center mt-3 text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-white/50 px-3 py-1.5 rounded-lg hover:bg-white transition-colors border border-indigo-100"
                             >
-                              View details →
+                              View Details
                             </a>
                           )}
                         </div>
-                      </motion.div>
-                    ))}
-                  </div>
+                      </div>
+                    </motion.div>
+                  ))
                 )}
               </div>
 
               {/* Footer */}
-              {notificationsList.length > 0 && (
-                <div className="px-4 py-2 border-t border-gray-200 bg-gray-50/30 text-center">
-                  <span className="text-xs text-gray-500">
-                    {unreadCount} unread
-                  </span>
-                </div>
-              )}
+              <div className="px-5 py-3 border-t border-slate-200/50 bg-slate-50/50 text-center">
+                <a href="/notifications" className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors">
+                  View all notifications
+                </a>
+              </div>
             </motion.div>
           </>
         )}

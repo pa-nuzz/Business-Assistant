@@ -225,7 +225,7 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "name": "brave_search",
+        "name": "duckduckgo_search",
         "description": (
             "Searches the web for real-time information — market data, competitors, "
             "news, industry trends. Use when user needs current external information."
@@ -238,6 +238,25 @@ TOOL_DEFINITIONS = [
                     "type": "integer",
                     "description": "Number of results (1-5). Default: 3.",
                     "default": 3,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "searxng_search",
+        "description": (
+            "Searches the web using SearXNG metasearch engine. "
+            "Good for broad information gathering from multiple sources."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query."},
+                "num_results": {
+                    "type": "integer",
+                    "description": "Number of results (1-10). Default: 5.",
+                    "default": 5,
                 },
             },
             "required": ["query"],
@@ -699,14 +718,20 @@ def get_document_summary(doc_id: str, user_id: int) -> dict:
 
 def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
     """
-    Keyword-based search across document titles and content chunks.
-    Splits query into keywords and finds matches in both titles and content.
+    Hybrid search across document titles and content chunks.
+    Combines Semantic (Vector) search with Keyword matching for top-notch precision.
     """
     try:
         from core.models import DocumentChunk, Document
+        from services.gemini import get_embeddings
+        
         keywords = [w.lower().strip() for w in query.split() if len(w) > 2]
+        
+        # --- 1. Get Semantic Query Embedding ---
+        query_embeddings = get_embeddings([query])
+        query_vector = query_embeddings[0] if query_embeddings else None
 
-        # First, search document titles
+        # --- 2. Title Match Scoring (Keyword-based) ---
         title_matches = []
         docs_qs = Document.objects.filter(user_id=user_id, status="ready")
         if doc_id:
@@ -714,89 +739,105 @@ def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
         
         for doc in docs_qs:
             doc_title_lower = doc.title.lower()
-            # Check if any keyword matches the title (exact or partial)
-            title_score = sum(2 for kw in keywords if kw in doc_title_lower)
-            # Also check for common document name patterns
-            if any(term in doc_title_lower for term in ['cv', 'resume', 'curriculum', 'portfolio']):
-                title_score += 3
+            title_score = sum(3 for kw in keywords if kw in doc_title_lower)
             if title_score > 0:
                 title_matches.append({
-                    "score": title_score,
+                    "score": title_score * 2, # Boost titles
                     "doc_title": doc.title,
                     "doc_id": str(doc.id),
-                    "content": f"Document title: {doc.title}. This is a {doc.file_type} file with {doc.page_count or 'unknown'} pages.",
+                    "content": f"Document found: {doc.title}. Description: {doc.summary[:200]}...",
                     "page": 1,
                     "match_type": "title"
                 })
 
-        # Then search content chunks
-        qs = DocumentChunk.objects.filter(document__user_id=user_id, document__status="ready")
+        # --- 3. Content Chunk Scoring (Hybrid with pgvector when available) ---
+        chunks_qs = DocumentChunk.objects.filter(document__user_id=user_id, document__status="ready").select_related("document")
         if doc_id:
-            qs = qs.filter(document_id=doc_id)
+            chunks_qs = chunks_qs.filter(document_id=doc_id)
 
-        # Score chunks by keyword overlap
-        content_results = []
-        for chunk in qs.select_related("document")[:200]:
-            content_lower = chunk.content.lower()
-            score = sum(1 for kw in keywords if kw in content_lower)
-            if score > 0:
-                content_results.append({
-                    "score": score,
-                    "doc_title": chunk.document.title,
-                    "doc_id": str(chunk.document.id),
-                    "content": chunk.content[:800],
-                    "page": chunk.page_number,
-                    "match_type": "content"
-                })
+        scored_chunks = []
+        if query_vector:
+            # Semantic search using pgvector
+            try:
+                from pgvector.django import CosineDistance
+                semantic_qs = chunks_qs.filter(embedding__isnull=False).annotate(
+                    distance=CosineDistance('embedding', query_vector)
+                ).order_by('distance')[:150]
 
-        # Combine and sort results - title matches get priority
-        all_results = title_matches + content_results
+                for chunk in semantic_qs:
+                    semantic_score = max(0.0, 1.0 - getattr(chunk, 'distance', 1.0))
+
+                    content_lower = chunk.content.lower()
+                    kw_score = sum(1 for kw in keywords if kw in content_lower)
+                    normalized_kw = min(kw_score / 5.0, 1.0)
+
+                    combined_score = (semantic_score * 0.7) + (normalized_kw * 0.3)
+
+                    if combined_score > 0.2:
+                        scored_chunks.append({
+                            "score": combined_score,
+                            "doc_title": chunk.document.title,
+                            "doc_id": str(chunk.document.id),
+                            "content": chunk.content[:1000],
+                            "page": chunk.page_number,
+                            "match_type": "content"
+                        })
+            except Exception as e:
+                logger.warning(f"Vector document search unavailable, using keyword fallback: {e}")
+
+        if not scored_chunks:
+            # Fallback to keyword-only search
+            for chunk in chunks_qs[:150]:
+                content_lower = chunk.content.lower()
+                chunk_keywords = [k.lower() for k in (chunk.keywords or [])]
+                kw_score = sum(
+                    1 for kw in keywords
+                    if kw in content_lower or kw in chunk_keywords
+                )
+                if kw_score > 0:
+                    scored_chunks.append({
+                        "score": min(kw_score / 5.0, 1.0) * 0.5,
+                        "doc_title": chunk.document.title,
+                        "doc_id": str(chunk.document.id),
+                        "content": chunk.content[:1000],
+                        "page": chunk.page_number,
+                        "match_type": "content"
+                    })
+
+        # --- 4. Combine, De-duplicate and Sort ---
+        all_results = title_matches + scored_chunks
+        
+        # Sort by score descending
         all_results.sort(key=lambda x: x["score"], reverse=True)
-        top = all_results[:5]
+        
+        # De-duplicate by content (briefly)
+        seen_content = set()
+        unique_results = []
+        for res in all_results:
+            content_hash = hash(res["content"][:100])
+            if content_hash not in seen_content:
+                unique_results.append(res)
+                seen_content.add(content_hash)
+        
+        top = unique_results[:5]
 
         if not top:
-            return {"result": "No relevant content found in documents for this query."}
+            return {"result": "I couldn't find any documents matching that specific query."}
+            
         return {"result": top}
+        
     except Exception as e:
-        logger.exception("search_documents error")
-        return {"error": str(e)}
+        logger.exception("search_documents hybrid error")
+        return {"error": f"Search failed: {str(e)}"}
 
 
-@cached_tool(ttl=3600)  # 1 hour (external API, rarely changes)
-def brave_search(query: str, num_results: int = 3) -> dict:
+@cached_tool(ttl=3600)  # 1 hour
+def duckduckgo_search(query: str, num_results: int = 3) -> dict:
     """
-    Web search via Brave Search API.
-    Falls back to DuckDuckGo HTML scrape if no API key configured.
+    Web search via DuckDuckGo HTML scrape/API fallback.
     """
     import httpx
-    from django.conf import settings
-
-    api_key = settings.BRAVE_SEARCH_API_KEY
-
-    if api_key:
-        # Brave Search API (2000 free queries/month)
-        try:
-            with httpx.Client(timeout=8) as client:
-                resp = client.get(
-                    "https://api.search.brave.com/res/v1/web/search",
-                    params={"q": query, "count": num_results, "text_decorations": False},
-                    headers={"Accept": "application/json", "X-Subscription-Token": api_key},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                results = [
-                    {
-                        "title": r.get("title"),
-                        "url": r.get("url"),
-                        "snippet": r.get("description", ""),
-                    }
-                    for r in data.get("web", {}).get("results", [])[:num_results]
-                ]
-                return {"result": results}
-        except Exception as e:
-            logger.warning(f"Brave search failed: {e}, trying DuckDuckGo fallback")
-
-    # DuckDuckGo fallback (no API key needed)
+    
     try:
         with httpx.Client(timeout=8, follow_redirects=True) as client:
             resp = client.get(
@@ -820,7 +861,40 @@ def brave_search(query: str, num_results: int = 3) -> dict:
                     })
             return {"result": results if results else "No results found."}
     except Exception as e:
+        logger.exception("DuckDuckGo search failed")
         return {"error": f"Search failed: {str(e)}"}
+
+@cached_tool(ttl=3600)  # 1 hour
+def searxng_search(query: str, num_results: int = 5) -> dict:
+    """
+    Web search via SearXNG API.
+    """
+    import httpx
+    from django.conf import settings
+    
+    searxng_url = getattr(settings, "SEARXNG_URL", "https://searx.be/search") # Public fallback instance
+    
+    try:
+        with httpx.Client(timeout=10, follow_redirects=True) as client:
+            resp = client.get(
+                searxng_url,
+                params={"q": query, "format": "json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            results = [
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("url", ""),
+                    "snippet": r.get("content", "")[:300],
+                    "engine": r.get("engine", "")
+                }
+                for r in data.get("results", [])[:num_results]
+            ]
+            return {"result": results if results else "No results found."}
+    except Exception as e:
+        logger.exception("SearXNG search failed")
+        return {"error": f"SearXNG Search failed: {str(e)}"}
 
 
 def send_notification(user_id: int, message: str, priority: str = "normal", action_url: str = "") -> dict:
@@ -1266,7 +1340,8 @@ TOOL_MAP: dict[str, callable] = {
     "list_documents": list_documents,
     "get_document_summary": get_document_summary,
     "search_documents": search_documents,
-    "brave_search": brave_search,
+    "duckduckgo_search": duckduckgo_search,
+    "searxng_search": searxng_search,
     # Web scraper (lazy import to avoid circular dependency)
     "scrape_webpage": lambda **kwargs: __import__('mcp.tools.web_scraper', fromlist=['scrape_webpage']).scrape_webpage(**kwargs),
     "send_notification": send_notification,

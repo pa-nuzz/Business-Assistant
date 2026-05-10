@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 export default function DashboardError({
   error,
@@ -13,7 +14,7 @@ export default function DashboardError({
   const router = useRouter();
 
   useEffect(() => {
-    console.error('Dashboard error:', error);
+    logger.error('Dashboard error', error);
   }, [error]);
 
   return (

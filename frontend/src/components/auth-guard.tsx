@@ -64,55 +64,84 @@ function AuthLoadingOverlay() {
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isChecking, setIsChecking] = useState(false);
-  const [hasChecked, setHasChecked] = useState(false);
+  const [authState, setAuthState] = useState<'checking' | 'ready' | 'redirecting'>('checking');
 
+  // ── Initial mount: attempt to restore session from httpOnly cookie ──
+  // This runs once. It ALWAYS tries refresh when accessToken is missing,
+  // not just when the aeiou-session indicator cookie happens to exist.
   useEffect(() => {
-    // Skip if pathname isn't ready yet
+    const restore = async () => {
+      if (!pathname) return;
+
+      const isPublic = isPublicPath(pathname);
+
+      // If we already have a memory token, we're good
+      if (auth.isAuthenticated()) {
+        setAuthState('ready');
+        return;
+      }
+
+      // Public pages don't need a token — just render them
+      if (isPublic) {
+        setAuthState('ready');
+        return;
+      }
+
+      // Protected page + no memory token: try restoring from httpOnly refresh cookie
+      try {
+        await auth.refreshSession();
+        setAuthState('ready');
+      } catch {
+        setAuthState('redirecting');
+        router.replace('/login');
+      }
+    };
+
+    restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
+
+  // ── Fast path for pathname changes after initial check ──
+  // Avoid re-checking cookies/async on every client-side navigation.
+  useEffect(() => {
+    if (authState === 'checking') return; // Still doing initial restore
     if (!pathname) return;
 
     const isPublic = isPublicPath(pathname);
-    const isAuth = auth.isAuthenticated();
 
-    // Determine if we need to redirect
-    const needsRedirect = (!isAuth && !isPublic) || (isAuth && isPublic);
-
-    if (needsRedirect) {
-      setIsChecking(true);
-      
-      // Perform redirect
-      const timer = setTimeout(() => {
-        if (!isAuth && !isPublic) {
-          router.replace('/login');
-        } else if (isAuth && isPublic) {
-          router.replace('/chat');
-        }
-        setIsChecking(false);
-        setHasChecked(true);
-      }, 150);
-
-      return () => clearTimeout(timer);
-    } else {
-      // No redirect needed, mark as checked
-      setHasChecked(true);
-      setIsChecking(false);
+    // Public pages: always render, never redirect authenticated users
+    if (isPublic) {
+      return;
     }
-  }, [pathname, router]);
 
-  // Safety timeout: ensure we don't stay in checking state forever
+    // Protected page
+    if (!auth.isAuthenticated()) {
+      setAuthState('redirecting');
+      router.replace('/login');
+    }
+    // If authenticated, stay ready — no state change needed
+  }, [pathname, router, authState]);
+
+  // Safety: fail closed on protected pages instead of rendering them unauthenticated.
   useEffect(() => {
-    if (!isChecking) return;
-    
-    const safetyTimer = setTimeout(() => {
-      setIsChecking(false);
-      setHasChecked(true);
-    }, 2000);
+    if (authState === 'ready') return;
+    const timer = setTimeout(() => {
+      if (pathname && !isPublicPath(pathname)) {
+        setAuthState('redirecting');
+        router.replace('/login');
+      } else {
+        setAuthState('ready');
+      }
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [authState, pathname, router]);
 
-    return () => clearTimeout(safetyTimer);
-  }, [isChecking]);
-
-  // Don't render children until auth check is complete to prevent flash
-  if (!hasChecked) {
+  if (authState !== 'ready') {
+    // For public pages, show children immediately even during 'checking'
+    // This prevents the login page from flashing the overlay
+    if (pathname && isPublicPath(pathname)) {
+      return <>{children}</>;
+    }
     return <AuthLoadingOverlay />;
   }
 

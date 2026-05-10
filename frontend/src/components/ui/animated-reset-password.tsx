@@ -142,7 +142,7 @@ export default function AnimatedResetPasswordPage() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Left Animation Section */}
-      <div className="relative hidden lg:flex flex-col justify-between bg-gradient-to-br from-indigo-600 via-blue-600 to-sky-700 p-12 text-white overflow-hidden">
+      <div className="relative hidden lg:flex flex-col justify-between bg-linear-to-br from-indigo-600 via-blue-600 to-sky-700 p-12 text-white overflow-hidden">
         {/* Animated background shapes */}
         <div className="absolute inset-0">
           <div 
@@ -156,14 +156,7 @@ export default function AnimatedResetPasswordPage() {
         </div>
 
         {/* Top branding */}
-        <div className="relative z-20">
-          <div className="flex items-center gap-2 text-lg font-semibold">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
-              <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
-            </div>
-            <span>AEIOU AI</span>
-          </div>
-        </div>
+        <div className="relative z-20 h-10" />
 
         {/* Center animation */}
         <div className="relative z-20 flex flex-col items-center justify-center">
@@ -208,13 +201,7 @@ export default function AnimatedResetPasswordPage() {
       {/* Right Form Section */}
       <div className="flex items-center justify-center p-8 bg-background overflow-y-auto">
         <div className="w-full max-w-[420px] py-8">
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center justify-center gap-2 text-lg font-semibold mb-8">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700">
-              <img src="/logos/app-logo.svg" alt="AEIOU AI" className="w-full h-full object-contain" />
-            </div>
-            <span>AEIOU AI</span>
-          </div>
+
 
           {!success ? (
             <>

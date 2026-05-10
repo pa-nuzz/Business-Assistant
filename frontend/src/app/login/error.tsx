@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { logger } from '@/lib/logger';
 
 export default function LoginError({
   error,
@@ -10,7 +11,7 @@ export default function LoginError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('Login page error:', error);
+    logger.error('Login page error', error);
   }, [error]);
 
   return (

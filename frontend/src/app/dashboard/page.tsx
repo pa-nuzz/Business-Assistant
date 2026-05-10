@@ -2,399 +2,388 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { analytics } from '@/lib/api';
-import { ArrowRight, MessageSquare, TrendingUp, Target, BarChart3 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { PageSkeleton } from '@/components/loading-skeletons';
+import { analytics, tasks as tasksApi, user } from '@/lib/api';
+import Image from 'next/image';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
+  MessageSquare, CheckSquare, FileText, Settings,
+  TrendingUp, ArrowRight, Clock, ArrowUpRight,
+  Plus, RefreshCw, AlertTriangle
+} from 'lucide-react';
+import { motion } from 'framer-motion';
 
-interface BusinessProfile {
-  company_name?: string;
-  industry?: string;
-  key_metrics?: Record<string, number | string>;
-  goals?: string[];
+interface TaskSummary {
+  total: number;
+  todo: number;
+  in_progress: number;
+  completed: number;
+  overdue: number;
 }
 
 interface AnalyticsData {
-  profile: BusinessProfile;
-  insights: {
-    top_topics?: string[];
-    suggested_focus_areas?: string[];
-    [key: string]: unknown;
+  profile?: {
+    company_name?: string;
+    industry?: string;
   };
-  followups: Array<{ key: string; value: string }> | string | { items?: unknown[]; checklist?: unknown[]; [key: string]: unknown };
+  executive_summary?: string;
+  forecast?: {
+    velocity: string | number;
+    backlog_clearance_days: number;
+  };
+  proactive_alerts?: Array<{
+    title: string;
+    message: string;
+    severity: 'high' | 'medium' | 'low';
+  }>;
+  summary?: {
+    total_documents?: number;
+    total_conversations?: number;
+    total_messages?: number;
+  };
 }
-
-const METRIC_LABELS: Record<string, string> = {
-  monthly_revenue: 'Monthly Revenue',
-  revenue: 'Revenue',
-  customer_count: 'Customers',
-  customers: 'Customers',
-  mrr: 'MRR',
-  arr: 'ARR',
-  growth_rate: 'Growth Rate',
-  conversion_rate: 'Conversion',
-};
-
-const formatMetricValue = (key: string, value: number | string): string => {
-  if (typeof value === 'number') {
-    if (key.includes('revenue') || key.includes('mrr') || key.includes('arr')) {
-      return `$${value.toLocaleString()}`;
-    }
-    return value.toLocaleString();
-  }
-  return String(value);
-};
-
-const COLORS = ['#6366F1', '#8B5CF6', '#14B8A6', '#F59E0B', '#EF4444', '#EC4899'];
 
 export default function DashboardPage() {
   const router = useRouter();
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [taskStats, setTaskStats] = useState<TaskSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [greeting, setGreeting] = useState('');
+  const [username, setUsername] = useState('');
 
-  // Set page title
   useEffect(() => {
     document.title = 'Dashboard | AEIOU AI';
-  }, []);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const result = await analytics.get();
-        setData(result);
-      } catch (err) {
-        console.error('Failed to fetch analytics:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const h = new Date().getHours();
+    if (h < 12) setGreeting('Good morning');
+    else if (h < 17) setGreeting('Good afternoon');
+    else setGreeting('Good evening');
 
     fetchData();
   }, []);
 
-  if (loading) {
-    return <PageSkeleton type="dashboard" />;
-  }
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [analyticsRes, statsRes, userRes] = await Promise.allSettled([
+        analytics.get(),
+        tasksApi.getStats(),
+        user.getInfo(),
+      ]);
+      if (analyticsRes.status === 'fulfilled') setData(analyticsRes.value);
+      if (statsRes.status === 'fulfilled') setTaskStats(statsRes.value);
+      if (userRes.status === 'fulfilled') setUsername(userRes.value?.username || '');
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  };
 
-  const profile = data?.profile || {};
-  const keyMetrics = profile.key_metrics || {};
-  const topTopics: Array<string | { topic: string; frequency?: number }> = Array.isArray(data?.insights?.top_topics) 
-    ? data!.insights.top_topics 
-    : (Array.isArray(data?.insights?.suggested_focus_areas) ? data!.insights.suggested_focus_areas : []);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const followups: any[] = Array.isArray(data?.followups) 
-    ? data!.followups 
-    : (typeof data?.followups === 'object' && data?.followups !== null 
-        ? (data.followups.items || data.followups.checklist || []) 
-        : []);
-  const goals = profile.goals || [];
-
-  // Prepare chart data
-  const metricsChartData = Object.entries(keyMetrics).map(([key, value]) => ({
-    name: METRIC_LABELS[key] || key.replace(/_/g, ' '),
-    value: typeof value === 'number' ? value : 0,
-    fullKey: key,
-  }));
-
-  const topicsChartData = topTopics.slice(0, 6).map((topic) => ({
-    name: typeof topic === 'string' ? topic : topic.topic,
-    value: typeof topic === 'object' ? (topic.frequency || 1) : 1,
-  }));
+  const companyName = data?.profile?.company_name || null;
+  const alerts = data?.proactive_alerts || [];
+  const highAlerts = alerts.filter(a => a.severity === 'high');
+  const hasWorkspaceActivity = Boolean(
+    (taskStats?.total ?? 0) > 0 ||
+    (data?.summary?.total_documents ?? 0) > 0 ||
+    (data?.summary?.total_conversations ?? 0) > 0 ||
+    (data?.summary?.total_messages ?? 0) > 0
+  );
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Dashboard</h1>
-          {profile.company_name ? (
-            <p className="text-sm text-slate-600">
-              {profile.company_name}
-              {profile.industry && ` • ${profile.industry}`}
-            </p>
-          ) : (
-            <p className="text-sm text-slate-600">Your business overview</p>
-          )}
-        </div>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-5xl mx-auto px-6 py-10">
 
-        {/* Empty state for new users */}
-        {metricsChartData.length === 0 && topicsChartData.length === 0 && followups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <BarChart3 className="w-8 h-8 text-indigo-600" />
-            </div>
-            <h2 className="text-lg font-semibold mb-2 text-slate-900">Your dashboard is empty</h2>
-            <p className="text-sm text-slate-600 max-w-sm mb-6">
-              Start chatting, upload documents, and create tasks. 
-              AEIOU will surface insights here automatically.
-            </p>
-            <div className="flex gap-3">
-              <button 
-                onClick={() => router.push('/chat')}
-                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors"
-              >
-                Start chatting
-              </button>
-              <button 
-                onClick={() => router.push('/documents')}
-                className="px-4 py-2 bg-white text-slate-700 text-sm font-medium rounded-xl border border-slate-200 hover:border-slate-300 transition-colors"
-              >
-                Upload document
-              </button>
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-start justify-between mb-10"
+        >
+          <div className="flex items-center gap-4">
+            <Image
+              src="/logos/core.svg"
+              alt="AEIOU AI"
+              width={44}
+              height={44}
+              className="shrink-0"
+              priority
+            />
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">
+                {greeting}{username ? `, ${username}` : ''}
+              </h1>
+              {companyName && (
+                <p className="text-sm text-slate-500 mt-0.5">{companyName}</p>
+              )}
             </div>
           </div>
-        ) : (
-          <>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Metrics Bar Chart */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card rounded-xl border border-border p-6"
+          <button
+            onClick={() => router.push('/chat')}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
           >
-            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <BarChart3 size={16} className="text-indigo-500" />
-              Key Metrics
-            </h2>
-            {metricsChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={metricsChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{ fontSize: 10 }} 
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                  />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '8px',
-                      fontSize: '12px'
-                    }}
-                    formatter={(value, _name, props) => [
-                      formatMetricValue(props.payload.fullKey, value as number),
-                      props.payload.name
-                    ]}
-                  />
-                  <Bar dataKey="value" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[250px] flex items-center justify-center">
-                <div className="text-center">
-                  <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">No metrics data available</p>
-                </div>
-              </div>
-            )}
-          </motion.div>
+            <MessageSquare className="w-4 h-4" />
+            New chat
+          </button>
+        </motion.div>
 
-          {/* Topics Pie Chart */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
+        {/* Urgent alerts */}
+        {highAlerts.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-card rounded-xl border border-border p-6"
+            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-lg flex items-start gap-3"
           >
-            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <MessageSquare size={16} className="text-violet-500" />
-              Conversation Topics
-            </h2>
-            {topicsChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={topicsChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                    label={({ name }) => name && name.length > 15 ? name.substring(0, 15) + '...' : name || ''}
-                  >
-                    {topicsChartData.map((_entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '8px',
-                      fontSize: '12px'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[250px] flex items-center justify-center">
-                <div className="text-center">
-                  <MessageSquare className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">No conversation data available</p>
-                </div>
-              </div>
-            )}
+            <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+            <div>
+              {highAlerts.map((alert, i) => (
+                <p key={i} className="text-sm text-red-800 font-medium">
+                  {alert.message}
+                </p>
+              ))}
+            </div>
           </motion.div>
-        </div>
+        )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {Object.entries(keyMetrics).slice(0, 4).map(([key, value], index) => (
-            <motion.div
-              key={key}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className="p-4 bg-card rounded-xl border border-border hover:border-indigo-200 hover:shadow-sm transition-all cursor-pointer group"
+        {/* Quick actions */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8"
+        >
+          {[
+            {
+              label: 'AI Chat',
+              desc: 'Ask Aiden anything',
+              href: '/chat',
+              icon: MessageSquare,
+            },
+            {
+              label: 'Tasks',
+              desc: 'Manage your work',
+              href: '/tasks',
+              icon: CheckSquare,
+            },
+            {
+              label: 'Documents',
+              desc: 'Upload & query files',
+              href: '/documents',
+              icon: FileText,
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.href}
+                onClick={() => router.push(item.href)}
+                className="group flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all text-left"
+              >
+                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-slate-200 transition-colors">
+                  <Icon className="w-5 h-5 text-slate-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-900">{item.label}</p>
+                  <p className="text-xs text-slate-500">{item.desc}</p>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
+              </button>
+            );
+          })}
+        </motion.div>
+
+        {/* Stats row */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8"
+        >
+          {[
+            { label: 'To do', value: taskStats?.todo ?? 0, accent: false },
+            { label: 'In progress', value: taskStats?.in_progress ?? 0, accent: false },
+            { label: 'Completed', value: taskStats?.completed ?? 0, accent: false },
+            { label: 'Overdue', value: taskStats?.overdue ?? 0, accent: (taskStats?.overdue ?? 0) > 0 },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className={`p-4 rounded-xl border ${
+                stat.accent
+                  ? 'bg-red-50 border-red-100'
+                  : 'bg-slate-50 border-slate-100'
+              }`}
             >
-              <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
-                {METRIC_LABELS[key] || key.replace(/_/g, ' ')}
+              <p className={`text-2xl font-semibold ${
+                stat.accent ? 'text-red-600' : 'text-slate-900'
+              }`}>
+                {stat.value}
               </p>
-              <p className="text-xl font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                {formatMetricValue(key, value)}
+              <p className={`text-xs mt-1 ${
+                stat.accent ? 'text-red-500' : 'text-slate-500'
+              }`}>
+                {stat.label}
               </p>
-            </motion.div>
+            </div>
           ))}
-        </div>
+        </motion.div>
 
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Topics */}
-          <div className="p-6 bg-card rounded-xl border border-border">
-            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <MessageSquare size={16} className="text-indigo-500" />
-              Recent conversation topics
-            </h2>
-            {topTopics.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {topTopics.map((topicObj, idx) => {
-                  const topicText = typeof topicObj === 'string' ? topicObj : topicObj.topic;
-                  const frequency = typeof topicObj === 'object' ? topicObj.frequency : null;
+        {/* Main content */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+          {/* Left: AI Summary */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="lg:col-span-3 bg-white border border-slate-200 rounded-xl p-6"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-slate-900">Intelligence Summary</h2>
+              <button
+                onClick={fetchData}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="space-y-3">
+                <div className="h-4 bg-slate-100 rounded animate-pulse w-3/4" />
+                <div className="h-4 bg-slate-100 rounded animate-pulse w-1/2" />
+              </div>
+            ) : data?.executive_summary ? (
+              <p className="text-sm text-slate-600 leading-relaxed">
+                {data.executive_summary}
+              </p>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-sm text-slate-500 mb-3">
+                  Start a conversation or upload documents to get personalized insights.
+                </p>
+                <button
+                  onClick={() => router.push('/chat')}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Start chatting
+                </button>
+              </div>
+            )}
+
+            {!loading && !hasWorkspaceActivity && (
+              <div className="mt-5 pt-5 border-t border-slate-100">
+                <h3 className="text-sm font-medium text-slate-900 mb-3">First workspace win</h3>
+                <div className="grid gap-2">
+                  {[
+                    { label: 'Upload a business document', detail: 'Give Aiden real context to summarize and query.', href: '/documents', icon: FileText },
+                    { label: 'Create your first task', detail: 'Track one concrete outcome for today.', href: '/tasks', icon: CheckSquare },
+                    { label: 'Ask Aiden for next steps', detail: 'Turn your current priority into a short action plan.', href: '/chat', icon: MessageSquare },
+                  ].map((step) => {
+                    const Icon = step.icon;
+                    return (
+                      <button
+                        key={step.label}
+                        onClick={() => router.push(step.href)}
+                        className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 text-left transition-colors"
+                      >
+                        <Icon className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+                        <span>
+                          <span className="block text-sm font-medium text-slate-800">{step.label}</span>
+                          <span className="block text-xs text-slate-500 mt-0.5">{step.detail}</span>
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-300 ml-auto mt-0.5 shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Forecast mini-card */}
+            {data?.forecast && (
+              <div className="mt-5 pt-5 border-t border-slate-100 flex items-center gap-6">
+                <div>
+                  <p className="text-xs text-slate-500">Velocity</p>
+                  <p className="text-lg font-semibold text-slate-900 flex items-center gap-1">
+                    {data.forecast.velocity}
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                  </p>
+                </div>
+                <div className="w-px h-8 bg-slate-100" />
+                <div>
+                  <p className="text-xs text-slate-500">Backlog clearance</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {data.forecast.backlog_clearance_days}d
+                  </p>
+                </div>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Right: Quick links */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="lg:col-span-2 flex flex-col gap-3"
+          >
+            <div className="bg-white border border-slate-200 rounded-xl p-5">
+              <h3 className="text-sm font-medium text-slate-900 mb-3">Quick actions</h3>
+              <div className="space-y-2">
+                {[
+                  { label: 'Create a task', icon: Plus, href: '/tasks', action: 'new' },
+                  { label: 'Upload a document', icon: FileText, href: '/documents' },
+                  { label: 'Account settings', icon: Settings, href: '/settings' },
+                ].map((link) => {
+                  const Icon = link.icon;
                   return (
-                    <motion.span
-                      key={idx}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="text-xs px-3 py-1.5 bg-muted text-slate-700 rounded-lg border border-border hover:border-indigo-300 hover:text-slate-900 transition-colors cursor-pointer"
-                      title={frequency ? `Mentioned ${frequency} times` : undefined}
+                    <button
+                      key={link.label}
+                      onClick={() => router.push(link.href)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors text-left"
                     >
-                      {topicText}
-                    </motion.span>
+                      <Icon className="w-4 h-4 text-slate-400" />
+                      {link.label}
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-300 ml-auto" />
+                    </button>
                   );
                 })}
               </div>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-sm text-slate-600">Start chatting to generate insights</p>
-                <button
-                  onClick={() => router.push('/chat')}
-                  className="mt-3 px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
-                >
-                  Start Chat
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Follow-ups */}
-          <div className="p-6 bg-card rounded-xl border border-border">
-            <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <Target size={16} className="text-emerald-500" />
-              Follow-ups
-            </h2>
-            {followups.length > 0 ? (
-              <div className="space-y-3">
-                {followups.map((item, idx) => (
-                  <motion.div
-                    key={idx}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="flex items-start gap-3 p-3 bg-muted rounded-xl border border-border hover:border-emerald-200 transition-colors"
-                  >
-                    <span className="text-sm text-indigo-500 font-medium min-w-[24px]">
-                      {idx + 1}.
-                    </span>
-                    <p className="text-sm text-slate-600 leading-relaxed">
-                      {typeof item === 'string' ? item : item.value}
-                    </p>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <p className="text-sm text-slate-600">No pending follow-ups</p>
-                <button
-                  onClick={() => router.push('/chat')}
-                  className="mt-3 px-4 py-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors"
-                >
-                  Go to Chat
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Business Goals */}
-        {goals.length > 0 && (
-          <div className="mt-6 p-6 bg-slate-100 rounded-xl border border-slate-200">
-            <h2 className="text-sm font-semibold text-slate-600 mb-4 flex items-center gap-2">
-              <TrendingUp size={16} className="text-violet-500" />
-              Business Goals
-            </h2>
-            <div className="space-y-3">
-              {goals.map((goal, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className="flex items-center gap-3 p-3 bg-muted rounded-xl"
-                >
-                  <svg className="h-4 w-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <p className="text-sm text-slate-600">{goal}</p>
-                </motion.div>
-              ))}
             </div>
-          </div>
-        )}
 
-        {/* Update Profile Link */}
-        <div className="mt-8">
-          <button
-            onClick={() => router.push('/settings')}
-            className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 transition-colors"
-          >
-            Update profile
-            <ArrowRight className="h-4 w-4" />
-          </button>
+            {/* Alerts */}
+            {alerts.length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-xl p-5">
+                <h3 className="text-sm font-medium text-slate-900 mb-3">
+                  Alerts
+                  <span className="ml-2 text-xs text-slate-400 font-normal">{alerts.length}</span>
+                </h3>
+                <div className="space-y-2">
+                  {alerts.slice(0, 4).map((alert, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-2.5 p-3 rounded-lg text-xs ${
+                        alert.severity === 'high'
+                          ? 'bg-red-50 text-red-700'
+                          : alert.severity === 'medium'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-slate-50 text-slate-600'
+                      }`}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span className="leading-relaxed">{alert.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
         </div>
-        {/* Last updated timestamp */}
-        <p className="text-xs text-slate-500 text-center mt-4">
-          Last updated {new Date().toLocaleString()}
-        </p>
-          </>
-        )}
+
+        {/* Footer */}
+        <div className="mt-10 flex items-center justify-center gap-2 text-slate-300">
+          <Clock className="w-3 h-3" />
+          <span className="text-[10px] font-medium uppercase tracking-widest">
+            {new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+          </span>
+        </div>
+
       </div>
     </div>
   );

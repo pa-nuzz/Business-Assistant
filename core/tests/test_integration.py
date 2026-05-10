@@ -31,20 +31,21 @@ class TestIntegrationAuthFlow:
         user = User.objects.get(username='testuser')
         assert not user.is_active
         
-        # Verify email (simulate)
-        verification_code = user.email_verification.verification_code
-        AuthService.verify_email(verification_code)
+        # Verify email (simulate receiving a code from email)
+        user.email_verification.set_code('123456')
+        user.email_verification.save(update_fields=['code_hash', 'salt'])
+        AuthService.verify_email('testuser', '123456')
         
         user.refresh_from_db()
         assert user.is_active
         
         # Login
         login_result = AuthService.login('testuser', 'testpass123')
-        assert 'access_token' in login_result
-        assert 'refresh_token' in login_result
+        assert 'access' in login_result
+        assert 'refresh' in login_result
         
         # Logout
-        AuthService.logout(login_result['refresh_token'])
+        AuthService.logout(login_result['refresh'])
     
     def test_password_reset_flow(self):
         """Test forgot password, verify code, reset password flow."""
@@ -82,6 +83,7 @@ class TestIntegrationTaskFlow:
         user = User.objects.create_user(username='testuser', password='testpass123')
         user.is_active = True
         user.save()
+        business_profile = BusinessProfile.objects.create(user=user, company_name='Test Co')
         
         service = TaskService(user)
         
@@ -122,6 +124,7 @@ class TestIntegrationTaskFlow:
         user = User.objects.create_user(username='testuser', password='testpass123')
         user.is_active = True
         user.save()
+        business_profile = BusinessProfile.objects.create(user=user, company_name='Test Co')
         
         service = TaskService(user)
         
@@ -232,6 +235,8 @@ class TestIntegrationAPIEndpoints:
     
     def test_complete_api_workflow(self):
         """Test complete workflow through API endpoints."""
+        from core.cache import CacheService
+        
         client = APIClient()
         
         # Register
@@ -247,6 +252,8 @@ class TestIntegrationAPIEndpoints:
         user = User.objects.get(username='apiuser')
         user.is_active = True
         user.save()
+        # Clear cache for this user to prevent cross-test contamination
+        CacheService.delete(f"user_info:{user.id}")
         
         # Login
         login_data = {'username': 'apiuser', 'password': 'apipass123'}
@@ -274,7 +281,7 @@ class TestIntegrationAPIEndpoints:
         assert len(response.data['results']) == 1
         
         # Update task
-        response = client.post(f'/api/v1/tasks/{task_id}/update/', {'status': 'done'})
+        response = client.patch(f'/api/v1/tasks/{task_id}/update/', {'status': 'done'})
         assert response.status_code == status.HTTP_200_OK
         
         # Logout

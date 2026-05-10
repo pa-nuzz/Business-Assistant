@@ -9,7 +9,9 @@ import os
 from typing import Optional, List, Dict, Any
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.utils import timezone
+from pgvector.django import VectorField
 
 
 def document_file_path(instance, filename):
@@ -77,6 +79,11 @@ class EmailVerification(models.Model):
         """Increment failed attempt counter."""
         self.attempts += 1
         self.save(update_fields=["attempts"])
+
+    @property
+    def verification_code(self) -> Optional[str]:
+        """Return the cached verification code if available (dev/test only)."""
+        return cache.get(f"email_verification_code:{self.user_id}")
     
     def __str__(self):
         return f"Verification for {self.user.email} - {'Verified' if self.is_verified else 'Pending'}"
@@ -124,8 +131,20 @@ class PasswordResetCode(models.Model):
             is_used=True
         ).exclude(id=self.id).delete()
 
+    @property
+    def verification_code(self) -> Optional[str]:
+        """Return the cached reset code if available (dev/test only)."""
+        return cache.get(f"password_reset_code:{self.user_id}")
+
     def __str__(self):
         return f"Reset code for {self.user.email}"
+
+
+def _latest_password_reset_code(self) -> Optional[PasswordResetCode]:
+    return self.password_reset_codes.order_by("-created_at").first()
+
+
+User.add_to_class("password_reset_code", property(_latest_password_reset_code))
 
 
 class BusinessProfile(models.Model):
@@ -139,9 +158,9 @@ class BusinessProfile(models.Model):
     company_size = models.CharField(max_length=50, blank=True)  # e.g. "10-50"
     website = models.URLField(max_length=255, blank=True)
     description = models.TextField(blank=True)
-    # DEPRECATED: Use Goal model with FK to BusinessProfile instead
+    # Source of truth for now: services still read/write these JSON fields.
     goals = models.JSONField(default=list)
-    # DEPRECATED: Use Metric model with FK to BusinessProfile instead
+    # Source of truth for now: services still read/write these JSON fields.
     key_metrics = models.JSONField(default=dict)
     avatar = models.ImageField(upload_to="avatars/%Y/%m/", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -153,8 +172,8 @@ class BusinessProfile(models.Model):
 
 class Goal(models.Model):
     """
-    Business goals as proper model (replaces JSONField abuse in BusinessProfile).
-    Searchable, filterable, sortable.
+    Legacy normalized goals model kept for backward compatibility.
+    Current runtime flows still rely on BusinessProfile.goals JSON field.
     """
     STATUS_CHOICES = [
         ("active", "Active"),
@@ -189,8 +208,8 @@ class Goal(models.Model):
 
 class Metric(models.Model):
     """
-    Business metrics as proper model (replaces JSONField abuse in BusinessProfile).
-    Track numeric and text metrics with history support.
+    Legacy normalized metrics model kept for backward compatibility.
+    Current runtime flows still rely on BusinessProfile.key_metrics JSON field.
     """
     METRIC_TYPE_CHOICES = [
         ("number", "Number"),
@@ -274,9 +293,11 @@ class Document(models.Model):
     file = models.FileField(upload_to="documents/%Y/%m/", null=True, blank=True)
     file_type = models.CharField(max_length=10)    # pdf, docx, txt
     summary = models.TextField(blank=True)         # AI-generated summary (stored once)
+    visual_analysis = models.JSONField(default=dict, blank=True)  # Insights from charts/images
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     page_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     # Soft delete fields
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -326,13 +347,13 @@ class DocumentChunk(models.Model):
     page_number = models.IntegerField(default=0)
     keywords = models.JSONField(default=list)      # extracted keywords for fast lookup
     
-    # Semantic search - vector embedding (pgvector placeholder)
-    # Stores embedding vector as JSON array for cosine similarity search
-    # In production, use pgvector extension with dedicated VectorField
-    embedding = models.JSONField(
-        default=list,
+    # Semantic search - vector embedding
+    # Stores embedding vector using pgvector extension with dedicated VectorField
+    embedding = VectorField(
+        dimensions=768,
+        null=True,
         blank=True,
-        help_text="Vector embedding for semantic search [768-dim or 1536-dim]"
+        help_text="Vector embedding for semantic search [768-dim]"
     )
     embedding_model = models.CharField(
         max_length=50,
@@ -352,29 +373,23 @@ class DocumentChunk(models.Model):
 
     def __str__(self):
         return f"Chunk {self.chunk_index} of {self.document.title}"
-    
+
     def has_embedding(self) -> bool:
-        """Check if this chunk has a valid embedding vector."""
-        return len(self.embedding) > 0
-    
-    def cosine_similarity(self, other_embedding: list) -> float:
-        """Calculate cosine similarity with another embedding vector."""
-        if not self.has_embedding() or not other_embedding:
+        return bool(self.embedding)
+
+    def cosine_similarity(self, query_embedding: list) -> float:
+        """Small fallback for local semantic search when pgvector SQL is unavailable."""
+        if not self.embedding or not query_embedding:
             return 0.0
-        
-        import math
-        
-        # Calculate dot product
-        dot_product = sum(a * b for a, b in zip(self.embedding, other_embedding))
-        
-        # Calculate magnitudes
-        mag_a = math.sqrt(sum(x * x for x in self.embedding))
-        mag_b = math.sqrt(sum(x * x for x in other_embedding))
-        
-        if mag_a == 0 or mag_b == 0:
+        doc_vector = list(self.embedding)
+        if len(doc_vector) != len(query_embedding):
             return 0.0
-        
-        return dot_product / (mag_a * mag_b)
+        dot = sum(float(a) * float(b) for a, b in zip(doc_vector, query_embedding))
+        doc_norm = sum(float(a) ** 2 for a in doc_vector) ** 0.5
+        query_norm = sum(float(b) ** 2 for b in query_embedding) ** 0.5
+        if not doc_norm or not query_norm:
+            return 0.0
+        return dot / (doc_norm * query_norm)
 
 
 class Conversation(models.Model):
@@ -382,6 +397,7 @@ class Conversation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="conversations")
     title = models.CharField(max_length=255, blank=True)
+    archived = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -459,6 +475,13 @@ class Task(models.Model):
         ("high", "High"),
         ("urgent", "Urgent"),
     ]
+
+    WORK_MODE_CHOICES = [
+        ("deep_work", "Deep Work"),
+        ("creative", "Creative"),
+        ("admin", "Administrative"),
+        ("quick", "Quick Task"),
+    ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tasks")
@@ -466,6 +489,7 @@ class Task(models.Model):
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="todo")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="medium")
+    work_mode = models.CharField(max_length=20, choices=WORK_MODE_CHOICES, default="quick")
     due_date = models.DateTimeField(null=True, blank=True)
     
     # Assignment
@@ -483,6 +507,7 @@ class Task(models.Model):
     
     # Hierarchy
     is_subtask = models.BooleanField(default=False)
+    # Legacy hierarchy field; TaskDetailService uses TaskSubtask as canonical subtasks.
     parent_task = models.ForeignKey("self", on_delete=models.CASCADE, null=True, blank=True, related_name="subtasks")
     
     # Metadata
@@ -490,6 +515,17 @@ class Task(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
+
+    # AI Enhancement Fields
+    auto_extracted = models.BooleanField(default=False)
+    source_document = models.ForeignKey(
+        Document, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name="extracted_tasks"
+    )
+    ai_metadata = models.JSONField(default=dict, blank=True)
 
     # Soft delete fields
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -616,37 +652,6 @@ class TaskAISuggestion(models.Model):
     
     def __str__(self):
         return f"AI Suggestion: {self.suggested_title} ({'Accepted' if self.was_accepted else 'Pending'})"
-
-
-class Notification(models.Model):
-    """In-app notifications for users."""
-    PRIORITY_CHOICES = [
-        ("low", "Low"),
-        ("normal", "Normal"),
-        ("high", "High"),
-        ("urgent", "Urgent"),
-    ]
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="notifications"
-    )
-    message = models.TextField()
-    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="normal")
-    is_read = models.BooleanField(default=False, db_index=True)
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
-    action_url = models.CharField(max_length=500, blank=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["user", "is_read", "-created_at"], name="notification_unread_idx")
-        ]
-
-    def __str__(self):
-        return f"{self.priority}: {self.message[:50]}"
-
-
 class AuditLog(models.Model):
     """Comprehensive security audit log for compliance and forensics."""
     
@@ -1034,6 +1039,12 @@ class Notification(models.Model):
     """
     Real-time notifications for task assignments, mentions, due dates.
     """
+    PRIORITY_CHOICES = [
+        ("low", "Low"),
+        ("normal", "Normal"),
+        ("high", "High"),
+        ("urgent", "Urgent"),
+    ]
     NOTIFICATION_TYPES = [
         ('task_assigned', 'Task Assigned'),
         ('task_mentioned', 'Task Mention'),
@@ -1049,9 +1060,11 @@ class Notification(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
     
     # Notification content
-    notification_type = models.CharField(max_length=30, choices=NOTIFICATION_TYPES)
+    notification_type = models.CharField(max_length=30, choices=NOTIFICATION_TYPES, default='system')
     title = models.CharField(max_length=255)
     message = models.TextField()
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default="normal")
+    action_url = models.CharField(max_length=500, blank=True)
     
     # Link to related objects
     task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True)
@@ -1090,7 +1103,7 @@ class Notification(models.Model):
         """Mark notification as read."""
         if not self.is_read:
             self.is_read = True
-            self.read_at = datetime.now()
+            self.read_at = timezone.now()
             self.save(update_fields=['is_read', 'read_at'])
 
 
@@ -1286,7 +1299,7 @@ class APIToken(models.Model):
     def is_valid(self):
         if not self.is_active:
             return False
-        if self.expires_at and self.expires_at < datetime.now():
+        if self.expires_at and self.expires_at < timezone.now():
             return False
         return True
 

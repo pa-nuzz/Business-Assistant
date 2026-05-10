@@ -76,13 +76,19 @@ export interface Task {
   user: number;
   title: string;
   description?: string;
-  status: 'todo' | 'in_progress' | 'done' | 'cancelled';
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'cancelled';
   priority: 'low' | 'medium' | 'high' | 'urgent';
+  work_mode: 'deep_work' | 'creative' | 'admin' | 'quick';
   due_date?: string;
   created_at: string;
   updated_at: string;
   deleted_at?: string;
   tags: string[];
+  ai_metadata?: {
+    confidence?: number;
+    has_subtasks?: boolean;
+    [key: string]: any;
+  };
 }
 
 export interface Notification {

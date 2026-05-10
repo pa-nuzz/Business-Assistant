@@ -78,7 +78,7 @@ export default function VerifyEmailPage() {
     setError('');
     
     try {
-      const response = await auth.verifyEmail(username, fullCode);
+      await auth.verifyEmail(username, fullCode);
       setIsVerified(true);
       toast.success('🎉 Email verified successfully! Welcome to AEIOU AI.');
       
@@ -116,7 +116,7 @@ export default function VerifyEmailPage() {
 
   if (isVerified) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-50 to-emerald-100 p-4">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -139,7 +139,7 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
       <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -172,16 +172,16 @@ export default function VerifyEmailPage() {
         )}
 
         <div className="flex justify-center gap-2 mb-8">
-          {code.map((digit, index) => (
+          {code.map((digit, idx) => (
             <input
-              key={index}
-              ref={(el) => { inputRefs.current[index] = el; }}
+              key={idx}
+              ref={(el) => { inputRefs.current[idx] = el; }}
               type="text"
               inputMode="numeric"
               maxLength={1}
               value={digit}
-              onChange={(e) => handleChange(index, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(index, e)}
+              onChange={(e) => handleChange(idx, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(idx, e)}
               disabled={isLoading}
               className="w-12 h-14 text-center text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-400"
             />
@@ -206,7 +206,7 @@ export default function VerifyEmailPage() {
 
         <div className="mt-8 text-center">
           <p className="text-sm text-gray-600 mb-3">
-            Didn't receive the code?
+            Didn&apos;t receive the code?
           </p>
           <button
             onClick={handleResend}

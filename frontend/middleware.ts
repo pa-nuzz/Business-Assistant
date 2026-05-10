@@ -38,22 +38,6 @@ export function middleware(request: NextRequest) {
   // Check if path is public
   const isPublic = PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
 
-  // Auth indicator: lightweight client-set cookie (not httpOnly, just a flag)
-  // The actual JWT verification happens client-side in AuthGuard
-  const hasAuthIndicator = request.cookies.has('aeiou-session');
-
-  // Redirect unauthenticated users from protected routes
-  if (!isPublic && !hasAuthIndicator) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // Redirect authenticated users away from auth pages to app
-  if (hasAuthIndicator && (pathname === '/login' || pathname === '/register')) {
-    return NextResponse.redirect(new URL('/chat', request.url));
-  }
-
   return response;
 }
 

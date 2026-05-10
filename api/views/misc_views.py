@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.models import Task, TaskTag
+from core.services.ai_health_service import get_ai_provider_health
 
 
 @api_view(["GET", "POST"])
@@ -104,3 +105,10 @@ def task_remove_tag(request, task_id):
         pass
 
     return Response({"removed": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def ai_health(request):
+    """Return non-secret AI provider readiness for settings/admin surfaces."""
+    return Response(get_ai_provider_health(live=False))

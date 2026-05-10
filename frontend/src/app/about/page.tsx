@@ -1,50 +1,50 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+'use client';
+
 import { Footer } from "@/components/landing/footer";
+import { motion } from "framer-motion";
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">A</span>
-            </div>
-            <span className="font-semibold text-foreground">AEIOU AI</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-6 text-sm">
-            <Link href="/features" className="text-muted-foreground hover:text-foreground">Features</Link>
-            <Link href="/pricing" className="text-muted-foreground hover:text-foreground">Pricing</Link>
-            <Link href="/about" className="text-foreground font-medium">About</Link>
-            <Link href="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Link href="/login"><Button variant="ghost" size="sm">Sign In</Button></Link>
-            <Link href="/register"><Button size="sm">Get Started</Button></Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-slate-50 relative overflow-hidden">
+      {/* Exact Original Linear Grid Design */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <div className="absolute inset-0 grid-dna"></div>
+        <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-indigo-500 opacity-10 blur-[100px]"></div>
+      </div>
 
-      <section className="py-20 md:py-28">
-        <div className="container mx-auto px-6 max-w-3xl">
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-8">
-            We believe AI should <span className="text-primary">work for you</span>
-          </h1>
-          <div className="prose prose-neutral dark:prose-invert max-w-none text-muted-foreground leading-relaxed space-y-6">
-            <p className="text-lg">
-              AEIOU AI was built on a simple idea: the best business assistant does not just answer questions — it understands your goals, manages your tasks, and helps your team move faster.
+      <section className="pt-40 pb-20 relative z-10">
+        <div className="container mx-auto px-6 max-w-4xl text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-16"
+          >
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100/50 text-[10px] font-bold text-indigo-600 mb-6 uppercase tracking-widest">
+              About Us
+            </div>
+            <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-slate-900 mb-8">
+              Pioneering the next era of <br />
+              <span className="text-indigo-600">business intelligence</span>
+            </h1>
+            <p className="text-xl text-slate-600 font-medium max-w-2xl mx-auto leading-relaxed">
+              We build tools that empower teams to turn data into action, conversations into tasks, and goals into reality.
             </p>
-            <p>
-              Most AI tools force you to choose between a chatbot, a document analyzer, or a task manager. We combined all three into one workspace that remembers everything, so you never have to repeat yourself.
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="p-10 md:p-16 rounded-[40px] bg-white border border-slate-200 shadow-[0_4px_20px_rgb(0,0,0,0.02)] text-left"
+          >
+            <h2 className="text-2xl font-bold text-slate-900 mb-6">Our Story</h2>
+            <p className="text-lg text-slate-600 leading-relaxed font-medium mb-8">
+              AEIOU AI was founded with a single goal: to simplify the complex business landscape. By combining advanced AI with intuitive design, we&apos;ve created a workspace that feels like a natural extension of your team.
             </p>
-            <p>
-              Our architecture is designed for teams that take security seriously. We use memory-only access tokens, httpOnly refresh cookies, and comprehensive audit logging — because your data deserves enterprise-grade protection from day one.
+            <p className="text-lg text-slate-600 leading-relaxed font-medium">
+              Today, we serve thousands of users who rely on our platform to stay organized, focused, and ahead of the curve.
             </p>
-            <p>
-              AEIOU AI is actively developed by a small team obsessed with craft. Every interaction, every animation, every API response is measured against one standard: does this save the user time?
-            </p>
-          </div>
+          </motion.div>
         </div>
       </section>
 

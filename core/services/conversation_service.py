@@ -54,6 +54,7 @@ class ConversationService:
                 "created_at": convo.created_at,
                 "updated_at": convo.updated_at,
                 "message_count": convo.message_count,
+                "archived": convo.archived,
             })
         
         return {
@@ -76,6 +77,8 @@ class ConversationService:
         Raises:
             ValueError: If conversation not found
         """
+        if not self._is_valid_uuid(conversation_id):
+            raise ValueError("Conversation not found")
         try:
             convo = Conversation.objects.prefetch_related(
                 Prefetch('messages', queryset=Message.objects.order_by('created_at'))
@@ -99,6 +102,7 @@ class ConversationService:
             "title": convo.title,
             "created_at": convo.created_at,
             "updated_at": convo.updated_at,
+            "archived": convo.archived,
             "messages": messages_data,
         }
     
@@ -117,6 +121,8 @@ class ConversationService:
         """
         from datetime import datetime
         
+        if not self._is_valid_uuid(conversation_id):
+            raise ValueError("Conversation not found")
         try:
             convo = Conversation.objects.get(id=conversation_id, user=self.user)
         except Conversation.DoesNotExist:
@@ -133,6 +139,43 @@ class ConversationService:
             "messages": list(messages),
         }
     
+    def update_conversation(self, conversation_id: str, data: Dict) -> Optional[Dict]:
+        """
+        Update conversation metadata (title, archived status).
+        
+        Args:
+            conversation_id: UUID of the conversation
+            data: Dict with optional 'title' and 'archived' keys
+            
+        Returns:
+            Updated conversation data, or None if not found
+        """
+        if not self._is_valid_uuid(conversation_id):
+            return None
+        try:
+            convo = Conversation.objects.get(id=conversation_id, user=self.user)
+        except Conversation.DoesNotExist:
+            return None
+        
+        update_fields = []
+        if 'title' in data and isinstance(data['title'], str):
+            convo.title = data['title'].strip()[:200]
+            update_fields.append('title')
+        if 'archived' in data and isinstance(data['archived'], bool):
+            convo.archived = data['archived']
+            update_fields.append('archived')
+        
+        if update_fields:
+            update_fields.append("updated_at")
+            convo.save(update_fields=update_fields)
+
+        return {
+            "id": str(convo.id),
+            "title": convo.title,
+            "archived": getattr(convo, 'archived', False),
+            "updated_at": convo.updated_at,
+        }
+
     def delete_conversation(self, conversation_id: str) -> bool:
         """
         Delete a conversation and its messages.
@@ -143,6 +186,8 @@ class ConversationService:
         Returns:
             True if deleted, False if not found
         """
+        if not self._is_valid_uuid(conversation_id):
+            return False
         deleted, _ = Conversation.objects.filter(
             id=conversation_id,
             user=self.user
@@ -159,9 +204,24 @@ class ConversationService:
         Returns:
             True if deleted, False if not found
         """
+        if not self._is_valid_uuid(conversation_id):
+            return False
         try:
             convo = Conversation.objects.get(id=conversation_id, user=self.user)
             convo.soft_delete(user=self.user)
             return True
         except Conversation.DoesNotExist:
+            return False
+
+    @staticmethod
+    def _is_valid_uuid(value) -> bool:
+        if not value:
+            return False
+        import uuid
+        if isinstance(value, uuid.UUID):
+            return True
+        try:
+            uuid.UUID(str(value))
+            return True
+        except (ValueError, TypeError):
             return False

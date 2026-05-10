@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 import requests
 from django.conf import settings
@@ -115,7 +115,7 @@ def deliver_webhook(self, delivery_id: str):
         # Prepare payload
         payload = {
             'event': delivery.event_type,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'data': delivery.payload,
         }
         payload_json = json.dumps(payload, default=str)
@@ -139,7 +139,7 @@ def deliver_webhook(self, delivery_id: str):
         delivery.save()
         
         # Send request
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         try:
             response = requests.post(
                 webhook.url,
@@ -173,7 +173,7 @@ def deliver_webhook(self, delivery_id: str):
             webhook.failure_count += 1
         
         # Calculate duration
-        delivery.completed_at = datetime.utcnow()
+        delivery.completed_at = datetime.now(timezone.utc)
         duration = (delivery.completed_at - started_at).total_seconds() * 1000
         delivery.duration_ms = int(duration)
         
@@ -222,27 +222,38 @@ def notify_task_deleted(task_id: str, workspace=None):
     """Notify webhooks about task deletion."""
     WebhookService.trigger_event('task.deleted', {
         'id': task_id,
-        'deleted_at': datetime.utcnow().isoformat(),
+        'deleted_at': datetime.now(timezone.utc).isoformat(),
     }, workspace)
 
 
 def notify_task_completed(task: Task):
-    """Notify webhooks about task completion."""
+    """Notify webhooks about task completion with semantic insight."""
+    # Attempt to get semantic summary from AI metadata
+    insight = task.ai_metadata.get('completion_insight')
+    if not insight and task.description:
+        # Fallback: very brief description summary
+        insight = task.description[:200]
+
     WebhookService.trigger_event('task.completed', {
         'id': str(task.id),
         'title': task.title,
-        'completed_at': datetime.utcnow().isoformat(),
+        'insight': insight,
+        'completed_at': datetime.now(timezone.utc).isoformat(),
         'completed_by': task.user.username,
+        'work_mode': getattr(task, 'work_mode', 'quick'),
     }, task.workspace)
 
 
 def notify_document_created(doc: Document):
-    """Notify webhooks about document creation."""
+    """Notify webhooks about document creation with analysis preview."""
+    # Attempt to get analysis from document chunks/metadata
+    preview = doc.ai_metadata.get('summary') if hasattr(doc, 'ai_metadata') else None
+    
     WebhookService.trigger_event('document.created', {
         'id': str(doc.id),
         'title': doc.title,
+        'analysis_preview': preview,
         'file_type': doc.file_type,
-        'size_bytes': doc.file_size if hasattr(doc, 'file_size') else None,
         'created_by': doc.user.username,
         'created_at': doc.created_at.isoformat(),
     }, doc.workspace)

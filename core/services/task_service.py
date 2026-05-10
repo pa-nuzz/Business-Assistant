@@ -3,7 +3,7 @@ Task service for handling task business logic.
 Extracted from views to enable testing and reusability.
 """
 import logging
-from datetime import datetime
+from django.utils import timezone
 from typing import Dict, List, Optional
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
@@ -11,7 +11,7 @@ from django.db.models import Q
 
 from core.models import (
     Task, TaskTag, TaskComment, TaskActivity, 
-    TaskAttachment, TaskAISuggestion, BusinessProfile
+    TaskAttachment, TaskAISuggestion, TaskSubtask, BusinessProfile
 )
 from core.cache import CacheService
 from core.events.event_bus import event_bus, EventTypes
@@ -66,7 +66,7 @@ class TaskService:
         ).select_related(
             "assignee", "created_by", "business_profile", "user"
         ).prefetch_related(
-            "tags", "subtasks", "comments", "attachments"
+            "subtasks"
         )
         
         # Apply filters
@@ -232,7 +232,7 @@ class TaskService:
         
         task = get_object_or_404(
             Task.objects.select_related("assignee", "created_by", "conversation")
-            .prefetch_related("tags", "attachments", "subtasks"),
+            .prefetch_related("tags", "attachments", "child_subtasks__assignee"),
             id=task_id
         )
         
@@ -242,7 +242,7 @@ class TaskService:
         
         # Get subtasks
         subtasks_data = []
-        for subtask in task.subtasks.all():
+        for subtask in TaskSubtask.objects.filter(parent_task=task).select_related("assignee"):
             subtasks_data.append({
                 "id": str(subtask.id),
                 "title": subtask.title,
@@ -338,7 +338,7 @@ class TaskService:
             
             # Update completed_at if status changed to done
             if data["status"] == "done" and old_status != "done":
-                task.completed_at = datetime.now()
+                task.completed_at = timezone.now()
             elif data["status"] != "done":
                 task.completed_at = None
         
@@ -383,9 +383,8 @@ class TaskService:
                 task=task,
                 user=self.user,
                 activity_type="updated",
-                field_name=field,
-                old_value=str(old_val),
-                new_value=str(new_val)
+                old_value=f"{field}: {old_val}",
+                new_value=f"{field}: {new_val}"
             )
         
         # Invalidate cache

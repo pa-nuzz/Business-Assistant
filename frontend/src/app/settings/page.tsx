@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { profile, auth, user } from '@/lib/api';
+import { profile, auth, user, system, AiProviderHealth } from '@/lib/api';
 import { 
   User, Building2, Save, Loader2, ArrowLeft, LogOut, 
-  Camera, Lock, UserCircle, Volume2, VolumeX, Settings2
+  Camera, Lock, UserCircle, Volume2, VolumeX, Settings2,
+  Activity, CheckCircle2, CircleAlert, CircleOff
 } from 'lucide-react';
 import { getSoundEffects } from '@/components/sound-effects';
 import { AxiosApiError, getErrorMessage } from '@/types/errors';
@@ -19,7 +21,12 @@ interface UserProfile {
   company_name?: string;
   industry?: string;
   company_size?: string;
+  website?: string;
+  description?: string;
+  goals?: Array<{ id?: string; title: string; target_date?: string; status?: string }>;
+  key_metrics?: Record<string, number | string>;
   avatar?: string;
+  avatar_url?: string;
 }
 
 export default function SettingsPage() {
@@ -32,9 +39,11 @@ export default function SettingsPage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'profile' | 'business' | 'security' | 'preferences'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'business' | 'security' | 'preferences' | 'system'>('profile');
   
   const [profileData, setProfileData] = useState<UserProfile>({});
+  const [goalsText, setGoalsText] = useState('');
+  const [metricsText, setMetricsText] = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
@@ -48,6 +57,13 @@ export default function SettingsPage() {
 
   // Sound effects preference
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [aiHealth, setAiHealth] = useState<{
+    status: string;
+    ready_provider_count: number;
+    providers: AiProviderHealth[];
+    notes: string[];
+  } | null>(null);
+  const [aiHealthLoading, setAiHealthLoading] = useState(false);
 
   // Set page title
   useEffect(() => {
@@ -89,14 +105,29 @@ export default function SettingsPage() {
       };
       
       setProfileData(combined);
+      setGoalsText((profileRes.goals || []).map((goal: { title?: string } | string) => (
+        typeof goal === 'string' ? goal : goal.title || ''
+      )).filter(Boolean).join('\n'));
+      setMetricsText(Object.entries(profileRes.key_metrics || {}).map(([key, value]) => `${key}: ${value}`).join('\n'));
       setNewUsername(userRes.username || '');
-      if (userRes.avatar) {
-        setAvatarPreview(userRes.avatar);
+      if (userRes.avatar_url || userRes.avatar) {
+        setAvatarPreview(userRes.avatar_url || userRes.avatar);
       }
-    } catch (err) {
+    } catch {
       toast.error('Failed to load profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAiHealth = async () => {
+    setAiHealthLoading(true);
+    try {
+      setAiHealth(await system.aiHealth());
+    } catch {
+      toast.error('Failed to load AI provider status');
+    } finally {
+      setAiHealthLoading(false);
     }
   };
 
@@ -197,10 +228,28 @@ export default function SettingsPage() {
   const handleSaveProfile = async () => {
     setSavingProfile(true);
     try {
+      const goals = goalsText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map((title, index) => ({ id: `goal-${index + 1}`, title, status: 'active' }));
+      const key_metrics = metricsText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .reduce<Record<string, string>>((acc, line) => {
+          const [key, ...rest] = line.split(':');
+          if (key?.trim() && rest.length) acc[key.trim()] = rest.join(':').trim();
+          return acc;
+        }, {});
       await profile.update({
         company_name: profileData.company_name,
         industry: profileData.industry,
         company_size: profileData.company_size,
+        website: profileData.website,
+        description: profileData.description,
+        goals,
+        key_metrics,
       });
       toast.success('Business profile saved successfully');
       router.refresh();
@@ -226,7 +275,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8 grid-dna">
       {/* Header */}
       <div className="mb-8">
         <button
@@ -295,6 +344,22 @@ export default function SettingsPage() {
               Preferences
             </span>
           </button>
+          <button
+            onClick={() => {
+              setActiveTab('system');
+              if (!aiHealth) fetchAiHealth();
+            }}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-all ${
+              activeTab === 'system'
+                ? 'border-black text-black'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              System
+            </span>
+          </button>
         </nav>
       </div>
 
@@ -311,9 +376,11 @@ export default function SettingsPage() {
                   className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center cursor-pointer overflow-hidden hover:ring-4 hover:ring-gray-100 transition-all group-hover:scale-105"
                 >
                   {avatarPreview ? (
-                    <img 
+                    <Image 
                       src={avatarPreview} 
                       alt="Profile" 
+                      width={96}
+                      height={96}
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -351,7 +418,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => {
                         setSelectedFile(null);
-                        setAvatarPreview(profileData.avatar || null);
+                        setAvatarPreview(profileData.avatar || profileData.avatar_url || null);
                       }}
                       className="px-4 py-2 text-gray-600 text-sm hover:text-gray-900 transition-colors"
                     >
@@ -450,6 +517,84 @@ export default function SettingsPage() {
                 />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* System Tab */}
+      {activeTab === 'system' && (
+        <div className="space-y-6">
+          <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">AI Provider Health</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Non-secret readiness check for production AI fallbacks.
+                </p>
+              </div>
+              <button
+                onClick={fetchAiHealth}
+                disabled={aiHealthLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-black text-white text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {aiHealthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
+                Refresh
+              </button>
+            </div>
+
+            {aiHealthLoading && !aiHealth ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking providers...
+              </div>
+            ) : aiHealth ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
+                    aiHealth.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    {aiHealth.status === 'ok' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
+                    {aiHealth.ready_provider_count} ready provider{aiHealth.ready_provider_count === 1 ? '' : 's'}
+                  </span>
+                </div>
+
+                <div className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
+                  {aiHealth.providers.map((provider) => {
+                    const ready = provider.status === 'ready' || provider.status === 'ok';
+                    const disabled = provider.status === 'disabled';
+                    return (
+                      <div key={provider.name} className="p-4 flex items-start justify-between gap-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            {ready ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                            ) : disabled ? (
+                              <CircleOff className="h-4 w-4 text-gray-400" />
+                            ) : (
+                              <CircleAlert className="h-4 w-4 text-amber-600" />
+                            )}
+                            <p className="text-sm font-medium capitalize text-gray-900">{provider.name}</p>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 ml-6">{provider.detail}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-medium text-gray-700">{provider.model || 'No model'}</p>
+                          <p className="text-[11px] text-gray-400">{provider.timeout}s timeout</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="text-xs text-gray-500 space-y-1">
+                  {aiHealth.notes.map((note) => (
+                    <p key={note}>{note}</p>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Provider status has not been loaded yet.</p>
+            )}
           </div>
         </div>
       )}
@@ -563,6 +708,61 @@ export default function SettingsPage() {
                 <option value="201-500">201-500 employees</option>
                 <option value="500+">500+ employees</option>
               </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Website
+            </label>
+            <input
+              type="url"
+              value={profileData.website || ''}
+              onChange={(e) => setProfileData(prev => ({ ...prev, website: e.target.value }))}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all"
+              placeholder="https://example.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Business Description
+            </label>
+            <textarea
+              value={profileData.description || ''}
+              onChange={(e) => setProfileData(prev => ({ ...prev, description: e.target.value }))}
+              rows={4}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all"
+              placeholder="What does your business do?"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Goals
+              </label>
+              <textarea
+                value={goalsText}
+                onChange={(e) => setGoalsText(e.target.value)}
+                rows={5}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all"
+                placeholder={'Increase qualified leads\nLaunch customer onboarding flow'}
+              />
+              <p className="mt-1 text-xs text-gray-500">One goal per line.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Key Metrics
+              </label>
+              <textarea
+                value={metricsText}
+                onChange={(e) => setMetricsText(e.target.value)}
+                rows={5}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black transition-all"
+                placeholder={'Monthly revenue: 25000\nActive customers: 120'}
+              />
+              <p className="mt-1 text-xs text-gray-500">Use key: value, one metric per line.</p>
             </div>
           </div>
 

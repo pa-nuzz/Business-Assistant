@@ -12,42 +12,6 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
-class InputValidationMiddleware:
-    """
-    Middleware to validate and sanitize input data.
-    Prevents common injection attacks and validates content types.
-    """
-
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        # Skip validation for GET requests and file uploads
-        if request.method == 'GET' or 'multipart/form-data' in request.content_type:
-            return self.get_response(request)
-
-        # Validate JSON content type for POST/PUT/PATCH
-        if request.method in ['POST', 'PUT', 'PATCH']:
-            content_type = request.content_type or ''
-            
-            # Check for suspicious content types
-            if 'application/json' in content_type:
-                try:
-                    if request.body:
-                        body = request.body.decode('utf-8')
-                        # Prevent JSON injection by validating structure
-                        json.loads(body)
-                except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                    logger.warning(f"Invalid JSON in request: {e}")
-                    return JsonResponse(
-                        {"error": "Invalid JSON format"},
-                        status=400
-                    )
-
-        response = self.get_response(request)
-        return response
-
-
 class SecurityHeadersMiddleware:
     """
     Middleware to add additional security headers to all responses.
@@ -128,7 +92,8 @@ class IPRateLimitMiddleware:
     
     # Rate limits per endpoint (requests per minute)
     RATE_LIMITS = {
-        'auth': 10,  # Auth endpoints
+        'auth': 10,  # Sensitive auth endpoints such as login/register
+        'auth_refresh': 120,  # Normal page reloads and multi-tab restores can refresh often
         'default': 60,  # General endpoints
     }
     
@@ -150,7 +115,9 @@ class IPRateLimitMiddleware:
         path = request.path
         
         # Determine rate limit category
-        if '/auth/' in path:
+        if path.endswith('/auth/token/refresh/'):
+            category = 'auth_refresh'
+        elif '/auth/' in path:
             category = 'auth'
         else:
             category = 'default'
@@ -169,7 +136,9 @@ class IPRateLimitMiddleware:
         current_count = cache.get(key, 0)
         
         # Determine limit
-        if '/auth/' in request.path:
+        if request.path.endswith('/auth/token/refresh/'):
+            limit = self.RATE_LIMITS['auth_refresh']
+        elif '/auth/' in request.path:
             limit = self.RATE_LIMITS['auth']
         else:
             limit = self.RATE_LIMITS['default']

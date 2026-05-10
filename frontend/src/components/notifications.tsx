@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import logger from "@/lib/logger";
 
 interface Notification {
   id: string;
@@ -76,7 +77,7 @@ export function NotificationBell() {
       const socket = new WebSocket(`${wsUrl}?token=${token}`);
 
       socket.onopen = () => {
-        console.log('Notification WebSocket connected');
+        logger.info('Notification WebSocket connected');
       };
 
       socket.onmessage = (event) => {

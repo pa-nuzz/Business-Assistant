@@ -14,10 +14,31 @@ def _get_client():
     global _gemini_client
     if _gemini_client is None:
         import google.generativeai as genai
-        cfg = settings.AI_CONFIG["gemini"]
-        genai.configure(api_key=cfg["api_key"])
         _gemini_client = genai
     return _gemini_client
+
+
+def _get_api_keys() -> list[str]:
+    cfg = settings.AI_CONFIG["gemini"]
+    keys = []
+    if cfg.get("api_keys"):
+        keys.extend(k.strip() for k in cfg["api_keys"].split(","))
+    keys.extend([
+        cfg.get("api_key", ""),
+        cfg.get("api_key1", ""),
+        cfg.get("api_key2", ""),
+        cfg.get("api_key3", ""),
+        cfg.get("api_key4", ""),
+        cfg.get("api_keys1", ""),
+        cfg.get("api_keys2", ""),
+        cfg.get("api_keys3", ""),
+        cfg.get("api_keys4", ""),
+    ])
+    return list(dict.fromkeys(k for k in keys if k))
+
+
+def _configure_key(genai, api_key: str) -> None:
+    genai.configure(api_key=api_key)
 
 
 def _build_gemini_tools(tool_definitions: list) -> list:
@@ -60,32 +81,40 @@ def call(
 
     import google.generativeai as genai_module
     from google.generativeai.types import GenerationConfig
+    api_keys = _get_api_keys()
+    if not api_keys:
+        raise ValueError("GEMINI_API_KEY is not configured")
 
-    model = genai_module.GenerativeModel(
-        model_name=cfg["model"],
-        system_instruction=system_prompt,
-        tools=_build_gemini_tools(tool_definitions) if tool_definitions else None,
-        generation_config=GenerationConfig(
-            temperature=0.3,
-            max_output_tokens=2048,
-        ),
-    )
+    last_error = None
+    for api_key in api_keys:
+        try:
+            _configure_key(genai, api_key)
+            model = genai_module.GenerativeModel(
+                model_name=cfg["model"],
+                system_instruction=system_prompt,
+                tools=_build_gemini_tools(tool_definitions) if tool_definitions else None,
+                generation_config=GenerationConfig(
+                    temperature=0.3,
+                    max_output_tokens=2048,
+                ),
+            )
 
-    # Convert messages to Gemini format
-    gemini_history = []
-    for msg in messages[:-1]:  # all except last
-        role = "model" if msg["role"] == "assistant" else "user"
-        gemini_history.append({"role": role, "parts": [msg["content"]]})
+            # Convert messages to Gemini format
+            gemini_history = []
+            for msg in messages[:-1]:  # all except last
+                role = "model" if msg["role"] == "assistant" else "user"
+                gemini_history.append({"role": role, "parts": [msg["content"]]})
 
-    chat = model.start_chat(history=gemini_history)
-
-    try:
-        last_msg = messages[-1]["content"]
-        response = _call_with_timeout(lambda: chat.send_message(last_msg), timeout)
-    except TimeoutError:
-        raise
-    except Exception as e:
-        raise
+            chat = model.start_chat(history=gemini_history)
+            last_msg = messages[-1]["content"]
+            response = _call_with_timeout(lambda: chat.send_message(last_msg), timeout)
+            break
+        except TimeoutError:
+            raise
+        except Exception as e:
+            last_error = e
+    else:
+        raise last_error
 
     # Pull out text + any tool calls from the response
     candidate = response.candidates[0]
@@ -184,3 +213,67 @@ def call_gemini_stream(system_prompt: str, user_message: str):
         elif "error" in chunk:
             logger.error(f"Gemini stream error: {chunk['error']}")
             break
+
+def get_embeddings(texts: list[str]) -> list[list[float]]:
+    """
+    Get vector embeddings for a list of texts using Gemini's embedding model.
+    """
+    genai = _get_client()
+    cfg = settings.AI_CONFIG["gemini"]
+    api_keys = _get_api_keys()
+    if not api_keys:
+        logger.error("Gemini embedding failed: GEMINI_API_KEY is not configured")
+        return []
+
+    last_error = None
+    for api_key in api_keys:
+        _configure_key(genai, api_key)
+        try:
+            result = genai.embed_content(
+                model=cfg["embedding_model"],
+                content=texts,
+                task_type="retrieval_document"
+            )
+            return result['embedding']
+        except Exception as e:
+            last_error = e
+    try:
+        raise last_error
+    except Exception as e:
+        logger.error(f"Gemini embedding failed: {e}")
+    return []
+
+def call_vision(
+    image_data: bytes,
+    mime_type: str,
+    prompt: str,
+    system_prompt: str = "You are a business intelligence assistant specialized in visual analysis. Analyze charts, diagrams, and document visuals for strategic insights."
+) -> str:
+    """
+    Analyze an image or document visual using Gemini 1.5 Flash Vision.
+    """
+    genai = _get_client()
+    import google.generativeai as genai_module
+    from google.generativeai.types import GenerationConfig
+
+    model = genai_module.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        system_instruction=system_prompt,
+        generation_config=GenerationConfig(
+            temperature=0.2,
+            max_output_tokens=1024,
+        ),
+    )
+
+    try:
+        response = _call_with_timeout(
+            lambda: model.generate_content([
+                {"mime_type": mime_type, "data": image_data},
+                prompt
+            ]),
+            timeout=30
+        )
+        return response.text.strip()
+    except Exception as e:
+        logger.error(f"Gemini Vision call failed: {e}")
+        return f"Visual analysis unavailable: {str(e)}"

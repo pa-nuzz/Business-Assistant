@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from collections import Counter
 from django.db.models import Count, Q, Avg
 from django.contrib.auth.models import User
+from django.utils import timezone
+from django.core.cache import cache
 from core.models import (
     Conversation, Message, Document, Task, 
     BusinessProfile, TaskActivity
@@ -20,19 +22,90 @@ class AnalyticsService:
     
     def __init__(self, user: User):
         self.user = user
-    
+
     def get_dashboard_analytics(self) -> Dict[str, Any]:
-        """Generate comprehensive dashboard analytics."""
-        profile = self._get_business_profile()
+        """Get the dashboard payload without blocking on live LLM providers."""
+        cache_key = f"dashboard_analytics:{self.user.id}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
         
-        return {
+        profile = self._get_business_profile()
+        usage_summary = self._get_usage_summary()
+        forecast = self._get_local_forecast(usage_summary)
+        
+        payload = {
             "profile": profile,
-            "summary": self._get_usage_summary(),
+            "executive_summary": self._generate_executive_summary(usage_summary),
+            "summary": usage_summary,
             "insights": self._generate_insights(),
+            "forecast": forecast,
             "activity_trends": self._get_activity_trends(),
             "followups": self._get_followups(),
             "recent_activity": self._get_recent_activity(),
+            "proactive_alerts": self._get_local_alerts(),
+            "generated_by": "local_cache",
         }
+        cache.set(cache_key, payload, 300)
+        return payload
+
+    def _generate_executive_summary(self, stats: Optional[Dict[str, int]] = None) -> str:
+        """Generate a deterministic dashboard summary suitable for page load."""
+        stats = stats or self._get_usage_summary()
+        pending = stats.get('pending_tasks', 0)
+        completed = stats.get('completed_tasks', 0)
+        documents = stats.get('total_documents', 0)
+        conversations = stats.get('conversations_last_30d', 0)
+
+        if pending == 0 and completed == 0 and documents == 0 and conversations == 0:
+            return "Your command center is ready. Upload a business document, create a task, or ask Aiden a question to generate your first useful insight."
+        if pending == 0:
+            return f"All tracked tasks are clear, with {completed} completed and {documents} document(s) available for business context."
+        if completed:
+            return f"{completed} task(s) completed and {pending} still active, with Aiden ready to turn documents and conversations into the next action."
+        return f"{pending} active task(s) are waiting. Start with the highest-impact item or ask Aiden to turn your current context into a plan."
+
+    def _get_local_forecast(self, stats: Dict[str, int]) -> Dict[str, Any]:
+        """Provide fast, local forecast values instead of calling LLM agents."""
+        completed = stats.get("completed_tasks", 0)
+        pending = stats.get("pending_tasks", 0)
+        total = max(stats.get("total_tasks", 0), 1)
+        completion_rate = completed / total
+        velocity = "High" if completion_rate >= 0.7 else "Building" if completed else "Starting"
+        backlog_clearance_days = 0 if pending == 0 else max(1, int(round(pending / max(completed, 1) * 7)))
+        return {
+            "velocity": velocity,
+            "backlog_clearance_days": backlog_clearance_days,
+            "completion_rate": round(completion_rate * 100),
+        }
+
+    def _get_local_alerts(self) -> List[Dict[str, str]]:
+        """Generate deterministic alerts from task and document state."""
+        alerts: List[Dict[str, str]] = []
+        overdue_count = Task.objects.filter(
+            Q(created_by=self.user) | Q(assignee=self.user),
+            status__in=["todo", "in_progress", "review"],
+            due_date__lt=timezone.now(),
+        ).count()
+        if overdue_count:
+            alerts.append({
+                "title": "Overdue tasks",
+                "message": f"{overdue_count} task(s) are overdue and need attention.",
+                "severity": "high",
+            })
+
+        pending_docs = Document.objects.filter(
+            user=self.user,
+            status__in=["pending", "processing"],
+        ).count()
+        if pending_docs:
+            alerts.append({
+                "title": "Document processing",
+                "message": f"{pending_docs} document(s) are still being processed.",
+                "severity": "medium",
+            })
+
+        return alerts
     
     def _get_business_profile(self) -> Dict[str, Any]:
         """Get user's business profile data."""
@@ -60,7 +133,7 @@ class AnalyticsService:
     
     def _get_usage_summary(self) -> Dict[str, int]:
         """Get usage statistics summary."""
-        thirty_days_ago = datetime.now() - timedelta(days=30)
+        thirty_days_ago = timezone.now() - timedelta(days=30)
         
         return {
             "total_conversations": Conversation.objects.filter(
@@ -73,18 +146,18 @@ class AnalyticsService:
                 conversation__user=self.user
             ).count(),
             "total_documents": Document.objects.filter(
-                uploaded_by=self.user
+                user=self.user
             ).count(),
             "total_tasks": Task.objects.filter(
                 Q(created_by=self.user) | Q(assignee=self.user)
             ).count(),
             "completed_tasks": Task.objects.filter(
                 Q(created_by=self.user) | Q(assignee=self.user),
-                status="completed"
+                status="done"
             ).count(),
             "pending_tasks": Task.objects.filter(
                 Q(created_by=self.user) | Q(assignee=self.user),
-                status__in=["pending", "in_progress"]
+                status__in=["todo", "in_progress", "review"]
             ).count(),
         }
     
@@ -94,7 +167,7 @@ class AnalyticsService:
         recent_messages = Message.objects.filter(
             conversation__user=self.user,
             role="user",
-            created_at__gte=datetime.now() - timedelta(days=30)
+            created_at__gte=timezone.now() - timedelta(days=30)
         ).values_list("content", flat=True)[:100]
         
         # Extract keywords/topics (simple approach)
@@ -150,8 +223,8 @@ class AnalyticsService:
         # Check for overdue tasks
         overdue_count = Task.objects.filter(
             Q(created_by=self.user) | Q(assignee=self.user),
-            status__in=["pending", "in_progress"],
-            due_date__lt=datetime.now(),
+            status__in=["todo", "in_progress", "review"],
+            due_date__lt=timezone.now(),
         ).count()
         
         if overdue_count > 0:
@@ -161,7 +234,7 @@ class AnalyticsService:
         high_priority_count = Task.objects.filter(
             Q(created_by=self.user) | Q(assignee=self.user),
             priority="high",
-            status__in=["pending", "in_progress"],
+            status__in=["todo", "in_progress", "review"],
         ).count()
         
         if high_priority_count > 0:
@@ -169,15 +242,15 @@ class AnalyticsService:
         
         # Check for unused documents
         unprocessed_docs = Document.objects.filter(
-            uploaded_by=self.user,
-            processing_status="pending",
+            user=self.user,
+            status__in=["pending", "processing"],
         ).count()
         
         if unprocessed_docs > 0:
             suggestions.append(f"Process {unprocessed_docs} pending document(s)")
         
         # Check conversation activity
-        week_ago = datetime.now() - timedelta(days=7)
+        week_ago = timezone.now() - timedelta(days=7)
         recent_conversations = Conversation.objects.filter(
             user=self.user,
             updated_at__gte=week_ago,
@@ -190,8 +263,8 @@ class AnalyticsService:
     
     def _calculate_engagement(self) -> Dict[str, Any]:
         """Calculate user engagement metrics."""
-        week_ago = datetime.now() - timedelta(days=7)
-        month_ago = datetime.now() - timedelta(days=30)
+        week_ago = timezone.now() - timedelta(days=7)
+        month_ago = timezone.now() - timedelta(days=30)
         
         # Weekly activity
         weekly_messages = Message.objects.filter(
@@ -221,7 +294,7 @@ class AnalyticsService:
     
     def _count_active_days(self) -> int:
         """Count unique active days in last 30 days."""
-        month_ago = datetime.now() - timedelta(days=30)
+        month_ago = timezone.now() - timedelta(days=30)
         
         # Get distinct dates from message creation
         active_dates = Message.objects.filter(
@@ -243,13 +316,13 @@ class AnalyticsService:
         if total_tasks > 0:
             completed = Task.objects.filter(
                 Q(created_by=self.user) | Q(assignee=self.user),
-                status="completed",
+                status="done",
                 ).count()
             completion_rate = completed / total_tasks
             score += int(completion_rate * 25)
         
         # Activity bonus
-        month_ago = datetime.now() - timedelta(days=30)
+        month_ago = timezone.now() - timedelta(days=30)
         monthly_messages = Message.objects.filter(
             conversation__user=self.user,
             created_at__gte=month_ago
@@ -264,8 +337,8 @@ class AnalyticsService:
         
         # Document processing
         processed_docs = Document.objects.filter(
-            uploaded_by=self.user,
-            processing_status="completed",
+            user=self.user,
+            status="ready",
         ).count()
         
         if processed_docs > 5:
@@ -278,7 +351,7 @@ class AnalyticsService:
     def _get_activity_trends(self) -> List[Dict[str, Any]]:
         """Get daily activity trends for the last 30 days."""
         trends = []
-        today = datetime.now().date()
+        today = timezone.localdate()
         
         for i in range(29, -1, -1):
             date = today - timedelta(days=i)
@@ -303,8 +376,8 @@ class AnalyticsService:
         # Overdue tasks
         overdue = Task.objects.filter(
             Q(created_by=self.user) | Q(assignee=self.user),
-            status__in=["pending", "in_progress"],
-            due_date__lt=datetime.now(),
+            status__in=["todo", "in_progress", "review"],
+            due_date__lt=timezone.now(),
         ).order_by("due_date")[:3]
         
         for task in overdue:
@@ -314,7 +387,7 @@ class AnalyticsService:
         high_priority = Task.objects.filter(
             Q(created_by=self.user) | Q(assignee=self.user),
             priority="high",
-            status__in=["pending", "in_progress"],
+            status__in=["todo", "in_progress", "review"],
         ).exclude(
             id__in=[t.id for t in overdue]
         ).order_by("due_date")[:3]
@@ -323,7 +396,7 @@ class AnalyticsService:
             followups.append(f"High priority: {task.title}")
         
         # Unread conversations (if we had read status)
-        week_ago = datetime.now() - timedelta(days=7)
+        week_ago = timezone.now() - timedelta(days=7)
         old_conversations = Conversation.objects.filter(
             user=self.user,
             updated_at__lt=week_ago,
@@ -385,9 +458,7 @@ class AnalyticsService:
         """Get user engagement metrics."""
         from django.db.models import Count
         from core.models_analytics import UserActivity, FeatureUsage
-        from datetime import datetime, timedelta
-        
-        since = datetime.now() - timedelta(days=days)
+        since = timezone.now() - timedelta(days=days)
         
         # Activity counts by feature
         feature_usage = (
@@ -428,9 +499,7 @@ class AnalyticsService:
         """Get AI usage and cost metrics."""
         from django.db.models import Sum, Avg, Count
         from core.models_analytics import AIMetrics
-        from datetime import datetime, timedelta
-        
-        since = datetime.now() - timedelta(days=days)
+        since = timezone.now() - timedelta(days=days)
         
         metrics = AIMetrics.objects.filter(
             user=self.user,

@@ -16,12 +16,27 @@ def extract_text(file_path: str, file_type: str) -> tuple[str, int]:
         return _extract_pdf(file_path)
     elif file_type == "docx":
         return _extract_docx(file_path), 1
-    elif file_type == "txt":
+    elif file_type in ["txt", "md"]:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             text = f.read()
         return text, 1
+    elif file_type in ["png", "jpg", "jpeg"]:
+        return _extract_image_text(file_path, file_type), 1
     else:
         raise ValueError(f"Unsupported file type: {file_type}")
+
+
+def _extract_image_text(file_path: str, file_type: str) -> str:
+    """Extract text from images using Gemini Vision (OCR)."""
+    from services.gemini import call_vision
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+        mime_type = f"image/{file_type}"
+        return call_vision(data, mime_type, "Extract all text from this image exactly as it appears. If it's a chart, describe the data briefly.")
+    except Exception as e:
+        logger.error(f"Image OCR failed: {e}")
+        return "[Text extraction failed]"
 
 
 def _extract_pdf(file_path: str) -> tuple[str, int]:
@@ -253,6 +268,8 @@ def generate_summary(text: str, doc_title: str) -> str:
 def process_document(doc_id: str) -> bool:
     # Run the full pipeline. Call from Celery or inline
     from core.models import Document, DocumentChunk
+    from services.gemini import get_embeddings
+    from django.utils import timezone
 
     try:
         doc = Document.objects.get(id=doc_id)
@@ -285,25 +302,55 @@ def process_document(doc_id: str) -> bool:
         except Exception as e:
             logger.warning(f"Business context extraction skipped: {e}")
 
-        # 4. Save everything
+        # 4. Generate Embeddings (Semantic Search)
+        chunk_contents = [c["content"] for c in chunks_data]
+        embeddings = []
+        if chunk_contents:
+            # Batch embeddings in groups of 50 to avoid API limits
+            for i in range(0, len(chunk_contents), 50):
+                batch = chunk_contents[i:i+50]
+                batch_embeddings = get_embeddings(batch)
+                if batch_embeddings:
+                    embeddings.extend(batch_embeddings)
+                else:
+                    logger.warning(f"Failed to get embeddings for batch {i//50}")
+                    # Fill with None for failed embeddings (pgvector accepts null, not empty arrays)
+                    embeddings.extend([None for _ in range(len(batch))])
+
+        # 4.5. Visual Analysis (New Elite Feature)
+        visual_analysis = {}
+        if doc.file_type in ["pdf", "png", "jpg", "jpeg"]:
+            try:
+                visual_analysis = perform_visual_analysis(file_path, doc.file_type)
+            except Exception as e:
+                logger.warning(f"Visual analysis skipped: {e}")
+
+        # 5. Save everything
         # Delete old chunks if reprocessing
         DocumentChunk.objects.filter(document=doc).delete()
 
-        chunk_objects = [
-            DocumentChunk(
-                document=doc,
-                chunk_index=c["chunk_index"],
-                content=c["content"],
-                keywords=c["keywords"],
+        chunk_objects = []
+        for i, c in enumerate(chunks_data):
+            emb = embeddings[i] if i < len(embeddings) else None
+            chunk_objects.append(
+                DocumentChunk(
+                    document=doc,
+                    chunk_index=c["chunk_index"],
+                    content=c["content"],
+                    keywords=c["keywords"],
+                    embedding=emb,
+                    embedding_model=settings.AI_CONFIG["gemini"]["embedding_model"] if emb else "",
+                    embedding_generated_at=timezone.now() if emb else None
+                )
             )
-            for c in chunks_data
-        ]
+        
         DocumentChunk.objects.bulk_create(chunk_objects)
 
         doc.summary = summary
+        doc.visual_analysis = visual_analysis
         doc.page_count = page_count
         doc.status = "ready"
-        doc.save(update_fields=["summary", "page_count", "status"])
+        doc.save(update_fields=["summary", "visual_analysis", "page_count", "status"])
 
         logger.info(
             f"Document processed: {doc.title} | "
@@ -318,3 +365,32 @@ def process_document(doc_id: str) -> bool:
         except Exception:
             pass
         return False
+
+def perform_visual_analysis(file_path: str, file_type: str) -> dict:
+    """Analyze the visual content of a document/image for business intelligence."""
+    from services.gemini import call_vision
+    
+    if file_type not in ["png", "jpg", "jpeg", "pdf"]:
+        return {}
+        
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+            
+        mime_type = f"image/{file_type}" if file_type != "pdf" else "application/pdf"
+        
+        prompt = """Identify and describe any charts, graphs, diagrams, or tables in this document. 
+        Extract key data points from these visuals. 
+        What strategic business insights can be derived from these visuals?
+        Be specific about numbers and trends.
+        """
+        
+        analysis_text = call_vision(data, mime_type, prompt)
+        
+        return {
+            "insights": analysis_text,
+            "detected_visuals": True if "chart" in analysis_text.lower() or "graph" in analysis_text.lower() else False
+        }
+    except Exception as e:
+        logger.error(f"Visual analysis failed: {e}")
+        return {}

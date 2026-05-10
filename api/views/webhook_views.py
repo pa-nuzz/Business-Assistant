@@ -187,7 +187,7 @@ def test_webhook(request, webhook_id):
         event_type='test.event',
         payload={
             'message': 'This is a test event from AEIOU AI',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
         },
         status=WebhookDelivery.PENDING
     )
@@ -240,10 +240,10 @@ def regenerate_secret(request, webhook_id):
     webhook = get_object_or_404(Webhook, id=webhook_id, user=request.user)
     
     import hashlib
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     webhook.secret = hashlib.sha256(
-        f"{request.user.id}:{datetime.now().isoformat()}".encode()
+        f"{request.user.id}:{datetime.now(timezone.utc).isoformat()}".encode()
     ).hexdigest()[:32]
     webhook.save()
     
@@ -266,4 +266,4 @@ def get_available_events(request):
     })
 
 
-from datetime import datetime
+

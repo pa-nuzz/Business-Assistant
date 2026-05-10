@@ -8,8 +8,11 @@ import AuthGuard from '@/components/auth-guard';
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/sidebar-new';
 import { CommandPalette } from '@/components/enhanced-command-palette';
+import { Navigation } from '@/components/navigation';
+import { OnboardingWizard } from '@/components/onboarding-wizard';
 
 const publicPaths = [
+  '/',
   '/login',
   '/register',
   '/forgot-password',
@@ -28,7 +31,7 @@ function _LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {showSidebar && (
-        <div className="w-[72px] h-screen bg-muted border-r border-border flex flex-col flex-shrink-0">
+        <div className="w-[72px] h-screen bg-muted border-r border-border flex flex-col shrink-0">
           {/* Collapsed logo skeleton */}
           <div className="h-16 flex items-center justify-center border-b border-border/50">
             <div className="w-8 h-8 bg-muted-foreground/20 rounded-lg animate-pulse" />
@@ -76,6 +79,7 @@ function _LoadingSkeleton({ showSidebar = false }: { showSidebar?: boolean }) {
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const pathname = usePathname();
 
   // ALL hooks must be called before any conditional returns
@@ -99,7 +103,9 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Compute after all hooks are called
-  const isPublicPage = pathname ? publicPaths.some((path) => pathname.startsWith(path)) : false;
+  const isPublicPage = pathname 
+    ? pathname === '/' || publicPaths.filter(p => p !== '/').some(path => pathname.startsWith(path))
+    : false;
 
   // Error boundary fallback - after all hooks
   if (hasError) {
@@ -122,7 +128,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   // Show loading skeleton - after all hooks
   if (!mounted) {
     return (
-      <div className="flex h-screen bg-background overflow-hidden">
+      <div className="flex h-screen bg-background overflow-hidden relative">
+        <div className="noise-overlay" />
         <main className="flex-1 flex items-center justify-center min-w-0">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-muted border-t-primary rounded-full animate-spin" />
@@ -134,21 +141,33 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isAuthPage = pathname?.startsWith('/login') || 
+                     pathname?.startsWith('/register') || 
+                     pathname?.startsWith('/forgot-password') || 
+                     pathname?.startsWith('/reset-password') || 
+                     pathname?.startsWith('/verify-email');
+
   return (
     <LoadingProvider>
       <ChatProvider>
         <AuthGuard>
+          <div className="noise-overlay" />
           {!isPublicPage ? (
-            <div className="flex h-screen overflow-hidden">
+            <div className="flex h-screen overflow-hidden bg-white">
               <Sidebar />
+              <main className="flex-1 min-w-0 h-screen overflow-auto relative">
+                {children}
+              </main>
+              {/* Onboarding wizard for new users — auto-checks /onboarding/status/ */}
+              <OnboardingWizard onClose={() => setShowOnboarding(false)} />
+            </div>
+          ) : (
+            <>
+              <Navigation />
               <main className="flex-1 min-w-0 overflow-auto relative">
                 {children}
               </main>
-            </div>
-          ) : (
-            <main className="flex-1 min-w-0 overflow-auto relative">
-              {children}
-            </main>
+            </>
           )}
           <CommandPalette />
           <Toaster
