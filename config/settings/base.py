@@ -189,6 +189,7 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    "DISABLE_ERRORS_AND_WARNINGS": config("SPECTACULAR_DISABLE_WARNINGS", default=False, cast=bool),
     "SCHEMA_PATH_PREFIX": "/api",
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,

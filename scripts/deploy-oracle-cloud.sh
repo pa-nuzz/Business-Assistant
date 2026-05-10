@@ -61,6 +61,7 @@ ${COMPOSE} exec -T backend python manage.py migrate --noinput
 # Collect static files
 echo "[6/7] Collecting static files..."
 ${COMPOSE} exec -T backend python manage.py collectstatic --noinput
+${COMPOSE} exec -T backend python manage.py deploy_preflight --json
 ${COMPOSE} exec -T backend python manage.py ai_preflight --json
 
 # Health checks

@@ -284,6 +284,16 @@ CELERY_ROUTES = {
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
 
+# Keep production deploy checks focused on runtime/security issues. API schema
+# completeness is tracked separately because function-based DRF views generate
+# noisy drf-spectacular serializer guesses.
+SPECTACULAR_SETTINGS["DISABLE_ERRORS_AND_WARNINGS"] = True
+SILENCED_SYSTEM_CHECKS = [
+    *globals().get("SILENCED_SYSTEM_CHECKS", []),
+    "drf_spectacular.W001",
+    "drf_spectacular.W002",
+]
+
 # Security headers
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
