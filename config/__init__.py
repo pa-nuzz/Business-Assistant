@@ -1,0 +1,6 @@
+# Celery app - only imported when Celery worker is running
+try:
+    from .celery import app as celery_app
+    __all__ = ("celery_app",)
+except Exception:
+    pass

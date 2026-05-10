@@ -1,0 +1,519 @@
+"""
+Base Django settings shared across all environments.
+"""
+import os
+from pathlib import Path
+from decouple import config, Csv
+import dj_database_url
+
+# ─── Sentry Error Monitoring (Phase 3.6) ──────────────────────────────────────
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+SENTRY_DSN = config("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        environment=config("ENVIRONMENT", default="production"),
+        traces_sample_rate=0.2,  # 20% of requests for performance monitoring
+        profiles_sample_rate=0.1,  # 10% of requests for profiling
+        send_default_pii=False,
+    )
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Security: Validate SECRET_KEY is properly configured
+SECRET_KEY = config("SECRET_KEY", default="")
+if not SECRET_KEY or SECRET_KEY == "your-secret-key-here-generate-with-python-c-":
+    import warnings
+    if os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(".dev"):
+        import secrets
+
+        warnings.warn(
+            "WARNING: Using auto-generated SECRET_KEY. This is insecure for production. "
+            "Set a proper SECRET_KEY in your environment using: python -c \"import secrets; print(secrets.token_hex(50))\"",
+            RuntimeWarning,
+        )
+        # Auto-generate a temporary key for development only
+        SECRET_KEY = secrets.token_hex(50)
+    else:
+        from django.core.exceptions import ImproperlyConfigured
+
+        raise ImproperlyConfigured(
+            "SECRET_KEY is not configured. Set it in your production environment."
+        )
+
+DEBUG = config("DEBUG", default=False, cast=bool)
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost", cast=Csv())
+
+# ─── Apps ────────────────────────────────────────────────────────────────────
+INSTALLED_APPS = [
+    "daphne",  # ASGI server
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    # Third party
+    "rest_framework",
+    "corsheaders",
+    "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",  # API documentation
+    "channels",  # WebSocket support
+    # "dbbackup",  # Database backups - install package first
+    # "storages",  # S3 storage for backups - install package first
+    # Local
+    "core",
+    "api",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Enhanced security middleware
+    "utils.security_middleware.SecurityMiddleware",
+    "utils.security_middleware.InputValidationMiddleware",
+    "utils.security_middleware.SessionSecurityMiddleware",
+    "utils.middleware.IPRateLimitMiddleware",
+    "utils.middleware.RequestIDMiddleware",
+    "utils.middleware.DeviceFingerprintMiddleware",
+    "utils.middleware.SlowQueryLoggingMiddleware",
+    "utils.middleware.SecurityHeadersMiddleware",
+    "utils.middleware_compression.CompressionMiddleware",
+    "utils.middleware_cache.CacheHeadersMiddleware",
+    "utils.middleware_performance.PerformanceMonitoringMiddleware",
+    "utils.middleware_performance.QueryCountAlertMiddleware",
+]
+
+# Security Headers
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = "DENY"
+
+# HTTPS Settings (enable in production)
+SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=False, cast=bool)
+SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False, cast=bool)
+SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=False, cast=bool)
+
+# Session Security
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=False, cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=False, cast=bool)
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+
+ROOT_URLCONF = "config.urls"
+WSGI_APPLICATION = "config.wsgi.application"
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+default_database_url = f"sqlite:///{BASE_DIR / 'db.sqlite3'}" if os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(".dev") or DEBUG else config("DATABASE_URL")
+DATABASES = {
+    "default": dj_database_url.config(
+        default=default_database_url,
+        conn_max_age=600,
+        ssl_require=config("DB_SSL", default=False, cast=bool),
+    )
+}
+
+# Hard check: SQLite cannot be used in production
+settings_module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+if "sqlite" in DATABASES["default"].get("ENGINE", "") and not DEBUG and not settings_module.endswith(".dev"):
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured("SQLite cannot be used in production. Set DATABASE_URL to a PostgreSQL database.")
+
+# Connection pooling for PostgreSQL
+if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
+    # Check if PgBouncer is configured
+    pgbouncer_host = config("PGBOUNCER_HOST", default="")
+    if pgbouncer_host:
+        DATABASES["default"]["HOST"] = pgbouncer_host
+        DATABASES["default"]["PORT"] = config("PGBOUNCER_PORT", default="6432")
+    
+    DATABASES["default"]["OPTIONS"] = {
+        "MAX_CONNS": 200,  # Increased for 10k concurrent users
+        "MIN_CONNS": 10,   # Increased baseline connections
+    }
+
+# ─── Static Files ─────────────────────────────────────────────────────────────
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# ─── Media (uploaded documents) ───────────────────────────────────────────────
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# ─── REST Framework ───────────────────────────────────────────────────────────
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/day",
+        "user": "1000/day",
+        "burst": "100/min",
+        "standard": "60/min",
+        "strict": "10/min",
+        "upload": "5/min",
+        "auth": "20/min",
+        "chat": "20/min",
+        "task": "60/min",
+        "task_write": "30/min",
+        "conversation": "100/min",
+    },
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
+}
+
+# ─── API Documentation (drf-spectacular) ──────────────────────────────────────────
+SPECTACULAR_SETTINGS = {
+    "TITLE": "AEIOU AI API",
+    "DESCRIPTION": "Business Assistant API with task management, document processing, and AI capabilities",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": "/api",
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": True,
+    },
+    "REDOC_UI_SETTINGS": {
+        "hideDownloadButton": True,
+        "hideHostname": True,
+    },
+    "PREPROCESSING_HOOKS": [],
+    "POSTPROCESSING_HOOKS": [],
+    "SERVERS": [
+        {"url": "http://localhost:8000", "description": "Development server"},
+        {"url": "https://api.aeiou.ai", "description": "Production server"},
+    ],
+    "TAGS": [
+        {"name": "Authentication", "description": "User authentication and authorization"},
+        {"name": "Tasks", "description": "Task management operations"},
+        {"name": "Documents", "description": "Document upload and processing"},
+        {"name": "Profiles", "description": "User profile management"},
+        {"name": "Chat", "description": "AI chat and conversation features"},
+    ],
+}
+
+# ─── CORS (Phase 3.5) ───────────────────────────────────────────────────────────
+CORS_ALLOW_ALL_ORIGINS = False  # Production: strict origin whitelist
+CORS_ALLOWED_ORIGINS = config(
+    "CORS_ALLOWED_ORIGINS",
+    default="http://localhost:3000,http://localhost:5173",
+    cast=lambda v: [s.strip() for s in v.split(",")]
+)
+CORS_ALLOW_CREDENTIALS = True  # Required for httpOnly cookies
+
+# ─── AI Model Config ──────────────────────────────────────────────────────────
+AI_CONFIG = {
+    "gemini": {
+        "api_key": config("GEMINI_API_KEY", default=""),
+        "api_key2": config("GEMINI_API_KEY2", default=""),
+        "api_key1": config("GEMINI_API_KEY1", default=config("Gemini_API_KEYS1", default="")),
+        "api_key3": config("GEMINI_API_KEY3", default=config("Gemini_API_KEYS3", default="")),
+        "api_key4": config("GEMINI_API_KEY4", default=config("Gemini_API_KEYS4", default="")),
+        "api_keys1": config("GEMINI_API_KEYS1", default=config("Gemini_API_KEYS1", default="")),
+        "api_keys2": config("GEMINI_API_KEYS2", default=config("Gemini_API_KEYS2", default="")),
+        "api_keys3": config("GEMINI_API_KEYS3", default=config("Gemini_API_KEYS3", default="")),
+        "api_keys4": config("GEMINI_API_KEYS4", default=config("Gemini_API_KEYS4", default="")),
+        "api_keys": config("GEMINI_API_KEYS", default=""),
+        "chat_enabled": config("GEMINI_CHAT_ENABLED", default=False, cast=bool),
+        "model": config("GEMINI_MODEL", default="gemini-1.5-flash"),
+        "embedding_model": config("GEMINI_EMBEDDING_MODEL", default="models/gemini-embedding-001"),
+        "timeout": config("GEMINI_TIMEOUT", default=15, cast=int),
+    },
+    "groq": {
+        "api_key": config("GROQ_API_KEY", default=""),
+        "model": config("GROQ_MODEL", default="llama3-8b-8192"),
+        "timeout": config("GROQ_TIMEOUT", default=10, cast=int),
+    },
+    "nvidia": {
+        "api_key": config("NVIDIA_API_KEY", default=""),
+        "model": config("NVIDIA_MODEL", default="moonshotai/kimi-k2.6"),
+        "timeout": config("NVIDIA_TIMEOUT", default=20, cast=int),
+        "base_url": "https://integrate.api.nvidia.com/v1",
+    },
+    "openrouter": {
+        "api_key": config("OPENROUTER_API_KEY", default=""),
+        "model": config("OPENROUTER_MODEL", default="openrouter/free"),
+        "timeout": config("OPENROUTER_TIMEOUT", default=20, cast=int),
+        "base_url": "https://openrouter.ai/api/v1",
+    },
+    "max_tool_iterations": config("MAX_TOOL_ITERATIONS", default=6, cast=int),
+}
+
+# ─── Search Config ────────────────────────────────────────────────────────────
+BRAVE_SEARCH_API_KEY = config("BRAVE_SEARCH_API_KEY", default="")
+
+# ─── Document Config ──────────────────────────────────────────────────────────
+DOCUMENT_CONFIG = {
+    "max_upload_size_mb": config("MAX_UPLOAD_SIZE_MB", default=10, cast=int),
+    "chunk_size_chars": config("CHUNK_SIZE_CHARS", default=1500, cast=int),
+    "max_chunks_per_doc": config("MAX_CHUNKS_PER_DOC", default=20, cast=int),
+}
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+
+# ─── Celery Configuration ───────────────────────────────────────────────────────
+CELERY_BROKER_URL = config("REDIS_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = config("REDIS_URL", default="redis://localhost:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+# Task settings
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes max for document processing
+
+# ─── Django Cache (Redis) ───────────────────────────────────────────────────────
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/1"),
+        "TIMEOUT": 300,
+    }
+}
+
+# Use Redis for session storage
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
+
+# ─── Channels (WebSocket) Configuration ─────────────────────────────────────────
+ASGI_APPLICATION = "config.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [config("REDIS_URL", default="redis://localhost:6379/0")],
+        },
+    },
+}
+
+# ─── JWT Configuration ───────────────────────────────────────────────────────────
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  # Short-lived for security
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),  # 7 days for httpOnly cookie
+    "ROTATE_REFRESH_TOKENS": True,  # Security: new refresh token on each use
+    "BLACKLIST_AFTER_ROTATION": True,  # Security: old token invalidated
+    "UPDATE_LAST_LOGIN": True,  # Track last login time
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "VERIFYING_KEY": None,
+    "AUDIENCE": None,
+    "ISSUER": "business-assistant",
+    "JSON_ENCODER": None,
+    "JWK_URL": None,
+    "LEEWAY": 0,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "USER_AUTHENTICATION_RULE": "rest_framework_simplejwt.authentication.default_user_authentication_rule",
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "TOKEN_TYPE_CLAIM": "token_type",
+    "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",
+    "JTI_CLAIM": "jti",
+    "SLIDING_TOKEN_REFRESH_EXP_CLAIM": "refresh_exp",
+    "SLIDING_TOKEN_LIFETIME": timedelta(minutes=5),
+    "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
+    "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
+    "TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSerializer",
+    "TOKEN_VERIFY_SERIALIZER": "rest_framework_simplejwt.serializers.TokenVerifySerializer",
+    "TOKEN_BLACKLIST_SERIALIZER": "rest_framework_simplejwt.serializers.TokenBlacklistSerializer",
+    "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
+    "SLIDING_TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSlidingSerializer",
+}
+
+# ─── Logging Configuration ─────────────────────────────────────────────────────
+import os
+
+# Ensure logs directory exists
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "{levelname} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOGS_DIR / "django.log",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+        "slow_queries": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOGS_DIR / "slow_queries.log",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "WARNING",  # Log slow queries as warnings
+            "propagate": False,
+        },
+        "api": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "agents": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "mcp": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "services": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "utils": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "audit": {
+            "handlers": ["file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "slow_queries": {
+            "handlers": ["slow_queries"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
+
+# ─── Backup Configuration (django-dbbackup) ────────────────────────────────────
+DBBACKUP_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+DBBACKUP_STORAGE_OPTIONS = {
+    "access_key": config("AWS_ACCESS_KEY_ID", default=""),
+    "secret_key": config("AWS_SECRET_ACCESS_KEY", default=""),
+    "bucket_name": config("BACKUP_BUCKET", default=""),
+    "default_acl": "private",
+    "region_name": config("AWS_REGION", default="us-east-1"),
+}
+# Backup 3AM daily via cron: 0 3 * * * cd /app && python manage.py dbbackup --clean
+DBBACKUP_CLEANUP_KEEP = 7  # Keep 7 daily backups
+DBBACKUP_CLEANUP_KEEP_MEDIA = 3  # Keep 3 media backups
+
+# ─── Security Headers (Phase 3.2) ───────────────────────────────────────────────
+# HTTPS & HSTS - 1 year, include subdomains, preload
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# SSL Redirect - force HTTPS
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Secure Cookies - only transmit over HTTPS
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# Clickjacking protection
+X_FRAME_OPTIONS = "DENY"
+
+# Content Type sniffing prevention
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Content Security Policy (CSP)
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC = ("'self'", "https://cdn.jsdelivr.net")
+CSP_STYLE_SRC = ("'self'", "https://fonts.googleapis.com", "'unsafe-inline'")
+CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com")
+CSP_IMG_SRC = ("'self'", "data:", "https://*.r2.cloudflarestorage.com", "https://*.amazonaws.com")
+CSP_CONNECT_SRC = ("'self'", "https://*.render.com")
+CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_BASE_URI = ("'self'",)
+CSP_FORM_ACTION = ("'self'",)

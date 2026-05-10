@@ -1,0 +1,88 @@
+# Notification views
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from core.models import Notification
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])  # Exempt from throttling for polling
+def get_notifications(request):
+    """Get unread notifications for the current user."""
+    from django.core.paginator import Paginator
+    
+    page = int(request.GET.get("page", 1))
+    page_size = min(int(request.GET.get("page_size", 20)), 100)
+    
+    unread = Notification.objects.filter(
+        user=request.user,
+        is_read=False
+    ).order_by("-created_at").values("id", "title", "message", "notification_type", "created_at")
+    
+    paginator = Paginator(unread, page_size)
+    page_obj = paginator.get_page(page)
+    
+    return Response({
+        "results": list(page_obj.object_list),
+        "count": paginator.count,
+        "page": page,
+        "total_pages": paginator.num_pages,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])  # Exempt from throttling
+def mark_notification_read(request, notification_id):
+    """Mark a notification as read."""
+    Notification.objects.filter(id=notification_id, user=request.user).update(is_read=True)
+    return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def get_unread_count(request):
+    """Get count of unread notifications."""
+    count = Notification.objects.filter(user=request.user, is_read=False).count()
+    return Response({"count": count})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def mark_all_read(request):
+    """Mark all notifications as read."""
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def get_notification_preferences(request):
+    """Get notification preferences for the user."""
+    # Default preferences
+    preferences = {
+        "email": True,
+        "push": True,
+        "in_app": True,
+        "task_updates": True,
+        "mentions": True,
+        "system_updates": False
+    }
+    return Response(preferences)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([])
+def update_notification_preferences(request):
+    """Update notification preferences."""
+    # For now just return success - preferences stored in frontend
+    return Response({"ok": True})

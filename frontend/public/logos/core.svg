@@ -1,0 +1,58 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="glow" cx="60" cy="60" r="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e3a8a" stop-opacity="1"/>
+      <stop offset="40%" stop-color="#1e40af" stop-opacity="0.9"/>
+      <stop offset="70%" stop-color="#2563eb" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    
+    <linearGradient id="ring" x1="20" y1="20" x2="100" y2="100">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="50%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#2DD4BF"/>
+    </linearGradient>
+    
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+    </filter>
+  </defs>
+  
+  <style>
+    .glow-pulse {
+      animation: pulse 3s ease-in-out infinite;
+      transform-origin: 60px 60px;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(0.4); opacity: 0.5; }
+      50% { transform: scale(1); opacity: 0.95; }
+    }
+    .rotate-slow {
+      animation: rotate 12s linear infinite;
+      transform-origin: 60px 60px;
+    }
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .rotate-reverse {
+      animation: rotateReverse 20s linear infinite;
+      transform-origin: 60px 60px;
+    }
+    @keyframes rotateReverse {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+  </style>
+  
+  <g class="glow-pulse" filter="url(#blur)">
+    <circle cx="60" cy="60" r="45" fill="url(#glow)"/>
+  </g>
+  
+  <g class="rotate-slow">
+    <path d="M60 15C85 15 105 35 105 60C105 85 85 105 60 105" stroke="url(#ring)" stroke-width="6" stroke-linecap="round" fill="none"/>
+    <path d="M60 15C35 15 15 35 15 60" stroke="url(#ring)" stroke-width="3" stroke-dasharray="4 8" stroke-linecap="round" fill="none"/>
+  </g>
+  
+  <circle cx="60" cy="60" r="52" stroke="url(#ring)" stroke-width="1.5" stroke-opacity="0.3" fill="none" class="rotate-reverse"/>
+</svg>
