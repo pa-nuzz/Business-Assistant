@@ -5,7 +5,7 @@ import logging
 import os
 from celery import Celery
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", os.environ.get("DJANGO_SETTINGS_MODULE", "config.settings.dev"))
 
 app = Celery("business_assistant")
 logger = logging.getLogger(__name__)

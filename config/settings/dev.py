@@ -1,15 +1,21 @@
 import os
 from .base import *
-from decouple import config
+from decouple import config, Csv
 
 DEBUG = True
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173"
-]
+CORS_ALLOWED_ORIGINS = config(
+    "CORS_ALLOWED_ORIGINS",
+    default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
+    cast=Csv()
+)
+
+# CSRF trusted origins for cookie-based auth
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
+    cast=Csv()
+)
 
 # Disable HTTPS redirects for local development
 SECURE_SSL_REDIRECT = False

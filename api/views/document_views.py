@@ -60,25 +60,6 @@ def upload_document(request):
         )
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def document_status(request, doc_id):
-    """Check if doc is still processing."""
-    service = DocumentService(request.user)
-
-    try:
-        result = service.get_document_status(doc_id)
-        return Response(result)
-    except ValueError as e:
-        return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        logger.exception("Failed to get document status")
-        return Response(
-            {"error": "Failed to retrieve document status"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_document(request, doc_id):

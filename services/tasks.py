@@ -43,4 +43,5 @@ def defer_memory_extraction(self, user_id: int, user_message: str, ai_response: 
         return {"user_id": user_id, "stored": stored}
     except Exception as exc:
         logger.warning(f"Memory extraction task failed for user {user_id}: {exc}")
-        raise self.retry(exc=exc, countdown=10)
+        # Retry with exponential backoff
+        raise self.retry(exc=exc, countdown=60 *(2**self.request.retries))

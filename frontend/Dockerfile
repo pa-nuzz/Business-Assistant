@@ -1,5 +1,5 @@
 # Multi-stage build for frontend
-FROM node:18-alpine as builder
+FROM node:20-alpine as builder
 
 # Set work directory
 WORKDIR /app
@@ -26,7 +26,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine as production
+FROM node:20-alpine as production
 
 # Set work directory
 WORKDIR /app

@@ -20,21 +20,8 @@ def _get_client():
 
 def _get_api_keys() -> list[str]:
     cfg = settings.AI_CONFIG["gemini"]
-    keys = []
-    if cfg.get("api_keys"):
-        keys.extend(k.strip() for k in cfg["api_keys"].split(","))
-    keys.extend([
-        cfg.get("api_key", ""),
-        cfg.get("api_key1", ""),
-        cfg.get("api_key2", ""),
-        cfg.get("api_key3", ""),
-        cfg.get("api_key4", ""),
-        cfg.get("api_keys1", ""),
-        cfg.get("api_keys2", ""),
-        cfg.get("api_keys3", ""),
-        cfg.get("api_keys4", ""),
-    ])
-    return list(dict.fromkeys(k for k in keys if k))
+    key = cfg.get("api_key", "")
+    return [key] if key else []
 
 
 def _configure_key(genai, api_key: str) -> None:
@@ -225,16 +212,22 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
         logger.error("Gemini embedding failed: GEMINI_API_KEY is not configured")
         return []
 
+    timeout = cfg.get("timeout", 15)
     last_error = None
     for api_key in api_keys:
         _configure_key(genai, api_key)
         try:
-            result = genai.embed_content(
-                model=cfg["embedding_model"],
-                content=texts,
-                task_type="retrieval_document"
+            result = _call_with_timeout(
+                lambda: genai.embed_content(
+                    model=cfg["embedding_model"],
+                    content=texts,
+                    task_type="retrieval_document"
+                ),
+                timeout=timeout
             )
             return result['embedding']
+        except TimeoutError:
+            raise
         except Exception as e:
             last_error = e
     try:

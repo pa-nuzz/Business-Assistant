@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     gettext \
     curl \
+    libmagic1 \
+    libmagic-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set work directory

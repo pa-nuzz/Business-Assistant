@@ -376,9 +376,10 @@ export const chat = {
 
 // Documents API
 export const documents = {
-  upload: async (file: File, onProgress?: (progress: number) => void) => {
+  upload: async (file: File, title?: string, onProgress?: (progress: number) => void) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (title) formData.append('title', title);
 
     const response = await api.post('/documents/upload/', formData, {
       onUploadProgress: (progressEvent) => {

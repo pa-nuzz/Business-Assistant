@@ -96,7 +96,7 @@ export default function DocumentsPage() {
         });
         return newDocs;
       });
-    }, 3000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [docs]);
@@ -108,7 +108,9 @@ export default function DocumentsPage() {
     setUploadProgress(0);
 
     try {
-      await documents.upload(file, (progress) => {
+      // Use filename (without extension) as title
+      const title = file.name.replace(/\.[^/.]+$/, '');
+      await documents.upload(file, title, (progress) => {
         setUploadProgress(progress);
       });
       await fetchDocuments();
