@@ -367,7 +367,7 @@ export default function SettingsPage() {
       {activeTab === 'profile' && (
         <div className="space-y-6">
           {/* Avatar Section */}
-          <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+          <div className="bg-[var(--bg-base)] shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Picture</h3>
             <div className="flex items-center gap-6">
               <div className="relative group">
@@ -438,7 +438,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Username Section */}
-          <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+          <div className="bg-[var(--bg-base)] shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Username</h3>
             <div className="flex gap-4">
               <div className="flex-1">
@@ -469,11 +469,11 @@ export default function SettingsPage() {
           </div>
 
           {/* Logout Section */}
-          <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+          <div className="bg-[var(--bg-base)] shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Session</h3>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 text-red-600 hover:text-red-700 text-sm font-medium transition-colors hover:scale-105"
+              className="flex items-center gap-2 text-[var(--color-error)] hover:text-red-700 text-sm font-medium transition-colors hover:scale-105"
             >
               <LogOut className="h-4 w-4" />
               Sign out
@@ -486,7 +486,7 @@ export default function SettingsPage() {
       {activeTab === 'preferences' && (
         <div className="space-y-6">
           {/* Sound Effects */}
-          <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+          <div className="bg-[var(--bg-base)] shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Sound Effects</h3>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -511,7 +511,7 @@ export default function SettingsPage() {
                 }`}
               >
                 <span
-                  className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${
+                  className={`absolute top-1 left-1 w-6 h-6 bg-[var(--bg-base)] rounded-full shadow-md transition-transform ${
                     soundEnabled ? 'translate-x-6' : 'translate-x-0'
                   }`}
                 />
@@ -524,7 +524,7 @@ export default function SettingsPage() {
       {/* System Tab */}
       {activeTab === 'system' && (
         <div className="space-y-6">
-          <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6">
+          <div className="bg-[var(--bg-base)] shadow-sm border border-gray-200 rounded-xl p-6">
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
                 <h3 className="text-lg font-medium text-gray-900">AI Provider Health</h3>
@@ -571,7 +571,7 @@ export default function SettingsPage() {
                             ) : disabled ? (
                               <CircleOff className="h-4 w-4 text-gray-400" />
                             ) : (
-                              <CircleAlert className="h-4 w-4 text-amber-600" />
+                              <CircleAlert className="h-4 w-4 text-[var(--color-warning)]" />
                             )}
                             <p className="text-sm font-medium capitalize text-gray-900">{provider.name}</p>
                           </div>
@@ -601,7 +601,7 @@ export default function SettingsPage() {
 
       {/* Security Tab */}
       {activeTab === 'security' && (
-        <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+        <div className="bg-[var(--bg-base)] shadow-sm border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
           <div className="space-y-4 max-w-md">
             <div>
@@ -658,7 +658,7 @@ export default function SettingsPage() {
 
       {/* Business Tab */}
       {activeTab === 'business' && (
-        <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-6 space-y-6 hover:shadow-md transition-shadow">
+        <div className="bg-[var(--bg-base)] shadow-sm border border-gray-200 rounded-xl p-6 space-y-6 hover:shadow-md transition-shadow">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Company Name

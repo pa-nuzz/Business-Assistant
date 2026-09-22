@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import '@/styles/tokens.css';
 import { ClientLayout } from '@/components/client-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 

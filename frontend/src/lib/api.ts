@@ -163,8 +163,8 @@ const clearSessionCookie = () => {
 // Auth API - Premium Auth System with Email Verification
 // SECURITY: All tokens use memory-only storage + httpOnly cookies
 export const auth = {
-  login: async (username: string, password: string) => {
-    const response = await api.post('/auth/login/', { username, password });
+  login: async (identifier: string, password: string) => {
+    const response = await api.post('/auth/login/', { username: identifier, password });
     // SECURITY: Access token in memory only, refresh token in httpOnly cookie
     if (response.data.access) {
       accessToken = response.data.access;

@@ -6,20 +6,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)] active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-[var(--color-error)] aria-invalid:ring-2 aria-invalid:ring-[var(--color-error)]/20 dark:aria-invalid:border-[var(--color-error)]/50 dark:aria-invalid:ring-[var(--color-error)]/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        default: "bg-[var(--brand-primary)] text-[var(--text-inverse)] [a]:hover:bg-[var(--brand-primary-hover)]",
         outline:
-          "border-border bg-background hover:bg-muted hover:text-slate-900 aria-expanded:bg-muted aria-expanded:text-slate-900 dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-[var(--border-default)] bg-[var(--bg-base)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] aria-expanded:bg-[var(--bg-subtle)] aria-expanded:text-[var(--text-primary)] dark:border-[var(--border-subtle)] dark:bg-[var(--bg-input)]/30 dark:hover:bg-[var(--bg-input)]/50",
         secondary:
-          "bg-secondary text-slate-900 hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-slate-900",
+          "bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-elevated-hover)] aria-expanded:bg-[var(--bg-elevated-hover)] aria-expanded:text-[var(--text-primary)]",
         ghost:
-          "hover:bg-muted hover:text-slate-900 aria-expanded:bg-muted aria-expanded:text-slate-900 dark:hover:bg-muted/50",
+          "hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] aria-expanded:bg-[var(--bg-subtle)] aria-expanded:text-[var(--text-primary)] dark:hover:bg-[var(--bg-subtle)]/50",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-[var(--color-error)]/10 text-[var(--color-error)] hover:bg-[var(--color-error)]/20 focus-visible:border-[var(--color-error)]/40 focus-visible:ring-[var(--color-error)]/20 dark:bg-[var(--color-error)]/20 dark:hover:bg-[var(--color-error)]/30 dark:focus-visible:ring-[var(--color-error)]/40",
+        link: "text-[var(--text-link)] underline-offset-4 hover:underline",
       },
       size: {
         default:

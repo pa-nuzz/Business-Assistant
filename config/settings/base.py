@@ -145,7 +145,14 @@ if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
 # ─── Static Files ─────────────────────────────────────────────────────────────
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # ─── Media (uploaded documents) ───────────────────────────────────────────────
 MEDIA_URL = "/media/"
@@ -485,36 +492,3 @@ DBBACKUP_CLEANUP_KEEP = 7  # Keep 7 daily backups
 DBBACKUP_CLEANUP_KEEP_MEDIA = 3  # Keep 3 media backups
 
 # ─── Security Headers (Phase 3.2) ───────────────────────────────────────────────
-# HTTPS & HSTS - 1 year, include subdomains, preload
-SECURE_HSTS_SECONDS = 31536000  # 1 year
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
-
-# SSL Redirect - force HTTPS
-SECURE_SSL_REDIRECT = True
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
-# Secure Cookies - only transmit over HTTPS
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = "Lax"
-CSRF_COOKIE_SAMESITE = "Lax"
-
-# Clickjacking protection
-X_FRAME_OPTIONS = "DENY"
-
-# Content Type sniffing prevention
-SECURE_CONTENT_TYPE_NOSNIFF = True
-
-# Content Security Policy (CSP)
-CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'", "https://cdn.jsdelivr.net")
-CSP_STYLE_SRC = ("'self'", "https://fonts.googleapis.com", "'unsafe-inline'")
-CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com")
-CSP_IMG_SRC = ("'self'", "data:", "https://*.r2.cloudflarestorage.com", "https://*.amazonaws.com")
-CSP_CONNECT_SRC = ("'self'", "https://*.render.com")
-CSP_FRAME_ANCESTORS = ("'none'",)
-CSP_BASE_URI = ("'self'",)
-CSP_FORM_ACTION = ("'self'",)

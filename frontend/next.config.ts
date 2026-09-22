@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
+import withBundleAnalyzerFn from "@next/bundle-analyzer";
 
-const withBundleAnalyzer = require("@next/bundle-analyzer")({
+const withBundleAnalyzer = withBundleAnalyzerFn({
   enabled: process.env.ANALYZE === "true",
 });
 

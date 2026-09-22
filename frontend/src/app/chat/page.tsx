@@ -420,7 +420,7 @@ export default function ChatPage() {
 
   return (
     <>
-      <div className="flex flex-col h-screen bg-white grid-dna">
+      <div className="flex flex-col h-screen bg-[var(--bg-base)]">
       {/* Messages Area */}
       <div 
         ref={messagesContainerRef}
@@ -431,16 +431,16 @@ export default function ChatPage() {
             // Clean loading skeleton
             <div className="space-y-6">
               <div className="flex justify-end">
-                <div className="w-3/4 h-12 rounded-2xl bg-indigo-100 animate-pulse" />
+                <div className="w-3/4 h-12 rounded-2xl bg-[var(--brand-primary-dim)] animate-pulse" />
               </div>
               <div className="flex justify-start">
-                <div className="w-full h-24 rounded-2xl bg-slate-100 animate-pulse" />
+                <div className="w-full h-24 rounded-2xl bg-[var(--bg-subtle)] animate-pulse" />
               </div>
               <div className="flex justify-end">
-                <div className="w-1/2 h-12 rounded-2xl bg-indigo-100 animate-pulse" />
+                <div className="w-1/2 h-12 rounded-2xl bg-[var(--brand-primary-dim)] animate-pulse" />
               </div>
               <div className="flex justify-start">
-                <div className="w-3/4 h-20 rounded-2xl bg-slate-100 animate-pulse" />
+                <div className="w-3/4 h-20 rounded-2xl bg-[var(--bg-subtle)] animate-pulse" />
               </div>
             </div>
           ) : messages.length === 0 ? (
@@ -461,7 +461,7 @@ export default function ChatPage() {
                 />
               </motion.div>
               <motion.h1 
-                className="text-2xl font-bold text-slate-900 mb-1 tracking-tight"
+                className="text-2xl font-bold text-[var(--text-primary)] mb-1 tracking-tight"
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.1, duration: 0.4 }}
@@ -469,15 +469,15 @@ export default function ChatPage() {
                 {getGreeting()}{userName ? `, ${userName}` : ""}
               </motion.h1>
               <motion.p 
-                className="text-slate-500 max-w-md mb-2 text-sm"
+                className="text-[var(--text-tertiary)] max-w-md mb-2 text-sm"
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.4 }}
               >
-                I&apos;m <span className="font-semibold text-transparent bg-clip-text bg-linear-to-r from-indigo-600 to-violet-500">Aiden</span>, your AI Business Partner.
+                I&apos;m <span className="font-semibold text-transparent bg-clip-text bg-linear-to-r from-[var(--brand-primary)] to-[var(--brand-accent)]">Aiden</span>, your AI Business Partner.
               </motion.p>
               <motion.p 
-                className="text-slate-400 max-w-md mb-8 text-xs font-medium"
+                className="text-[var(--text-muted)] max-w-md mb-8 text-xs font-medium"
                 initial={{ y: 10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.25, duration: 0.4 }}
@@ -490,22 +490,22 @@ export default function ChatPage() {
                 {capabilityCards.map((card, idx) => {
                   const Icon = card.icon;
                   return (
-                    <motion.button
-                      key={idx}
-                      initial={{ opacity: 0, y: 15 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.3 + idx * 0.08, duration: 0.4 }}
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleCardClick(card.prompt)}
-                      className="flex flex-col items-start p-5 bg-white/70 backdrop-blur-xl border border-white/60 shadow-[0_4px_20px_rgb(0,0,0,0.03)] rounded-2xl hover:border-indigo-200/60 hover:shadow-[0_8px_30px_rgb(99,102,241,0.08)] cursor-pointer transition-all duration-300 text-left group"
-                    >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110 duration-300 shadow-sm border border-white/50 ${card.iconBg.replace('bg-', 'bg-linear-to-br from-white to-')}`}>
-                        <Icon className={`w-5 h-5 ${card.iconColor}`} />
-                      </div>
-                      <h3 className="text-sm font-semibold text-slate-900 mb-1">{card.title}</h3>
-                      <p className="text-xs text-slate-500 leading-relaxed font-medium">{card.description}</p>
-                    </motion.button>
+<motion.button
+                        key={idx}
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 + idx * 0.08, duration: 0.4 }}
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleCardClick(card.prompt)}
+                        className="flex flex-col items-start p-5 bg-[var(--bg-overlay)]/70 backdrop-blur-xl border border-[var(--border-subtle)] shadow-[0_4px_20px_rgb(0,0,0,0.03)] rounded-2xl hover:border-[var(--brand-primary)]/30 hover:shadow-[0_8px_30px_rgb(108,99,255,0.08)] cursor-pointer transition-all duration-300 text-left group"
+                      >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110 duration-300 shadow-sm border border-[var(--border-subtle)] ${card.iconBg.replace('bg-', 'bg-linear-to-br from-white to-')}`}>
+                          <Icon className={`w-5 h-5 ${card.iconColor}`} />
+                        </div>
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">{card.title}</h3>
+                        <p className="text-xs text-[var(--text-tertiary)] leading-relaxed font-medium">{card.description}</p>
+                      </motion.button>
                   );
                 })}
               </div>
@@ -527,15 +527,15 @@ export default function ChatPage() {
                     {/* Sender label */}
                     <div className="flex items-center gap-1 mb-1">
                       {message.role === "assistant" && (
-                        <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">Aiden</span>
+                        <span className="text-[10px] font-semibold text-[var(--brand-primary)] uppercase tracking-wide">Aiden</span>
                       )}
                     </div>
                     <div className="relative group max-w-[85%] sm:max-w-[75%]">
                       <div
-                        className={`shadow-sm border border-white/50 ${
+                        className={`shadow-sm border border-[var(--border-subtle)] ${
                           message.role === "user"
-                            ? "bg-linear-to-br from-indigo-500 to-violet-600 text-white rounded-2xl rounded-tr-sm px-5 py-3.5"
-                            : "bg-white/70 backdrop-blur-xl text-slate-800 rounded-2xl rounded-tl-sm px-5 py-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.02)]"
+                            ? "bg-linear-to-br from-[var(--brand-primary)] to-[var(--brand-accent)] text-[var(--text-inverse)] rounded-2xl rounded-tr-sm px-5 py-3.5"
+                            : "bg-[var(--bg-overlay)]/70 backdrop-blur-xl text-[var(--text-primary)] rounded-2xl rounded-tl-sm px-5 py-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.02)]"
                         }`}
                       >
                         {message.role === "assistant" ? (
@@ -551,13 +551,13 @@ export default function ChatPage() {
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 0, scale: 0.8 }}
                           whileHover={{ opacity: 1, scale: 1 }}
-                          className="absolute -top-2 -right-2 p-1.5 bg-white border border-slate-200 rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-slate-50"
+                          className="absolute -top-2 -right-2 p-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-[var(--bg-subtle)]"
                           title="Copy to clipboard"
                         >
                           {copiedIndex === index ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            <Check className="w-3.5 h-3.5 text-[var(--brand-success)]" />
                           ) : (
-                            <Copy className="w-3.5 h-3.5 text-slate-400" />
+                            <Copy className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
                           )}
                         </motion.button>
                       )}
@@ -592,11 +592,11 @@ export default function ChatPage() {
                   className="flex flex-col items-start gap-1"
                 >
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">Aiden is working</span>
+                    <span className="text-[10px] font-semibold text-[var(--brand-primary)] uppercase tracking-wide">Aiden is working</span>
                     <div className="flex gap-0.5">
-                       <span className="w-1 h-1 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                       <span className="w-1 h-1 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                       <span className="w-1 h-1 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                       <span className="w-1 h-1 bg-[var(--brand-primary)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                       <span className="w-1 h-1 bg-[var(--brand-primary)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                       <span className="w-1 h-1 bg-[var(--brand-primary)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                   </div>
                   
@@ -608,13 +608,13 @@ export default function ChatPage() {
                           key={idx}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center gap-3 px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl"
+                          className="flex items-center gap-3 px-4 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl"
                         >
-                          <div className="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center">
-                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                          <div className="w-4 h-4 rounded-full bg-[var(--brand-primary-dim)] flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 bg-[var(--brand-primary)] rounded-full animate-pulse" />
                           </div>
-                          <span className="text-xs text-slate-600 font-medium">{step}</span>
-                          <Check className="w-3 h-3 text-emerald-500 ml-auto" />
+                          <span className="text-xs text-[var(--text-secondary)] font-medium">{step}</span>
+                          <Check className="w-3 h-3 text-[var(--brand-success)] ml-auto" />
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -661,7 +661,7 @@ export default function ChatPage() {
       {/* Input Area - Sticky dock design, auto-adjusts to sidebar width */}
       <div className="sticky bottom-0 bg-linear-to-t from-white via-white/90 to-transparent pt-12 pb-6 px-4 sm:px-6 lg:px-8 pl-14 lg:pl-8 z-10 pointer-events-none">
         <div className="max-w-3xl mx-auto pointer-events-auto">
-          <div className="bg-white/70 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-3xl overflow-hidden transition-all duration-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.12)] focus-within:border-indigo-200/50">
+          <div className="bg-[var(--bg-overlay)]/70 backdrop-blur-2xl border border-[var(--border-subtle)] shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-3xl overflow-hidden transition-all duration-300 focus-within:shadow-[0_8px_30px_rgb(108,99,255,0.12)] focus-within:border-[var(--brand-primary)]/30">
             {/* Text input */}
             <div className="px-4 pt-4">
               <textarea
@@ -672,7 +672,7 @@ export default function ChatPage() {
                 placeholder="Ask me anything..."
                 disabled={isStreaming}
                 rows={1}
-                className="w-full bg-transparent text-slate-900 placeholder:text-slate-400 resize-none outline-none min-h-[24px] max-h-[200px] text-sm leading-relaxed"
+                className="w-full bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none outline-none min-h-[24px] max-h-[200px] text-sm leading-relaxed"
               />
             </div>
 
@@ -685,8 +685,8 @@ export default function ChatPage() {
                   disabled={isStreaming}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     activeSources.has("search")
-                      ? "bg-indigo-50 text-indigo-600 border border-indigo-200"
-                      : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
+                      ? "bg-[var(--brand-primary-dim)] text-[var(--brand-primary)] border border-[var(--brand-primary)]/30"
+                      : "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:bg-[var(--bg-subtle)] border border-[var(--border-subtle)]"
                   }`}
                 >
                   <Search className="w-3.5 h-3.5" />
@@ -697,8 +697,8 @@ export default function ChatPage() {
                   disabled={isStreaming}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     activeSources.has("deep_research")
-                      ? "bg-purple-50 text-purple-600 border border-purple-200"
-                      : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
+                      ? "bg-[var(--brand-primary-dim)] text-[var(--brand-primary)] border border-[var(--brand-primary)]/30"
+                      : "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:bg-[var(--bg-subtle)] border border-[var(--border-subtle)]"
                   }`}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
@@ -709,8 +709,8 @@ export default function ChatPage() {
                   disabled={isStreaming}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                     activeSources.has("reason")
-                      ? "bg-green-50 text-green-600 border border-green-200"
-                      : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
+                      ? "bg-[var(--brand-success-dim)] text-[var(--brand-success)] border border-[var(--brand-success)]/30"
+                      : "bg-[var(--bg-base)] text-[var(--text-tertiary)] hover:bg-[var(--bg-subtle)] border border-[var(--border-subtle)]"
                   }`}
                 >
                   <BrainCircuit className="w-3.5 h-3.5" />
@@ -740,8 +740,8 @@ export default function ChatPage() {
                     disabled={!inputValue.trim() || isStreaming}
                     className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-all duration-300 ${
                       inputValue.trim() && !isStreaming
-                        ? "bg-linear-to-br from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/20 hover:scale-105 active:scale-95"
-                        : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        ? "bg-linear-to-br from-[var(--brand-primary)] to-[var(--brand-accent)] text-[var(--text-inverse)] shadow-lg shadow-[var(--brand-primary)]/20 hover:scale-105 active:scale-95"
+                        : "bg-[var(--bg-subtle)] text-[var(--text-muted)] cursor-not-allowed"
                     }`}
                   >
                     <ArrowUp className="w-5 h-5" />
@@ -752,15 +752,15 @@ export default function ChatPage() {
           </div>
 
           {/* Disclaimer */}
-          <p className="text-center text-xs text-slate-400 mt-3">
-            AI-generated content may contain inaccuracies. Verify important information. • 
-            <button 
-              onClick={() => window.dispatchEvent(new CustomEvent('open-help'))}
-              className="hover:text-indigo-500 underline underline-offset-2"
-            >
-              Keyboard shortcuts
-            </button>
-          </p>
+<p className="text-center text-xs text-[var(--text-muted)] mt-3">
+          AI-generated content may contain inaccuracies. Verify important information. • 
+          <button 
+            onClick={() => window.dispatchEvent(new CustomEvent('open-help'))}
+            className="hover:text-[var(--brand-primary)] underline underline-offset-2"
+          >
+            Keyboard shortcuts
+          </button>
+        </p>
         </div>
       </div>
     </div>

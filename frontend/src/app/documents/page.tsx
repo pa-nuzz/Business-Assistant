@@ -192,7 +192,7 @@ export default function DocumentsPage() {
 
   const getFileIconColor = (type: string) => {
     switch (type) {
-      case 'pdf': return { bg: 'bg-red-50', color: 'text-red-600', border: 'border-red-100' };
+      case 'pdf': return { bg: 'bg-[var(--color-error)]/10', color: 'text-[var(--color-error)]', border: 'border-red-100' };
       case 'docx': return { bg: 'bg-blue-50', color: 'text-blue-600', border: 'border-blue-100' };
       default: return { bg: 'bg-gray-50', color: 'text-gray-600', border: 'border-gray-100' };
     }
@@ -216,7 +216,7 @@ export default function DocumentsPage() {
         );
       case 'failed':
         return (
-          <span className="text-xs px-2 py-1 rounded-full bg-red-50 text-red-600 border border-red-100">
+          <span className="text-xs px-2 py-1 rounded-full bg-[var(--color-error)]/10 text-[var(--color-error)] border border-red-100">
             Failed
           </span>
         );
@@ -262,8 +262,8 @@ export default function DocumentsPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Documents</h1>
-            <p className="text-sm text-slate-600">Upload and search your business files</p>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">Documents</h1>
+            <p className="text-sm text-[var(--text-secondary)]">Upload and search your business files</p>
           </div>
         </div>
 
@@ -276,13 +276,13 @@ export default function DocumentsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center py-16"
           >
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">No documents uploaded</h2>
-            <p className="text-sm text-slate-600 mb-4">Upload PDF, DOCX, or TXT files and ask AEIOU questions about them</p>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-2">No documents uploaded</h2>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">Upload PDF, DOCX, or TXT files and ask AEIOU questions about them</p>
             <div className="flex items-center justify-center gap-2">
-              <span className="px-3 py-1 text-xs font-medium bg-red-50 text-red-600 rounded-full">PDF</span>
-              <span className="text-slate-400">·</span>
+              <span className="px-3 py-1 text-xs font-medium bg-[var(--color-error)]/10 text-[var(--color-error)] rounded-full">PDF</span>
+              <span className="text-[var(--text-muted)]">·</span>
               <span className="px-3 py-1 text-xs font-medium bg-blue-50 text-blue-600 rounded-full">DOCX</span>
-              <span className="text-slate-400">·</span>
+              <span className="text-[var(--text-muted)]">·</span>
               <span className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">TXT</span>
             </div>
           </motion.div>
@@ -306,10 +306,10 @@ export default function DocumentsPage() {
 
                     {/* Document Info */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">
+                      <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
                         {doc.title}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-[var(--text-tertiary)]">
                         {new Date(doc.created_at).toLocaleDateString()}
                         {doc.page_count > 0 && ` • ${doc.page_count} pages`}
                       </p>
@@ -354,7 +354,7 @@ export default function DocumentsPage() {
                         disabled={deletingId === doc.id}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        className="p-2 text-[var(--text-muted)] hover:text-[var(--color-error)] hover:bg-[var(--color-error)]/10 rounded-lg transition-colors disabled:opacity-50"
                         title="Delete"
                       >
                         {deletingId === doc.id ? (
@@ -371,21 +371,21 @@ export default function DocumentsPage() {
 
             {/* Pagination */}
             <div className="mt-8 flex items-center justify-between">
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-[var(--text-tertiary)]">
                 Page {currentPage} of {totalPages}
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="px-4 py-2 text-sm font-medium text-slate-900 bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-[var(--text-primary)] bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-4 py-2 text-sm font-medium text-slate-900 bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-[var(--text-primary)] bg-card border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Next
                 </button>
@@ -415,8 +415,8 @@ export default function DocumentsPage() {
               {/* Modal Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/50">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">{selectedDoc.title}</h2>
-                  <p className="text-sm text-slate-600">
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">{selectedDoc.title}</h2>
+                  <p className="text-sm text-[var(--text-secondary)]">
                     {selectedDoc.page_count} pages • {selectedDoc.file_type.toUpperCase()}
                   </p>
                 </div>
@@ -424,7 +424,7 @@ export default function DocumentsPage() {
                   onClick={closeModal}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-muted rounded-lg transition-colors"
+                  className="p-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-muted rounded-lg transition-colors"
                 >
                   <X size={20} />
                 </motion.button>
@@ -434,15 +434,15 @@ export default function DocumentsPage() {
               <div className="flex-1 overflow-y-auto p-6">
                 {selectedDoc.status !== 'ready' ? (
                   <div className="flex flex-col items-center py-10">
-                    <Loader2 size={32} className="animate-spin text-slate-400" />
-                    <p className="mt-4 text-slate-600">Document is still processing...</p>
+                    <Loader2 size={32} className="animate-spin text-[var(--text-muted)]" />
+                    <p className="mt-4 text-[var(--text-secondary)]">Document is still processing...</p>
                   </div>
                 ) : (
                   <>
                     {/* Summary Section */}
                     {docSummary && (
                       <div className="mb-6">
-                        <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                           <FileText size={16} className="text-blue-600" />
                           Summary
                         </h3>
@@ -455,7 +455,7 @@ export default function DocumentsPage() {
                     {/* NEW: Visual Intelligence Section */}
                     {selectedDoc.visual_analysis?.insights && (
                       <div className="mb-6">
-                        <h3 className="text-sm font-semibold text-indigo-600 mb-3 flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-[var(--brand-primary)] mb-3 flex items-center gap-2">
                           <Sparkles size={16} />
                           Visual Intelligence (AI Analysis)
                         </h3>
@@ -467,7 +467,7 @@ export default function DocumentsPage() {
 
                     {/* Search Section */}
                     <div className="mb-6">
-                      <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                         <Search size={16} className="text-blue-600" />
                         Search in Document
                       </h3>
@@ -478,7 +478,7 @@ export default function DocumentsPage() {
                           onChange={(e) => setSearchQuery(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleSearchInDoc()}
                           placeholder="Ask anything about this document..."
-                          className="flex-1 px-4 py-2.5 bg-background border border-border rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                          className="flex-1 px-4 py-2.5 bg-background border border-border rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                         />
                         <motion.button
                           onClick={handleSearchInDoc}
@@ -510,7 +510,7 @@ export default function DocumentsPage() {
 
                     {/* Quick Actions */}
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
                         <MessageSquare size={16} className="text-blue-600" />
                         Quick Actions
                       </h3>
@@ -524,7 +524,7 @@ export default function DocumentsPage() {
                             }}
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
-                            className="px-3 py-2 text-xs text-slate-600 bg-background hover:bg-muted border border-border rounded-lg transition-colors"
+                            className="px-3 py-2 text-xs text-[var(--text-secondary)] bg-background hover:bg-muted border border-border rounded-lg transition-colors"
                           >
                             {query}
                           </motion.button>

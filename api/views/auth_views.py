@@ -194,7 +194,7 @@ def reset_password(request):
 def login(request):
     login.throttle_scope = "auth_login"
     """
-    Login with username and password.
+    Login with username or email and password.
     Returns JWT tokens on success.
     """
     username = request.data.get("username", "").strip()

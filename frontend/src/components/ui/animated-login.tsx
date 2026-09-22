@@ -81,11 +81,11 @@ export default function AnimatedLoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium">Username</Label>
+              <Label htmlFor="username" className="text-sm font-medium">Username or email</Label>
               <Input
                 id="username"
                 type="text"
-                placeholder="Enter your username"
+                placeholder="Enter your username or email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onFocus={() => setIsTyping(true)}

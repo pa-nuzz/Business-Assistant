@@ -76,6 +76,16 @@ class TestAuthService:
         assert 'access' in result
         assert 'refresh' in result
         assert result['user']['username'] == 'testuser'
+
+    def test_login_success_with_email(self):
+        """Test successful login using email."""
+        user = User.objects.create_user(username='testuser', password='testpass123', email='test@example.com')
+
+        result = AuthService.login('test@example.com', 'testpass123')
+
+        assert 'access' in result
+        assert 'refresh' in result
+        assert result['user']['username'] == 'testuser'
     
     def test_login_invalid_credentials(self):
         """Test login with invalid credentials."""

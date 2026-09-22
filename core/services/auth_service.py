@@ -2,11 +2,9 @@
 Authentication service for handling auth business logic.
 Extracted from views to enable testing and reusability.
 """
-import os
 import logging
 from typing import Dict, Optional
 from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from django.utils import timezone
 from django.core.cache import cache
@@ -339,14 +337,27 @@ class AuthService:
                 return reset_code
 
         raise ValueError("Invalid or expired code")
+
+    @staticmethod
+    def _resolve_login_user(identifier: str) -> Optional[User]:
+        normalized_identifier = identifier.strip()
+
+        if not normalized_identifier:
+            return None
+
+        user = User.objects.filter(username__iexact=normalized_identifier).first()
+        if user is not None:
+            return user
+
+        return User.objects.filter(email__iexact=normalized_identifier).first()
     
     @staticmethod
-    def login(username: str, password: str) -> Dict:
+    def login(identifier: str, password: str) -> Dict:
         """
-        Login user with username and password.
+        Login user with username or email and password.
         
         Args:
-            username: Username
+            identifier: Username or email
             password: Password
             
         Returns:
@@ -355,62 +366,60 @@ class AuthService:
         Raises:
             ValueError: If login fails
         """
-        if not username or not password:
-            raise ValueError("Username and password are required")
+        if not identifier or not password:
+            raise ValueError("Username or email and password are required")
+
+        identifier = identifier.strip()
+        if not identifier:
+            raise ValueError("Username or email and password are required")
         
         # SECURITY: Check for account lockout
-        lockout_key = f"lockout_{username}"
+        lockout_key = f"lockout_{identifier.lower()}"
         if cache.get(lockout_key):
             raise ValueError("Account temporarily locked due to failed attempts. Try again in 15 minutes")
-        
-        # Try to authenticate
-        user = authenticate(username=username, password=password)
-        
+
+        user = AuthService._resolve_login_user(identifier)
+
         if user is None:
-            # Track failed login attempts
-            failed_key = f"failed_login_{username}"
+            failed_key = f"failed_login_{identifier.lower()}"
             failed_attempts = cache.get(failed_key, 0) + 1
             cache.set(failed_key, failed_attempts, timeout=LOCKOUT_DURATION)
-            
+
             if failed_attempts >= MAX_FAILED_ATTEMPTS:
                 cache.set(lockout_key, True, timeout=LOCKOUT_DURATION)
                 logger.warning("Account locked due to failed attempts")
             else:
                 logger.info(f"Failed login attempt {failed_attempts}")
-            
-            # Check if user exists but is not active
-            try:
-                user_obj = User.objects.get(username=username)
-
-                # Check password manually if authenticate returned None
-                if not user_obj.check_password(password):
-                    raise ValueError("Invalid username or password.")
-
-                if not user_obj.is_active:
-                    # For testing/demo purposes, auto-verify email if not verified
-                    # This allows immediate login for newly registered users in dev
-                    if hasattr(user_obj, 'email_verification') and not user_obj.email_verification.is_verified:
-                        user_obj.email_verification.is_verified = True
-                        user_obj.email_verification.save()
-                        user_obj.is_active = True
-                        user_obj.save()
-
-                        # Now that user is active, try to authenticate again
-                        user = authenticate(username=username, password=password)
-                        if user:
-                            # If successful, continue to token generation
-                            pass
-                        else:
-                            raise ValueError("Invalid username or password.")
-                    else:
-                        raise ValueError("Account is inactive. Please contact support.")
-            except User.DoesNotExist:
-                raise ValueError("Invalid username or password.")
 
             raise ValueError("Invalid username or password.")
         
+        failed_key = f"failed_login_{identifier.lower()}"
+
+        if not user.check_password(password):
+            failed_attempts = cache.get(failed_key, 0) + 1
+            cache.set(failed_key, failed_attempts, timeout=LOCKOUT_DURATION)
+
+            if failed_attempts >= MAX_FAILED_ATTEMPTS:
+                cache.set(lockout_key, True, timeout=LOCKOUT_DURATION)
+                logger.warning("Account locked due to failed attempts")
+            else:
+                logger.info(f"Failed login attempt {failed_attempts}")
+
+            raise ValueError("Invalid username or password.")
+        
+        if not user.is_active:
+            # For testing/demo purposes, auto-verify email if not verified
+            # This allows immediate login for newly registered users in dev
+            if hasattr(user, 'email_verification') and not user.email_verification.is_verified:
+                user.email_verification.is_verified = True
+                user.email_verification.save()
+                user.is_active = True
+                user.save(update_fields=["is_active"])
+            else:
+                raise ValueError("Account is inactive. Please contact support.")
+        
         # Clear failed attempts on successful login
-        cache.delete(f"failed_login_{username}")
+        cache.delete(f"failed_login_{identifier.lower()}")
         cache.delete(lockout_key)
         
         # Generate tokens

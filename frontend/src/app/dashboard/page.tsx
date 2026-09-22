@@ -85,8 +85,8 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-5xl mx-auto px-6 py-10">
+    <div className="min-h-screen bg-[var(--bg-base)]">
+      <div className="max-w-5xl mx-auto px-6 py-8">
 
         {/* Header */}
         <motion.div
@@ -105,17 +105,17 @@ export default function DashboardPage() {
               priority
             />
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">
+              <h1 className="text-2xl font-semibold text-[var(--text-primary)] tracking-tight">
                 {greeting}{username ? `, ${username}` : ''}
               </h1>
               {companyName && (
-                <p className="text-sm text-slate-500 mt-0.5">{companyName}</p>
+                <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{companyName}</p>
               )}
             </div>
           </div>
           <button
             onClick={() => router.push('/chat')}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--brand-primary)] text-[var(--text-inverse)] rounded-lg text-sm font-medium hover:bg-[var(--brand-primary-hover)] transition-colors"
           >
             <MessageSquare className="w-4 h-4" />
             New chat
@@ -127,12 +127,12 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-lg flex items-start gap-3"
+            className="mb-6 p-4 bg-[var(--color-error)]/10 border border-[var(--color-error)]/20 rounded-lg flex items-start gap-3"
           >
-            <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-[var(--color-error)] mt-0.5 shrink-0" />
             <div>
               {highAlerts.map((alert, i) => (
-                <p key={i} className="text-sm text-red-800 font-medium">
+                <p key={i} className="text-sm text-[var(--color-error)] font-medium">
                   {alert.message}
                 </p>
               ))}
@@ -172,16 +172,16 @@ export default function DashboardPage() {
               <button
                 key={item.href}
                 onClick={() => router.push(item.href)}
-                className="group flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all text-left"
+                className="group flex items-center gap-4 p-4 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl hover:border-[var(--border-strong)] hover:shadow-sm transition-all text-left"
               >
-                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-slate-200 transition-colors">
-                  <Icon className="w-5 h-5 text-slate-600" />
+                <div className="w-10 h-10 rounded-lg bg-[var(--bg-subtle)] flex items-center justify-center group-hover:bg-[var(--bg-subtle-hover)] transition-colors">
+                  <Icon className="w-5 h-5 text-[var(--text-tertiary)]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900">{item.label}</p>
-                  <p className="text-xs text-slate-500">{item.desc}</p>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{item.label}</p>
+                  <p className="text-xs text-[var(--text-tertiary)]">{item.desc}</p>
                 </div>
-                <ArrowUpRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
+                <ArrowUpRight className="w-4 h-4 text-[var(--border-strong)] group-hover:text-[var(--text-secondary)] transition-colors" />
               </button>
             );
           })}
@@ -204,17 +204,17 @@ export default function DashboardPage() {
               key={stat.label}
               className={`p-4 rounded-xl border ${
                 stat.accent
-                  ? 'bg-red-50 border-red-100'
-                  : 'bg-slate-50 border-slate-100'
+                  ? 'bg-[var(--color-error)]/10 border-[var(--color-error)]/20'
+                  : 'bg-[var(--bg-subtle)] border-[var(--border-subtle)]'
               }`}
             >
               <p className={`text-2xl font-semibold ${
-                stat.accent ? 'text-red-600' : 'text-slate-900'
+                stat.accent ? 'text-[var(--color-error)]' : 'text-[var(--text-primary)]'
               }`}>
                 {stat.value}
               </p>
               <p className={`text-xs mt-1 ${
-                stat.accent ? 'text-red-500' : 'text-slate-500'
+                stat.accent ? 'text-[var(--color-error)]' : 'text-[var(--text-tertiary)]'
               }`}>
                 {stat.label}
               </p>
@@ -230,13 +230,13 @@ export default function DashboardPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="lg:col-span-3 bg-white border border-slate-200 rounded-xl p-6"
+            className="lg:col-span-3 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl p-6"
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-medium text-slate-900">Intelligence Summary</h2>
+              <h2 className="text-sm font-medium text-[var(--text-primary)]">Intelligence Summary</h2>
               <button
                 onClick={fetchData}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors"
+                className="p-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
@@ -244,21 +244,21 @@ export default function DashboardPage() {
 
             {loading ? (
               <div className="space-y-3">
-                <div className="h-4 bg-slate-100 rounded animate-pulse w-3/4" />
-                <div className="h-4 bg-slate-100 rounded animate-pulse w-1/2" />
+                <div className="h-4 bg-[var(--bg-subtle)] rounded animate-pulse w-3/4" />
+                <div className="h-4 bg-[var(--bg-subtle)] rounded animate-pulse w-1/2" />
               </div>
             ) : data?.executive_summary ? (
-              <p className="text-sm text-slate-600 leading-relaxed">
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                 {data.executive_summary}
               </p>
             ) : (
               <div className="text-center py-8">
-                <p className="text-sm text-slate-500 mb-3">
+                <p className="text-sm text-[var(--text-tertiary)] mb-3">
                   Start a conversation or upload documents to get personalized insights.
                 </p>
                 <button
                   onClick={() => router.push('/chat')}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-subtle)] rounded-lg hover:bg-[var(--bg-subtle-hover)] transition-colors"
                 >
                   <MessageSquare className="w-4 h-4" />
                   Start chatting
@@ -267,8 +267,8 @@ export default function DashboardPage() {
             )}
 
             {!loading && !hasWorkspaceActivity && (
-              <div className="mt-5 pt-5 border-t border-slate-100">
-                <h3 className="text-sm font-medium text-slate-900 mb-3">First workspace win</h3>
+              <div className="mt-5 pt-5 border-t border-[var(--border-subtle)]">
+                <h3 className="text-sm font-medium text-[var(--text-primary)] mb-3">First workspace win</h3>
                 <div className="grid gap-2">
                   {[
                     { label: 'Upload a business document', detail: 'Give Aiden real context to summarize and query.', href: '/documents', icon: FileText },
@@ -280,14 +280,14 @@ export default function DashboardPage() {
                       <button
                         key={step.label}
                         onClick={() => router.push(step.href)}
-                        className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 text-left transition-colors"
+                        className="flex items-start gap-3 p-3 rounded-lg border border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-subtle)] text-left transition-colors"
                       >
-                        <Icon className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+                        <Icon className="w-4 h-4 text-[var(--text-tertiary)] mt-0.5 shrink-0" />
                         <span>
-                          <span className="block text-sm font-medium text-slate-800">{step.label}</span>
-                          <span className="block text-xs text-slate-500 mt-0.5">{step.detail}</span>
+                          <span className="block text-sm font-medium text-[var(--text-primary)]">{step.label}</span>
+                          <span className="block text-xs text-[var(--text-tertiary)] mt-0.5">{step.detail}</span>
                         </span>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-300 ml-auto mt-0.5 shrink-0" />
+                        <ArrowRight className="w-3.5 h-3.5 text-[var(--border-strong)] ml-auto mt-0.5 shrink-0" />
                       </button>
                     );
                   })}
@@ -297,18 +297,18 @@ export default function DashboardPage() {
 
             {/* Forecast mini-card */}
             {data?.forecast && (
-              <div className="mt-5 pt-5 border-t border-slate-100 flex items-center gap-6">
+              <div className="mt-5 pt-5 border-t border-[var(--border-subtle)] flex items-center gap-6">
                 <div>
-                  <p className="text-xs text-slate-500">Velocity</p>
-                  <p className="text-lg font-semibold text-slate-900 flex items-center gap-1">
+                  <p className="text-xs text-[var(--text-tertiary)]">Velocity</p>
+                  <p className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-1">
                     {data.forecast.velocity}
-                    <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                    <TrendingUp className="w-3.5 h-3.5 text-[var(--brand-success)]" />
                   </p>
                 </div>
-                <div className="w-px h-8 bg-slate-100" />
+                <div className="w-px h-8 bg-[var(--border-subtle)]" />
                 <div>
-                  <p className="text-xs text-slate-500">Backlog clearance</p>
-                  <p className="text-lg font-semibold text-slate-900">
+                  <p className="text-xs text-[var(--text-tertiary)]">Backlog clearance</p>
+                  <p className="text-lg font-semibold text-[var(--text-primary)]">
                     {data.forecast.backlog_clearance_days}d
                   </p>
                 </div>
@@ -323,8 +323,8 @@ export default function DashboardPage() {
             transition={{ delay: 0.2 }}
             className="lg:col-span-2 flex flex-col gap-3"
           >
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
-              <h3 className="text-sm font-medium text-slate-900 mb-3">Quick actions</h3>
+            <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl p-5">
+              <h3 className="text-sm font-medium text-[var(--text-primary)] mb-3">Quick actions</h3>
               <div className="space-y-2">
                 {[
                   { label: 'Create a task', icon: Plus, href: '/tasks', action: 'new' },
@@ -336,11 +336,11 @@ export default function DashboardPage() {
                     <button
                       key={link.label}
                       onClick={() => router.push(link.href)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition-colors text-left"
                     >
-                      <Icon className="w-4 h-4 text-slate-400" />
+                      <Icon className="w-4 h-4 text-[var(--text-tertiary)]" />
                       {link.label}
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-300 ml-auto" />
+                      <ArrowRight className="w-3.5 h-3.5 text-[var(--border-strong)] ml-auto" />
                     </button>
                   );
                 })}
@@ -349,10 +349,10 @@ export default function DashboardPage() {
 
             {/* Alerts */}
             {alerts.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-xl p-5">
-                <h3 className="text-sm font-medium text-slate-900 mb-3">
+              <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl p-5">
+                <h3 className="text-sm font-medium text-[var(--text-primary)] mb-3">
                   Alerts
-                  <span className="ml-2 text-xs text-slate-400 font-normal">{alerts.length}</span>
+                  <span className="ml-2 text-xs text-[var(--text-tertiary)] font-normal">{alerts.length}</span>
                 </h3>
                 <div className="space-y-2">
                   {alerts.slice(0, 4).map((alert, i) => (
@@ -360,10 +360,10 @@ export default function DashboardPage() {
                       key={i}
                       className={`flex items-start gap-2.5 p-3 rounded-lg text-xs ${
                         alert.severity === 'high'
-                          ? 'bg-red-50 text-red-700'
+                          ? 'bg-[var(--color-error)]/10 text-[var(--color-error)]'
                           : alert.severity === 'medium'
-                          ? 'bg-amber-50 text-amber-700'
-                          : 'bg-slate-50 text-slate-600'
+                          ? 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]'
+                          : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)]'
                       }`}
                     >
                       <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -377,7 +377,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Footer */}
-        <div className="mt-10 flex items-center justify-center gap-2 text-slate-300">
+        <div className="mt-10 flex items-center justify-center gap-2 text-[var(--text-tertiary)]">
           <Clock className="w-3 h-3" />
           <span className="text-[10px] font-medium uppercase tracking-widest">
             {new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
