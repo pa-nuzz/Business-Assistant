@@ -21,6 +21,13 @@ CSRF_TRUSTED_ORIGINS = config(
 SECURE_SSL_REDIRECT = False
 SECURE_HSTS_SECONDS = 0
 
+# Session/Cookie security for local development (HTTP)
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_DOMAIN = None
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+
 # Add CORS middleware for development (must be early in middleware stack)
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -54,6 +61,7 @@ EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="AEIOU AI <noreply@aeiou.ai>")
+DEFAULT_REPLY_EMAIL = config("DEFAULT_REPLY_EMAIL", default="AEIOU AI <support@aeiou.ai>")
 EMAIL_TIMEOUT = 10  # seconds
 
 # Local development settings - PostgreSQL required even in dev
@@ -69,23 +77,26 @@ DATABASES = {
     "default": dj_database_url.parse(_db_url, conn_max_age=600)
 }
 
-# Use Redis if available, fallback to eager execution for dev
-CELERY_BROKER_URL = os.environ.get("REDIS_URL", "memory://")
-CELERY_RESULT_BACKEND = "cache+memory://"
-CELERY_TASK_ALWAYS_EAGER = True
+# Use Redis for dev (required for Celery, cache, and channels)
+CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_STORE_EAGER_RESULT = True
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "unique-snowflake",
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
     }
 }
 
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.environ.get("REDIS_URL", "redis://localhost:6379/0")],
+        },
+    },
 }
 
 # Verbose logging in dev

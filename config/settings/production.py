@@ -102,6 +102,7 @@ EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="AEIOU AI <noreply@aeiou.ai>")
+DEFAULT_REPLY_EMAIL = config("DEFAULT_REPLY_EMAIL", default="AEIOU AI <support@aeiou.ai>")
 EMAIL_SUBJECT_PREFIX = "[AEIOU AI] "
 
 # ─── Logging Configuration ─────────────────────────────────────────────────────

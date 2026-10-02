@@ -492,6 +492,10 @@ export default function Sidebar() {
       router.push('/login');
       return;
     }
+    // Dispatch event to clear chat state for a fresh conversation
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('aeiou-new-chat'));
+    }
     router.push('/chat');
     setIsMobileOpen(false);
   }, [isAuthenticated, router]);
@@ -555,7 +559,15 @@ export default function Sidebar() {
           <div className="flex-1" />
           
           {/* Footer */}
-          <div className="p-3 border-t border-slate-100 shrink-0">
+          <div className="p-3 border-t border-slate-100 shrink-0 flex flex-col gap-1">
+            <Tooltip text="Expand sidebar">
+              <button
+                onClick={() => setIsCollapsed(false)}
+                className="w-12 h-12 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all duration-200"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </Tooltip>
             <Tooltip text={isAuthenticated ? "Logout" : "Login"}>
               <button
                 onClick={isAuthenticated ? handleLogout : () => router.push('/login')}
@@ -682,20 +694,6 @@ export default function Sidebar() {
       >
         <SidebarContent />
       </motion.aside>
-
-      {/* Floating expand button when collapsed (desktop only) */}
-      {!isMobileOpen && isCollapsed && (
-        <motion.button
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          whileHover={{ scale: 1.05 }}
-          onClick={() => setIsCollapsed(false)}
-          className="hidden lg:flex fixed bottom-6 left-[84px] z-40 w-8 h-8 bg-white border border-slate-200 shadow-md rounded-full items-center justify-center text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-all"
-          title="Expand sidebar"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </motion.button>
-      )}
 
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>

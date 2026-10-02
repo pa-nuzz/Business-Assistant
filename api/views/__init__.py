@@ -60,6 +60,12 @@ from .task_views import (
     list_activities,
     task_dashboard,
     task_stats,
+    list_collaborators,
+    add_collaborator,
+    remove_collaborator,
+)
+from .task_detail_views import (
+    add_comment,
 )
 
 # Analytics
@@ -165,6 +171,10 @@ from .permission_views import (
     check_resource_permission,
     grant_permission,
     revoke_permission,
+    create_invitation,
+    list_invitations,
+    accept_invitation,
+    revoke_invitation,
 )
 
 # Semantic Search
@@ -226,6 +236,16 @@ from .session_views import (
     list_sessions,
     revoke_session,
     revoke_all_other_sessions,
+)
+
+# Memory Management
+from .memory_views import (
+    list_memories,
+    create_memory,
+    get_memory,
+    update_memory,
+    delete_memory,
+    regenerate_embeddings,
 )
 
 # Misc (tags, health)

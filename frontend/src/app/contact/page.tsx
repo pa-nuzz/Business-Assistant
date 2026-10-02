@@ -62,7 +62,7 @@ export default function ContactPage() {
               transition={{ delay: 0.1 }}
               className="text-lg text-slate-500 leading-relaxed"
             >
-              Have a question, idea, or partnership in mind? We&rsquo;d love to hear from you.
+              Have a question, idea, or partnership in mind? We'd love to hear from you.
             </motion.p>
           </div>
 
@@ -95,7 +95,7 @@ export default function ContactPage() {
                     <div className="text-xl font-extrabold text-slate-900 tracking-tight">Anuj Paudel</div>
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ring-2 ring-emerald-500/20" title="Online" />
                   </div>
-                  <div className="text-sm font-medium text-indigo-600">Founder &amp; Developer</div>
+                  <div className="text-sm font-medium text-indigo-600">Developer</div>
                 </div>
 
                 <div className="space-y-2 relative z-10">

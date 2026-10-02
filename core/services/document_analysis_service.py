@@ -3,6 +3,8 @@ from typing import List, Dict, Any, Optional
 from django.contrib.auth.models import User
 from core.models import Document, Task, DocumentChunk
 from core.services.semantic_service import SemanticSearchService
+from services.model_layer import call_model, TaskType, Priority
+from services.gemini import call_vision
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,12 +18,7 @@ class DocumentAnalysisService:
 
     def analyze_document(self, document: Document) -> Dict[str, Any]:
         """
-        Analyze a document and extract insights.
-        
-        This is a placeholder implementation. In production:
-        1. Call LLM to summarize document content
-        2. Extract key entities, dates, action items
-        3. Generate suggested tasks
+        Analyze a document and extract insights using LLM.
         """
         logger.info(f"Analyzing document {document.id} for user {self.user.id}")
         
@@ -36,46 +33,124 @@ class DocumentAnalysisService:
                 'message': 'Document has no extracted text to analyze'
             }
         
-        # Combine all content (limit to first ~4000 chars for summary)
+        # Combine all content (limit for token budget)
         all_content = ' '.join([c.content for c in chunks])
-        content_preview = all_content[:4000]
+        content_preview = all_content[:8000]  # ~2k tokens
         
-        # Placeholder analysis results
-        # In production, this would call the LLM
-        analysis = {
-            'document_id': str(document.id),
-            'document_title': document.title,
-            'status': 'analyzed',
-            'summary': self._generate_placeholder_summary(content_preview),
-            'key_topics': self._extract_keywords(chunks),
-            'suggested_tasks': self._suggest_tasks_placeholder(content_preview),
-            'total_chunks_analyzed': total_chunks,
-            'content_length': len(all_content),
-            'note': 'AI analysis is in placeholder mode. Enable LLM integration for full functionality.'
-        }
+        # Generate AI-powered analysis
+        try:
+            analysis = self._generate_ai_analysis(document, content_preview, total_chunks)
+        except Exception as e:
+            logger.warning(f"AI analysis failed, using fallback: {e}")
+            analysis = self._generate_fallback_analysis(document, chunks)
         
         return analysis
 
+    def _generate_ai_analysis(self, document: Document, content: str, total_chunks: int) -> Dict[str, Any]:
+        """Generate AI-powered document analysis."""
+        
+        analysis_prompt = f"""Analyze this business document titled '{document.title}' and provide a comprehensive analysis.
+
+Document content (first 8000 chars):
+{content}
+
+Provide a JSON response with exactly these fields:
+{{
+  "summary": "2-3 sentence executive summary",
+  "key_topics": ["topic1", "topic2", "topic3"],
+  "document_type": "contract|invoice|report|proposal|cv|email|other",
+  "business_entities": {{
+    "companies": ["company1", "company2"],
+    "people": ["person1", "person2"],
+    "dates": ["date1", "date2"],
+    "amounts": ["amount1", "amount2"],
+    "locations": ["location1"]
+  }},
+  "suggested_tasks": [
+    {{"title": "Task title", "description": "Task description", "priority": "high|medium|low", "category": "review|finance|schedule|compliance|general", "confidence": 0.0-1.0}}
+  ],
+  "key_insights": ["insight1", "insight2"],
+  "risk_flags": ["risk1", "risk2"],
+  "action_items": ["action1", "action2"]
+}}
+
+Only output valid JSON. No markdown, no extra text."""
+
+        result = call_model(
+            user_id=self.user.id,
+            user_message=analysis_prompt,
+            base_system_prompt="You are a business document analyzer. Extract structured insights from documents. Output only valid JSON.",
+            task_type=TaskType.ANALYSIS,
+            priority=Priority.HIGH,
+            use_cache=False,
+        )
+        
+        # Parse JSON response
+        import json
+        try:
+            ai_result = json.loads(result.text.strip())
+        except json.JSONDecodeError:
+            # Try to extract JSON from markdown blocks
+            text = result.text.strip()
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+            ai_result = json.loads(text)
+        
+        # Get keywords from chunks
+        chunks = DocumentChunk.objects.filter(document_id=document.id)
+        key_topics = self._extract_keywords(chunks)
+        
+        # Add document metadata
+        ai_result.update({
+            'document_id': str(document.id),
+            'document_title': document.title,
+            'status': 'analyzed',
+            'key_topics': key_topics,
+            'total_chunks_analyzed': total_chunks,
+            'content_length': len(content),
+        })
+        
+        return ai_result
+    
+    def _generate_fallback_analysis(self, document: Document, chunks) -> Dict[str, Any]:
+        """Fallback analysis when AI is unavailable."""
+        content = ' '.join([c.content for c in chunks])
+        content_preview = content[:4000]
+        
+        return {
+            'document_id': str(document.id),
+            'document_title': document.title,
+            'status': 'analyzed_fallback',
+            'summary': self._generate_placeholder_summary(content_preview),
+            'key_topics': self._extract_keywords(chunks),
+            'document_type': 'unknown',
+            'business_entities': {},
+            'suggested_tasks': self._suggest_tasks_placeholder(content),
+            'key_insights': [],
+            'risk_flags': [],
+            'action_items': [],
+            'total_chunks_analyzed': chunks.count(),
+            'content_length': len(content),
+            'note': 'AI analysis unavailable - using fallback analysis'
+        }
+
     def _generate_placeholder_summary(self, content: str) -> str:
         """Generate a placeholder summary."""
-        # In production: Call LLM to generate summary
-        # For now, return first 200 chars as "summary"
         sentences = content.split('.')[:3]
         return '. '.join(sentences) + '.' if sentences else "No summary available."
 
     def _extract_keywords(self, chunks) -> List[str]:
         """Extract keywords from chunks."""
-        # Aggregate all keywords from chunks
         all_keywords = set()
         for chunk in chunks:
             all_keywords.update(chunk.keywords)
-        return list(all_keywords)[:10]  # Top 10 keywords
+        return list(all_keywords)[:10]
 
     def _suggest_tasks_placeholder(self, content: str) -> List[Dict[str, Any]]:
         """Generate placeholder task suggestions based on content."""
         suggested_tasks = []
-        
-        # Simple keyword-based task suggestions
         content_lower = content.lower()
         
         if any(word in content_lower for word in ['deadline', 'due', 'by', 'before']):
@@ -114,7 +189,6 @@ class DocumentAnalysisService:
                 'confidence': 0.7
             })
         
-        # Always suggest a generic review task
         if not suggested_tasks:
             suggested_tasks.append({
                 'title': 'Review uploaded document',
@@ -129,53 +203,92 @@ class DocumentAnalysisService:
     def create_tasks_from_suggestions(self, document: Document, suggestions: List[Dict]) -> List[Task]:
         """
         Create actual Task objects from AI suggestions.
-        
-        In production: Would create tasks in database
-        For now: Returns what tasks would be created
         """
         created_tasks = []
         
         for suggestion in suggestions:
-            # In production, create actual Task objects
-            # task = Task.objects.create(
-            #     user=self.user,
-            #     title=suggestion['title'],
-            #     description=suggestion['description'],
-            #     priority=suggestion['priority'],
-            #     source_document=document,
-            #     auto_extracted=True
-            # )
-            # created_tasks.append(task)
-            
-            # For now, just return the suggestion
-            created_tasks.append(suggestion)
+            task = Task.objects.create(
+                user=self.user,
+                created_by=self.user,
+                business_profile=self.user.business_profile,
+                title=suggestion['title'],
+                description=suggestion['description'],
+                priority=suggestion['priority'],
+                status='todo',
+                source_document=document,
+                auto_extracted=True,
+            )
+            created_tasks.append(task)
         
         return created_tasks
 
     def extract_entities(self, document: Document) -> Dict[str, List[str]]:
         """
         Extract named entities from document.
-        
-        Entities: people, organizations, dates, locations, amounts
         """
         chunks = DocumentChunk.objects.filter(document=document)
         all_content = ' '.join([c.content for c in chunks])
         
-        # Placeholder: simple pattern matching
-        # In production, use NER (Named Entity Recognition) model
+        # Use AI for entity extraction
+        try:
+            entity_prompt = f"""Extract named entities from this document. Return JSON only.
+
+Content: {all_content[:4000]}
+
+Return exactly:
+{{
+  "people": [],
+  "organizations": [],
+  "dates": [],
+  "locations": [],
+  "amounts": [],
+  "emails": [],
+  "urls": []
+}}"""
+
+            result = call_model(
+                user_id=self.user.id,
+                user_message=entity_prompt,
+                base_system_prompt="You are a named entity recognition system. Extract entities from text. Output only valid JSON.",
+                task_type=TaskType.ANALYSIS,
+                priority=Priority.HIGH,
+                use_cache=False,
+            )
+            
+            import json
+            try:
+                entities = json.loads(result.text.strip())
+            except json.JSONDecodeError:
+                text = result.text.strip()
+                if "```json" in text:
+                    text = text.split("```json")[1].split("```")[0].strip()
+                elif "```" in text:
+                    text = text.split("```")[1].split("```")[0].strip()
+                entities = json.loads(text)
+        except Exception as e:
+            logger.warning(f"AI entity extraction failed, using fallback: {e}")
+            entities = self._extract_entities_fallback(all_content)
+        
+        return entities
+    
+    def _extract_entities_fallback(self, content: str) -> Dict[str, List[str]]:
+        """Fallback entity extraction using regex patterns."""
+        import re
+        
         entities = {
-            'dates': self._extract_dates_placeholder(all_content),
-            'emails': self._extract_emails(all_content),
-            'amounts': self._extract_amounts_placeholder(all_content),
-            'urls': self._extract_urls(all_content)
+            'people': [],
+            'organizations': [],
+            'dates': self._extract_dates_placeholder(content),
+            'locations': [],
+            'amounts': self._extract_amounts_placeholder(content),
+            'emails': self._extract_emails(content),
+            'urls': self._extract_urls(content)
         }
         
         return entities
 
     def _extract_dates_placeholder(self, content: str) -> List[str]:
-        """Extract dates using simple patterns (placeholder)."""
         import re
-        # Simple date patterns MM/DD/YYYY or MM-DD-YYYY
         patterns = [
             r'\b\d{1,2}/\d{1,2}/\d{2,4}\b',
             r'\b\d{1,2}-\d{1,2}-\d{2,4}\b',
@@ -184,19 +297,16 @@ class DocumentAnalysisService:
         dates = []
         for pattern in patterns:
             dates.extend(re.findall(pattern, content, re.IGNORECASE))
-        return list(set(dates))[:5]  # Deduplicate and limit
+        return list(set(dates))[:5]
 
     def _extract_emails(self, content: str) -> List[str]:
-        """Extract email addresses."""
         import re
         pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
         emails = re.findall(pattern, content)
         return list(set(emails))[:5]
 
     def _extract_amounts_placeholder(self, content: str) -> List[str]:
-        """Extract monetary amounts (placeholder)."""
         import re
-        # Match currency patterns like $1,234.56 or 1,234 USD
         patterns = [
             r'\$[\d,]+\.?\d*',
             r'[\d,]+\.?\d*\s*(?:USD|EUR|GBP|\$)',
@@ -207,7 +317,6 @@ class DocumentAnalysisService:
         return list(set(amounts))[:5]
 
     def _extract_urls(self, content: str) -> List[str]:
-        """Extract URLs."""
         import re
         pattern = r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[^\s]*'
         urls = re.findall(pattern, content)

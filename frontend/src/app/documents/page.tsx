@@ -79,7 +79,7 @@ export default function DocumentsPage() {
         processingDocs.map(async (doc) => {
           try {
             const response = await documents.getStatus(doc.id);
-            return { ...doc, status: response.data.status, page_count: response.data.pages };
+            return { ...doc, status: response.status || doc.status, page_count: response.page_count ?? doc.page_count };
           } catch {
             return doc;
           }

@@ -5,11 +5,31 @@ Extracted from views to enable testing and reusability.
 import logging
 from typing import Dict, List, Optional, Generator
 from django.contrib.auth.models import User
-from core.models import Conversation, Message
+from core.models import Conversation, Message, WorkspaceMember
 from agents import orchestrator
 from utils.sanitization import sanitize_plain_text
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_workspace_access(user: User, workspace_id: str) -> bool:
+    """
+    Validate that the user is a member of the workspace.
+    Returns True if valid, False otherwise.
+    """
+    if not workspace_id:
+        return True  # Personal scope (no workspace_id) is always allowed
+    
+    try:
+        import uuid
+        uuid.UUID(workspace_id)
+    except (ValueError, TypeError):
+        return False
+    
+    return WorkspaceMember.objects.filter(
+        workspace_id=workspace_id,
+        user=user
+    ).exists()
 
 
 class ChatService:
@@ -22,7 +42,8 @@ class ChatService:
         self,
         message: str,
         conversation_id: Optional[str] = None,
-        stream: bool = False
+        stream: bool = False,
+        workspace_id: Optional[str] = None
     ) -> Dict:
         """
         Send a message and get AI response.
@@ -31,6 +52,7 @@ class ChatService:
             message: User message content
             conversation_id: Optional conversation ID to continue
             stream: Whether to stream the response
+            workspace_id: Optional workspace UUID for workspace-scoped chat
             
         Returns:
             Dict with reply, conversation_id, model_used, tools_used, intent
@@ -44,11 +66,15 @@ class ChatService:
 
         message = sanitize_plain_text(message, max_length=4000)
         
+        # Validate workspace access
+        if not _validate_workspace_access(self.user, workspace_id):
+            raise ValueError("You don't have access to this workspace")
+        
         # Check for intelligent commands
         command_result = self._process_intelligent_commands(message)
         if command_result:
             # Get or create conversation for command response
-            conversation = self._get_or_create_conversation(conversation_id, message)
+            conversation = self._get_or_create_conversation(conversation_id, message, workspace_id)
             
             # Save user message and command response
             self._save_messages(conversation, message, {
@@ -67,7 +93,7 @@ class ChatService:
             }
         
         # Get or create conversation
-        conversation = self._get_or_create_conversation(conversation_id, message)
+        conversation = self._get_or_create_conversation(conversation_id, message, workspace_id)
         
         # Build conversation history
         history = self._build_conversation_history(conversation)
@@ -79,6 +105,7 @@ class ChatService:
                 user_id=self.user.id,
                 conversation_history=history,
                 user_name=self.user.get_full_name() or self.user.username,
+                workspace_id=workspace_id,
             )
         except Exception as e:
             logger.exception("Agent run failed")
@@ -98,7 +125,8 @@ class ChatService:
     def send_message_stream(
         self,
         message: str,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        workspace_id: Optional[str] = None
     ) -> Generator[str, None, None]:
         """
         Send a message and stream AI response.
@@ -106,6 +134,7 @@ class ChatService:
         Args:
             message: User message content
             conversation_id: Optional conversation ID to continue
+            workspace_id: Optional workspace UUID for workspace-scoped chat
             
         Yields:
             SSE formatted strings
@@ -119,8 +148,12 @@ class ChatService:
 
         message = sanitize_plain_text(message, max_length=4000)
         
+        # Validate workspace access
+        if not _validate_workspace_access(self.user, workspace_id):
+            raise ValueError("You don't have access to this workspace")
+        
         # Get or create conversation
-        conversation = self._get_or_create_conversation(conversation_id, message)
+        conversation = self._get_or_create_conversation(conversation_id, message, workspace_id)
         
         # Build conversation history
         history = self._build_conversation_history(conversation)
@@ -145,6 +178,7 @@ class ChatService:
                 conversation_history=history,
                 user_name=self.user.get_full_name() or self.user.username,
                 conversation_id=str(conversation.id),
+                workspace_id=workspace_id,
             ):
                 yield sse_data
                 
@@ -184,7 +218,8 @@ class ChatService:
     def _get_or_create_conversation(
         self,
         conversation_id: Optional[str],
-        message: str
+        message: str,
+        workspace_id: Optional[str] = None
     ) -> Conversation:
         """Get existing conversation or create new one."""
         if conversation_id:
@@ -199,10 +234,17 @@ class ChatService:
             except Conversation.DoesNotExist:
                 raise ValueError("Conversation not found")
         
-        return Conversation.objects.create(
+        # For new conversations, set workspace if provided
+        conversation = Conversation.objects.create(
             user=self.user,
             title=message[:80],
         )
+        
+        if workspace_id:
+            conversation.workspace_id = workspace_id
+            conversation.save(update_fields=["workspace"])
+        
+        return conversation
     
     def _build_conversation_history(self, conversation: Conversation) -> List[Dict]:
         """Build conversation history with enhanced professional context."""

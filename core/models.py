@@ -170,85 +170,14 @@ class BusinessProfile(models.Model):
         return f"{self.company_name} ({self.user.username})"
 
 
-class Goal(models.Model):
-    """
-    Legacy normalized goals model kept for backward compatibility.
-    Current runtime flows still rely on BusinessProfile.goals JSON field.
-    """
-    STATUS_CHOICES = [
-        ("active", "Active"),
-        ("completed", "Completed"),
-        ("archived", "Archived"),
-    ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    business_profile = models.ForeignKey(
-        BusinessProfile,
-        on_delete=models.CASCADE,
-        related_name="goals_proper"
-    )
-    title = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
-    target_date = models.DateTimeField(null=True, blank=True)
-    priority = models.IntegerField(default=0)  # Higher = more important
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-priority", "-created_at"]
-        indexes = [
-            models.Index(fields=["business_profile", "status"]),
-            models.Index(fields=["business_profile", "target_date"]),
-        ]
-
-    def __str__(self):
-        return self.title
-
-
-class Metric(models.Model):
-    """
-    Legacy normalized metrics model kept for backward compatibility.
-    Current runtime flows still rely on BusinessProfile.key_metrics JSON field.
-    """
-    METRIC_TYPE_CHOICES = [
-        ("number", "Number"),
-        ("currency", "Currency"),
-        ("percentage", "Percentage"),
-        ("text", "Text"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    business_profile = models.ForeignKey(
-        BusinessProfile,
-        on_delete=models.CASCADE,
-        related_name="metrics"
-    )
-    key = models.CharField(max_length=100, db_index=True)
-    name = models.CharField(max_length=255)  # Display name
-    metric_type = models.CharField(max_length=20, choices=METRIC_TYPE_CHOICES, default="number")
-    value_numeric = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    value_text = models.CharField(max_length=255, blank=True)
-    unit = models.CharField(max_length=50, blank=True)  # e.g., "USD", "users", "%"
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-updated_at"]
-        indexes = [
-            models.Index(fields=["business_profile", "key"]),
-        ]
-        unique_together = ("business_profile", "key")
-
-    def __str__(self):
-        return f"{self.name}: {self.value_numeric or self.value_text}"
 
 
 class UserMemory(models.Model):
     """
-    Lightweight structured memory. NOT a vector DB.
-    Agent writes key facts here; retrieves them by category.
-    Think of it as a smart notepad the agent maintains.
+    Lightweight structured memory with semantic search capability.
+    Agent writes key facts here; retrieves them by category or semantic similarity.
+    Think of it as a smart notepad the agent maintains with vector search.
     """
     CATEGORY_CHOICES = [
         ("preference", "User Preference"),
@@ -266,12 +195,47 @@ class UserMemory(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Semantic search - vector embedding
+    embedding = VectorField(
+        dimensions=768,
+        null=True,
+        blank=True,
+        help_text="Vector embedding for semantic search [768-dim]"
+    )
+    embedding_model = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Model used to generate embedding (e.g., 'gemini-embedding-001')"
+    )
+    embedding_generated_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         unique_together = ("user", "key")          # one value per key per user
-        indexes = [models.Index(fields=["user", "category"])]
+        indexes = [
+            models.Index(fields=["user", "category"]),
+            models.Index(fields=["embedding_model"]),
+        ]
 
     def __str__(self):
         return f"{self.user.username} | {self.key}: {self.value[:50]}"
+
+    def has_embedding(self) -> bool:
+        return bool(self.embedding)
+
+    def cosine_similarity(self, query_embedding: list) -> float:
+        """Calculate cosine similarity with query embedding."""
+        if not self.embedding or not query_embedding:
+            return 0.0
+        doc_vector = list(self.embedding)
+        if len(doc_vector) != len(query_embedding):
+            return 0.0
+        dot = sum(float(a) * float(b) for a, b in zip(doc_vector, query_embedding))
+        doc_norm = sum(float(a) ** 2 for a in doc_vector) ** 0.5
+        query_norm = sum(float(b) ** 2 for b in query_embedding) ** 0.5
+        if not doc_norm or not query_norm:
+            return 0.0
+        return dot / (doc_norm * query_norm)
 
 
 class Document(models.Model):
@@ -289,6 +253,13 @@ class Document(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="documents")
+    workspace = models.ForeignKey(
+        "Workspace", 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name="documents"
+    )
     title = models.CharField(max_length=255)
     file = models.FileField(upload_to="documents/%Y/%m/", null=True, blank=True)
     file_type = models.CharField(max_length=10)    # pdf, docx, txt
@@ -396,6 +367,13 @@ class Conversation(models.Model):
     """One conversation session. Supports soft delete."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="conversations")
+    workspace = models.ForeignKey(
+        "Workspace", 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name="conversations"
+    )
     title = models.CharField(max_length=255, blank=True)
     archived = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -485,6 +463,13 @@ class Task(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tasks")
+    workspace = models.ForeignKey(
+        "Workspace", 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name="tasks"
+    )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="todo")
@@ -495,6 +480,7 @@ class Task(models.Model):
     # Assignment
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_tasks")
     assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tasks")
+    collaborators = models.ManyToManyField(User, related_name="collaborating_tasks", blank=True)
     
     # Links to other entities
     conversation = models.ForeignKey(Conversation, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks")
@@ -749,13 +735,15 @@ class AuditLog(models.Model):
 
 
 class WorkspaceContext(models.Model):
-    """Business context and AI memory persistence per workspace."""
+    """Business context and AI memory persistence per workspace (shared across members)."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workspace_contexts")
-    
-    # Workspace identification
-    workspace_id = models.CharField(max_length=100, db_index=True, help_text="Unique workspace identifier")
-    workspace_name = models.CharField(max_length=200, blank=True)
+    workspace = models.OneToOneField(
+        "Workspace", 
+        on_delete=models.CASCADE, 
+        related_name="context",
+        null=False,
+        blank=False,
+    )
     
     # Business context - company/business specific information
     business_context = models.JSONField(
@@ -764,7 +752,7 @@ class WorkspaceContext(models.Model):
         help_text="Business-specific context: company info, industry, tone, etc."
     )
     
-    # AI Memory - persistent facts learned about the user/workspace
+    # AI Memory - persistent facts learned about the workspace (shared)
     ai_memory = models.JSONField(
         default=list,
         blank=True,
@@ -793,13 +781,14 @@ class WorkspaceContext(models.Model):
     class Meta:
         ordering = ["-last_accessed"]
         indexes = [
-            models.Index(fields=["user", "workspace_id"], name="workspace_ctx_user_idx"),
-            models.Index(fields=["workspace_id"], name="workspace_ctx_id_idx"),
+            models.Index(fields=["workspace"], name="workspace_ctx_ws_idx"),
         ]
-        unique_together = ["user", "workspace_id"]
+        # unique_together = ["workspace"]  # Implied by OneToOne
     
     def __str__(self):
-        return f"{self.workspace_name or self.workspace_id} context for {self.user.username}"
+        if self.workspace:
+            return f"{self.workspace.name} context"
+        return f"Context {self.id}"
     
     def add_memory(self, memory_type: str, content: str, source_conversation_id: str = None):
         """Add a new memory entry."""
@@ -1139,11 +1128,18 @@ class NotificationPreference(models.Model):
 class Workspace(models.Model):
     """
     Workspace for organizing users and resources with role-based permissions.
+    A Personal workspace (is_personal=True) is auto-created per user and is
+    the user's private scope — it must never gain additional members.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_workspaces")
+    is_personal = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True for a user's auto-created private Personal workspace"
+    )
     
     # Settings
     is_public = models.BooleanField(default=False)
@@ -1406,44 +1402,122 @@ class WebhookDelivery(models.Model):
         return f"{self.webhook.name} - {self.event_type} ({self.status})"
 
 
-class ConversationMemory(models.Model):
-    """Per-conversation memory for maintaining context within a chat session."""
+class WorkspaceInvitation(models.Model):
+    """
+    Workspace invitation with token-based acceptance flow.
+    Supports email-based invitations with role assignment.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('expired', 'Expired'),
+        ('revoked', 'Revoked'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    conversation = models.OneToOneField(
-        Conversation, 
-        on_delete=models.CASCADE, 
-        related_name="memory"
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="invitations")
+    email = models.EmailField()
+    role = models.CharField(max_length=20, choices=WorkspaceMember.ROLES, default='member')
+    
+    # Invitation tracking
+    invited_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_invitations")
+    invited_at = models.DateTimeField(auto_now_add=True)
+    
+    # Token for acceptance (secure, one-time use)
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    
+    # Status tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Acceptance tracking
+    accepted_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name="accepted_invitations"
     )
+    accepted_at = models.DateTimeField(null=True, blank=True)
     
-    # Extracted facts and entities from the conversation
-    extracted_facts = models.JSONField(default=list, blank=True)
-    user_intents = models.JSONField(default=list, blank=True)
+    # Expiration
+    expires_at = models.DateTimeField()
     
-    # Running summary of the conversation
-    running_summary = models.TextField(blank=True)
-    
-    # Key topics discussed
-    topics = models.JSONField(default=list, blank=True)
-    
-    # Last updated
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
-        ordering = ["-updated_at"]
-    
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['workspace', 'email']),
+            models.Index(fields=['token']),
+            models.Index(fields=['status', 'expires_at']),
+        ]
+
     def __str__(self):
-        return f"Memory for conversation {self.conversation.id}"
-    
-    def add_fact(self, fact: str, confidence: float = 1.0):
-        """Add an extracted fact."""
-        self.extracted_facts.append({
-            "fact": fact,
-            "confidence": confidence,
-            "added_at": timezone.now().isoformat(),
-        })
-        self.save(update_fields=["extracted_facts", "updated_at"])
-    
-    def update_summary(self, summary: str):
-        """Update the running conversation summary."""
-        self.running_summary = summary
-        self.save(update_fields=["running_summary", "updated_at"])
+        return f"Invitation to {self.workspace.name} for {self.email} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = secrets.token_urlsafe(32)
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(days=7)
+        super().save(*args, **kwargs)
+
+    def is_valid(self) -> bool:
+        """Check if invitation is still valid for acceptance."""
+        return (
+            self.status == 'pending' and 
+            self.expires_at > timezone.now()
+        )
+
+    def accept(self, user: User) -> WorkspaceMember:
+        """Accept the invitation and create workspace membership."""
+        if not self.is_valid():
+            raise ValueError("Invitation is no longer valid")
+        
+        from core.models import WorkspaceMember
+        
+        # Check if user already a member
+        if WorkspaceMember.objects.filter(
+            workspace=self.workspace, 
+            user=self.accepted_by or user
+        ).exists():
+            raise ValueError("User is already a member of this workspace")
+        
+        # Create membership
+        member = WorkspaceMember.objects.create(
+            workspace=self.workspace,
+            user=self.accepted_by or user,
+            role=self.role,
+            invited_by=self.invited_by,
+            invited_at=self.invited_at,
+        )
+        
+        # Update invitation
+        self.status = 'accepted'
+        self.accepted_by = user
+        self.accepted_at = timezone.now()
+        self.save(update_fields=['status', 'accepted_by', 'accepted_at', 'updated_at'])
+        
+        return member
+
+    def revoke(self, revoked_by: User) -> None:
+        """Revoke the invitation."""
+        if self.status != 'pending':
+            raise ValueError("Can only revoke pending invitations")
+        
+        # Check permission
+        if self.invited_by != revoked_by:
+            member = WorkspaceMember.objects.get(
+                workspace=self.workspace, 
+                user=revoked_by
+            )
+            if not member.can_manage_member(self.role):
+                raise PermissionError("You don't have permission to revoke this invitation")
+        
+        self.status = 'revoked'
+        self.save(update_fields=['status', 'updated_at'])
+
+
+

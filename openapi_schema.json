@@ -1,0 +1,4233 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AEIOU AI API",
+    "version": "1.0.0",
+    "description": "Business Assistant API with task management, document processing, and AI capabilities"
+  },
+  "paths": {
+    "/api/v1/actions/smart/": {
+      "post": {
+        "operationId": "v1_actions_smart_create",
+        "description": "Endpoint for natural language commands from the global command palette.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/broadcast/": {
+      "post": {
+        "operationId": "v1_admin_broadcast_create",
+        "description": "Admin-only broadcast message to all users.\nPOST /api/v1/admin/broadcast/\nRequest: {\"message\": \"...\", \"type\": \"info|warning|maintenance\"}",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/dashboard/": {
+      "get": {
+        "operationId": "v1_admin_dashboard_retrieve",
+        "description": "Admin-only: system-wide stats.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/reindex-all/": {
+      "post": {
+        "operationId": "v1_admin_reindex_all_create",
+        "description": "Admin-only endpoint to trigger reindexing of all documents.\nPOST /api/v1/admin/reindex-all/",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/ai-tasks/{task_id}/accept/": {
+      "post": {
+        "operationId": "v1_ai_tasks_accept_create",
+        "description": "Accept an AI-generated task (mark as reviewed).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/ai-tasks/{task_id}/reject/": {
+      "post": {
+        "operationId": "v1_ai_tasks_reject_create",
+        "description": "Reject and delete an AI-generated task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/ai-tasks/pending/": {
+      "get": {
+        "operationId": "v1_ai_tasks_pending_retrieve",
+        "description": "Get all pending AI-generated tasks awaiting review.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/": {
+      "get": {
+        "operationId": "v1_analytics_retrieve",
+        "description": "Get comprehensive dashboard analytics for the current user.\n\nReturns:\n    profile: Business profile data\n    summary: Usage statistics (conversations, messages, documents, tasks)\n    insights: Top topics, focus areas, engagement metrics, productivity score\n    activity_trends: Daily message counts for last 30 days\n    followups: Pending follow-ups and reminders\n    recent_activity: Recent messages and task activities",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/admin/": {
+      "get": {
+        "operationId": "v1_analytics_admin_retrieve",
+        "description": "Get admin dashboard (requires staff status).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/ai-usage/": {
+      "get": {
+        "operationId": "v1_analytics_ai_usage_retrieve",
+        "description": "Get AI usage and cost metrics.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/delete-data/": {
+      "delete": {
+        "operationId": "v1_analytics_delete_data_destroy",
+        "description": "Delete user's analytics data (GDPR compliance).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/engagement/": {
+      "get": {
+        "operationId": "v1_analytics_engagement_retrieve",
+        "description": "Get user engagement metrics.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/export/": {
+      "post": {
+        "operationId": "v1_analytics_export_create",
+        "description": "Request analytics data export.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/export/{export_id}/status/": {
+      "get": {
+        "operationId": "v1_analytics_export_status_retrieve",
+        "description": "Check export generation status.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/retention/": {
+      "get": {
+        "operationId": "v1_analytics_retention_retrieve",
+        "description": "Get user retention report (admin only).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/workspaces/{workspace_id}/": {
+      "get": {
+        "operationId": "v1_analytics_workspaces_retrieve",
+        "description": "Get workspace-level analytics (requires workspace access).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/async/bulk-task-update/": {
+      "post": {
+        "operationId": "v1_async_bulk_task_update_create",
+        "description": "Async endpoint for bulk task updates.\nAccepts multiple task updates and processes them in parallel.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/async/jobs/{job_id}/status/": {
+      "get": {
+        "operationId": "v1_async_jobs_status_retrieve",
+        "description": "Check status of an async job.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/async/process-document/": {
+      "post": {
+        "operationId": "v1_async_process_document_create",
+        "description": "Async endpoint for document processing.\nReturns immediately with a job ID, processing happens in background.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/forgot-password/": {
+      "post": {
+        "operationId": "v1_auth_forgot_password_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login/": {
+      "post": {
+        "operationId": "v1_auth_login_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout/": {
+      "post": {
+        "operationId": "v1_auth_logout_create",
+        "description": "Logout - clear refresh token cookie and blacklist the token.\nClient should also clear access token from memory.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register/": {
+      "post": {
+        "operationId": "v1_auth_register_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/resend-verification/": {
+      "post": {
+        "operationId": "v1_auth_resend_verification_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/reset-password/": {
+      "post": {
+        "operationId": "v1_auth_reset_password_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/token/refresh/": {
+      "post": {
+        "operationId": "v1_auth_token_refresh_create",
+        "description": "Refresh access token using httpOnly cookie.\nReturns new access token (15 min) and rotates refresh token.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/verify-email/": {
+      "post": {
+        "operationId": "v1_auth_verify_email_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/verify-reset-code/": {
+      "post": {
+        "operationId": "v1_auth_verify_reset_code_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/chat/": {
+      "post": {
+        "operationId": "v1_chat_create",
+        "description": "Main chat endpoint with Aiden.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/chat/stream/": {
+      "post": {
+        "operationId": "v1_chat_stream_create",
+        "description": "Stream chat responses live. Uses SSE format.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/": {
+      "get": {
+        "operationId": "v1_conversations_retrieve",
+        "description": "Get user's chats with pagination.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/": {
+      "get": {
+        "operationId": "v1_conversations_retrieve_2",
+        "description": "Get or update a single conversation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "v1_conversations_partial_update",
+        "description": "Get or update a single conversation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "v1_conversations_destroy",
+        "description": "Get or update a single conversation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/delete/": {
+      "delete": {
+        "operationId": "v1_conversations_delete_destroy",
+        "description": "Delete chat and its messages.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/export/": {
+      "get": {
+        "operationId": "v1_conversations_export_retrieve",
+        "description": "Export chat as JSON for backup.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/generate-tasks/": {
+      "post": {
+        "operationId": "v1_conversations_generate_tasks_create",
+        "description": "Generate task suggestions from a chat message.\n\nQuery params:\n    auto_create: If 'true', automatically create tasks (default: false)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/demo/seed/": {
+      "post": {
+        "operationId": "v1_demo_seed_create",
+        "description": "Add sample data for new users (only if they have nothing yet).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/docs/": {
+      "get": {
+        "operationId": "v1_docs_retrieve",
+        "description": "HTML documentation page (simplified JSON for now).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/docs/examples/": {
+      "get": {
+        "operationId": "v1_docs_examples_retrieve",
+        "description": "Return code examples for common integrations.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/docs/openapi.json": {
+      "get": {
+        "operationId": "v1_docs_openapi.json_retrieve",
+        "description": "Return OpenAPI 3.0 specification.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/": {
+      "get": {
+        "operationId": "v1_documents_retrieve",
+        "description": "Get user's uploaded docs with pagination.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{doc_id}/delete/": {
+      "delete": {
+        "operationId": "v1_documents_delete_destroy",
+        "description": "Delete doc and its chunks.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "doc_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{doc_id}/download/": {
+      "get": {
+        "operationId": "v1_documents_download_retrieve",
+        "description": "Return a signed URL for document download (60 seconds).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "doc_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{doc_id}/reprocess/": {
+      "post": {
+        "operationId": "v1_documents_reprocess_create",
+        "description": "Re-process a failed document.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "doc_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{doc_id}/status/": {
+      "get": {
+        "operationId": "v1_documents_status_retrieve",
+        "description": "Get detailed document processing status.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "doc_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{doc_id}/summary/": {
+      "get": {
+        "operationId": "v1_documents_summary_retrieve",
+        "description": "Return the stored AI summary and lightweight document metadata.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "doc_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/analyze/": {
+      "post": {
+        "operationId": "v1_documents_analyze_create",
+        "description": "Analyze a document and extract insights.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/extract/": {
+      "post": {
+        "operationId": "v1_documents_extract_create",
+        "description": "Run auto-extraction on a document to suggest or create tasks.\n\nQuery params:\n    auto_create: If 'true', automatically create tasks (default: false)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/generate-tasks/": {
+      "post": {
+        "operationId": "v1_documents_generate_tasks_create",
+        "description": "Generate task suggestions from a document.\n\nQuery params:\n    auto_create: If 'true', automatically create tasks (default: false)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/insights/": {
+      "get": {
+        "operationId": "v1_documents_insights_retrieve",
+        "description": "Get all insights for a document including analysis and entities.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/versions/": {
+      "get": {
+        "operationId": "v1_documents_versions_retrieve",
+        "description": "List all versions for a document.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/versions/{version_number}/diff/": {
+      "get": {
+        "operationId": "v1_documents_versions_diff_retrieve",
+        "description": "Get the diff for a specific version.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "version_number",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/versions/compare/": {
+      "post": {
+        "operationId": "v1_documents_versions_compare_create",
+        "description": "Compare two versions of a document.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{document_id}/versions/create/": {
+      "post": {
+        "operationId": "v1_documents_versions_create_create",
+        "description": "Manually create a new version for a document.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/status-summary/": {
+      "get": {
+        "operationId": "v1_documents_status_summary_retrieve",
+        "description": "Get comprehensive status of all user documents for dashboard.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/upload/": {
+      "post": {
+        "operationId": "v1_documents_upload_create",
+        "description": "Upload PDF/DOCX/TXT. Processing starts immediately.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/health/": {
+      "get": {
+        "operationId": "v1_health_retrieve",
+        "description": "Quick status check for load balancers.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/health/ai/": {
+      "get": {
+        "operationId": "v1_health_ai_retrieve",
+        "description": "Return non-secret AI provider readiness for settings/admin surfaces.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/status/": {
+      "get": {
+        "operationId": "v1_integrations_status_retrieve",
+        "description": "Get integration status and available integrations.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/zapier/actions/": {
+      "get": {
+        "operationId": "v1_integrations_zapier_actions_retrieve",
+        "description": "List available Zapier actions.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/zapier/samples/{trigger_key}/": {
+      "get": {
+        "operationId": "v1_integrations_zapier_samples_retrieve",
+        "description": "Return sample data for Zapier trigger testing.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trigger_key",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/zapier/triggers/": {
+      "get": {
+        "operationId": "v1_integrations_zapier_triggers_retrieve",
+        "description": "List available Zapier triggers.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/invitations/{token}/accept/": {
+      "post": {
+        "operationId": "v1_invitations_accept_create",
+        "description": "Accept a workspace invitation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/memories/": {
+      "get": {
+        "operationId": "v1_memories_retrieve",
+        "description": "List user's memories with optional category filter.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/memories/{memory_id}/": {
+      "get": {
+        "operationId": "v1_memories_retrieve_2",
+        "description": "Get a specific memory by ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/memories/{memory_id}/delete/": {
+      "delete": {
+        "operationId": "v1_memories_delete_destroy",
+        "description": "Delete a specific memory.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/memories/{memory_id}/update/": {
+      "patch": {
+        "operationId": "v1_memories_update_partial_update",
+        "description": "Update a specific memory.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/memories/create/": {
+      "post": {
+        "operationId": "v1_memories_create_create",
+        "description": "Create or update a user memory.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/memories/regenerate-embeddings/": {
+      "post": {
+        "operationId": "v1_memories_regenerate_embeddings_create",
+        "description": "Trigger embedding regeneration for all user memories or specific ones.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/": {
+      "get": {
+        "operationId": "v1_notifications_retrieve",
+        "description": "Get unread notifications for the current user.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{notification_id}/read/": {
+      "post": {
+        "operationId": "v1_notifications_read_create",
+        "description": "Mark a notification as read.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/mark-all-read/": {
+      "post": {
+        "operationId": "v1_notifications_mark_all_read_create",
+        "description": "Mark all notifications as read.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/preferences/": {
+      "get": {
+        "operationId": "v1_notifications_preferences_retrieve",
+        "description": "Get notification preferences for the user.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/preferences/update/": {
+      "post": {
+        "operationId": "v1_notifications_preferences_update_create",
+        "description": "Update notification preferences.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/unread-count/": {
+      "get": {
+        "operationId": "v1_notifications_unread_count_retrieve",
+        "description": "Get count of unread notifications.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/onboarding/complete/": {
+      "post": {
+        "operationId": "v1_onboarding_complete_create",
+        "description": "User closed the onboarding - don't show again.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/onboarding/status/": {
+      "get": {
+        "operationId": "v1_onboarding_status_retrieve",
+        "description": "Check what user has set up (profile, docs, chats, tasks).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/permissions/grant/": {
+      "post": {
+        "operationId": "v1_permissions_grant_create",
+        "description": "Grant a permission on a resource to a user.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/permissions/resource-check/": {
+      "post": {
+        "operationId": "v1_permissions_resource_check_create",
+        "description": "Check if user can perform an action on a resource.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/permissions/revoke/": {
+      "post": {
+        "operationId": "v1_permissions_revoke_create",
+        "description": "Revoke a permission on a resource from a user.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/profile/": {
+      "get": {
+        "operationId": "v1_profile_retrieve",
+        "description": "Get/update business info with logo.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "post": {
+        "operationId": "v1_profile_create",
+        "description": "Get/update business info with logo.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "put": {
+        "operationId": "v1_profile_update",
+        "description": "Get/update business info with logo.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/search/conversational/": {
+      "post": {
+        "operationId": "v1_search_conversational_create",
+        "description": "Semantic search with conversation context.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/search/generate-embeddings/": {
+      "post": {
+        "operationId": "v1_search_generate_embeddings_create",
+        "description": "Generate embeddings for document chunks (placeholder).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/search/semantic/": {
+      "post": {
+        "operationId": "v1_search_semantic_create",
+        "description": "Perform semantic search on document chunks.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tags/": {
+      "get": {
+        "operationId": "v1_tags_retrieve",
+        "description": "List or create tags.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "post": {
+        "operationId": "v1_tags_create",
+        "description": "List or create tags.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tags/{tag_name}/tasks/": {
+      "get": {
+        "operationId": "v1_tags_tasks_retrieve",
+        "description": "Filter tasks by tag.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/": {
+      "get": {
+        "operationId": "v1_tasks_retrieve",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/": {
+      "get": {
+        "operationId": "v1_tasks_retrieve_2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/activities/": {
+      "get": {
+        "operationId": "v1_tasks_activities_retrieve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/collaborators/": {
+      "get": {
+        "operationId": "v1_tasks_collaborators_retrieve",
+        "description": "List all collaborators on a task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/collaborators/{user_id}/remove/": {
+      "delete": {
+        "operationId": "v1_tasks_collaborators_remove_destroy",
+        "description": "Remove a collaborator from a task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/collaborators/add/": {
+      "post": {
+        "operationId": "v1_tasks_collaborators_add_create",
+        "description": "Add a collaborator to a task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/comments/": {
+      "get": {
+        "operationId": "v1_tasks_comments_retrieve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/comments/{comment_id}/delete/": {
+      "delete": {
+        "operationId": "v1_tasks_comments_delete_destroy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/comments/{comment_id}/reply/": {
+      "post": {
+        "operationId": "v1_tasks_comments_reply_create",
+        "description": "Reply to a comment.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/comments/add/": {
+      "post": {
+        "operationId": "v1_tasks_comments_add_create",
+        "description": "Add a comment to a task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/comments/create/": {
+      "post": {
+        "operationId": "v1_tasks_comments_create_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/complete/": {
+      "post": {
+        "operationId": "v1_tasks_complete_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/delete/": {
+      "delete": {
+        "operationId": "v1_tasks_delete_destroy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/details/": {
+      "get": {
+        "operationId": "v1_tasks_details_retrieve",
+        "description": "Get full task details including comments, subtasks, time tracking.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/reopen/": {
+      "post": {
+        "operationId": "v1_tasks_reopen_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/subtasks/add/": {
+      "post": {
+        "operationId": "v1_tasks_subtasks_add_create",
+        "description": "Add a subtask.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/tags/add/": {
+      "post": {
+        "operationId": "v1_tasks_tags_add_create",
+        "description": "Tag a task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/tags/remove/": {
+      "post": {
+        "operationId": "v1_tasks_tags_remove_create",
+        "description": "Remove tag from task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/time/add/": {
+      "post": {
+        "operationId": "v1_tasks_time_add_create",
+        "description": "Add manual time entry.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/timer/start/": {
+      "post": {
+        "operationId": "v1_tasks_timer_start_create",
+        "description": "Start a timer for a task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/update/": {
+      "put": {
+        "operationId": "v1_tasks_update_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "v1_tasks_update_partial_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/comments/{comment_id}/edit/": {
+      "put": {
+        "operationId": "v1_tasks_comments_edit_update",
+        "description": "Edit an existing comment.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "v1_tasks_comments_edit_partial_update",
+        "description": "Edit an existing comment.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "comment_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/create/": {
+      "post": {
+        "operationId": "v1_tasks_create_create",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/dashboard/": {
+      "get": {
+        "operationId": "v1_tasks_dashboard_retrieve",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/extract/": {
+      "post": {
+        "operationId": "v1_tasks_extract_create",
+        "description": "AI finds tasks in chat text.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/stats/": {
+      "get": {
+        "operationId": "v1_tasks_stats_retrieve",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/subtasks/{subtask_id}/delete/": {
+      "delete": {
+        "operationId": "v1_tasks_subtasks_delete_destroy",
+        "description": "Delete a subtask.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subtask_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/subtasks/{subtask_id}/update/": {
+      "put": {
+        "operationId": "v1_tasks_subtasks_update_update",
+        "description": "Update a subtask.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subtask_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "v1_tasks_subtasks_update_partial_update",
+        "description": "Update a subtask.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subtask_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/suggestions/{suggestion_id}/accept/": {
+      "post": {
+        "operationId": "v1_tasks_suggestions_accept_create",
+        "description": "Turn AI suggestion into real task.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suggestion_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/suggestions/{suggestion_id}/reject/": {
+      "post": {
+        "operationId": "v1_tasks_suggestions_reject_create",
+        "description": "Dismiss AI suggestion.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suggestion_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/time/{entry_id}/delete/": {
+      "delete": {
+        "operationId": "v1_tasks_time_delete_destroy",
+        "description": "Delete a time entry.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/timer/{entry_id}/stop/": {
+      "post": {
+        "operationId": "v1_tasks_timer_stop_create",
+        "description": "Stop a running timer.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/timer/active/": {
+      "get": {
+        "operationId": "v1_tasks_timer_active_retrieve",
+        "description": "Get currently running timer.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tokens/": {
+      "get": {
+        "operationId": "v1_tokens_retrieve",
+        "description": "List user's API tokens.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tokens/{token_id}/revoke/": {
+      "delete": {
+        "operationId": "v1_tokens_revoke_destroy",
+        "description": "Revoke an API token.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/tokens/create/": {
+      "post": {
+        "operationId": "v1_tokens_create_create",
+        "description": "Create a new API token.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/user/info/": {
+      "get": {
+        "operationId": "v1_user_info_retrieve",
+        "description": "Get user profile + avatar.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/user/sessions/": {
+      "get": {
+        "operationId": "v1_user_sessions_retrieve",
+        "description": "List all active sessions for the current user.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/user/sessions/revoke/": {
+      "post": {
+        "operationId": "v1_user_sessions_revoke_create",
+        "description": "Revoke a specific session.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/user/sessions/revoke-all/": {
+      "post": {
+        "operationId": "v1_user_sessions_revoke_all_create",
+        "description": "Revoke all sessions except the current one.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/user/update-password/": {
+      "post": {
+        "operationId": "v1_user_update_password_create",
+        "description": "Change password (needs current password).",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/user/update-username/": {
+      "post": {
+        "operationId": "v1_user_update_username_create",
+        "description": "Change username.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/": {
+      "get": {
+        "operationId": "v1_webhooks_retrieve",
+        "description": "List user's webhooks.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/": {
+      "get": {
+        "operationId": "v1_webhooks_retrieve_2",
+        "description": "Get webhook details.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/delete/": {
+      "delete": {
+        "operationId": "v1_webhooks_delete_destroy",
+        "description": "Delete a webhook.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/deliveries/": {
+      "get": {
+        "operationId": "v1_webhooks_deliveries_retrieve",
+        "description": "List delivery attempts for a webhook.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/regenerate-secret/": {
+      "post": {
+        "operationId": "v1_webhooks_regenerate_secret_create",
+        "description": "Regenerate webhook secret.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/test/": {
+      "post": {
+        "operationId": "v1_webhooks_test_create",
+        "description": "Send a test event to webhook.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/update/": {
+      "put": {
+        "operationId": "v1_webhooks_update_update",
+        "description": "Update webhook settings.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "v1_webhooks_update_partial_update",
+        "description": "Update webhook settings.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/create/": {
+      "post": {
+        "operationId": "v1_webhooks_create_create",
+        "description": "Create a new webhook subscription.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/events/": {
+      "get": {
+        "operationId": "v1_webhooks_events_retrieve",
+        "description": "List available webhook event types.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/": {
+      "get": {
+        "operationId": "v1_workspaces_retrieve",
+        "description": "List all workspaces where user is a member.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/": {
+      "get": {
+        "operationId": "v1_workspaces_retrieve_2",
+        "description": "Get workspace details.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/archive/": {
+      "post": {
+        "operationId": "v1_workspaces_archive_create",
+        "description": "Archive (soft delete) a workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/check-permission/": {
+      "get": {
+        "operationId": "v1_workspaces_check_permission_retrieve",
+        "description": "Check if user has a specific permission.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/context/": {
+      "get": {
+        "operationId": "v1_workspaces_context_retrieve",
+        "description": "Get context for a specific workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/context/update/": {
+      "post": {
+        "operationId": "v1_workspaces_context_update_create",
+        "description": "Update business context for a workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/conversations/summarize/": {
+      "post": {
+        "operationId": "v1_workspaces_conversations_summarize_create",
+        "description": "Add a conversation summary for long-term context.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/delete/": {
+      "delete": {
+        "operationId": "v1_workspaces_delete_destroy",
+        "description": "Delete a workspace (owner only).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/invitations/": {
+      "get": {
+        "operationId": "v1_workspaces_invitations_retrieve",
+        "description": "List all invitations for a workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}/revoke/": {
+      "post": {
+        "operationId": "v1_workspaces_invitations_revoke_create",
+        "description": "Revoke a pending invitation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/invitations/create/": {
+      "post": {
+        "operationId": "v1_workspaces_invitations_create_create",
+        "description": "Create a workspace invitation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/members/": {
+      "get": {
+        "operationId": "v1_workspaces_members_retrieve",
+        "description": "List all members of a workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/members/{member_id}/remove/": {
+      "delete": {
+        "operationId": "v1_workspaces_members_remove_destroy",
+        "description": "Remove a member from the workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/members/{member_id}/role/": {
+      "patch": {
+        "operationId": "v1_workspaces_members_role_partial_update",
+        "description": "Update a member's role.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "member_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/members/invite/": {
+      "post": {
+        "operationId": "v1_workspaces_members_invite_create",
+        "description": "Invite a new member to the workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/memories/": {
+      "get": {
+        "operationId": "v1_workspaces_memories_retrieve",
+        "description": "Get memories for a workspace, optionally filtered by type.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/memories/{memory_index}/delete/": {
+      "delete": {
+        "operationId": "v1_workspaces_memories_delete_destroy",
+        "description": "Delete a specific memory.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_index",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/memories/add/": {
+      "post": {
+        "operationId": "v1_workspaces_memories_add_create",
+        "description": "Add a memory entry to a workspace.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/preferences/": {
+      "post": {
+        "operationId": "v1_workspaces_preferences_create",
+        "description": "Update workspace preferences.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/update/": {
+      "put": {
+        "operationId": "v1_workspaces_update_update",
+        "description": "Update workspace settings.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "v1_workspaces_update_partial_update",
+        "description": "Update workspace settings.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/create/": {
+      "post": {
+        "operationId": "v1_workspaces_create_create",
+        "description": "Create a new workspace.",
+        "tags": [
+          "v1"
+        ],
+        "security": [
+          {
+            "jwtAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "jwtAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.aeiou.ai",
+      "description": "Production server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "User authentication and authorization"
+    },
+    {
+      "name": "Tasks",
+      "description": "Task management operations"
+    },
+    {
+      "name": "Documents",
+      "description": "Document upload and processing"
+    },
+    {
+      "name": "Profiles",
+      "description": "User profile management"
+    },
+    {
+      "name": "Chat",
+      "description": "AI chat and conversation features"
+    }
+  ]
+}

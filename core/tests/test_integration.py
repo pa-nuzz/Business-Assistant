@@ -107,7 +107,9 @@ class TestIntegrationTaskFlow:
         assert task['status'] == 'in_progress'
         
         # Add comment
-        comment = service.add_comment(task_id, 'Test comment')
+        from core.services.task_detail_service import TaskDetailService
+        detail_service = TaskDetailService(user)
+        comment = detail_service.add_comment(task_id, 'Test comment')
         assert comment['content'] == 'Test comment'
         
         # Complete task

@@ -1,4 +1,5 @@
 """Permission Service - Role-based access control for workspaces and resources."""
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from django.contrib.auth.models import User
 from core.models import (
@@ -128,6 +129,14 @@ class PermissionService:
         """Invite a user to a workspace."""
         from django.contrib.auth import get_user_model
         User = get_user_model()
+
+        # Personal workspaces are private scopes and must never gain members
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+        except (Workspace.DoesNotExist, ValueError):
+            raise ValueError("Workspace not found")
+        if workspace.is_personal:
+            raise ValueError("Cannot invite members to a Personal workspace")
 
         # Check if inviter has permission
         if not PermissionService.has_workspace_permission(
@@ -377,6 +386,3 @@ class PermissionService:
             }
             for m in memberships
         ]
-
-
-from datetime import datetime

@@ -27,6 +27,24 @@ class TaskService:
     def __init__(self, user: User):
         self.user = user
     
+    def create_comment(self, task_id: str, content: str) -> Dict:
+        """
+        Add a comment to a task (delegates to TaskDetailService).
+        
+        Args:
+            task_id: UUID of the task
+            content: Comment content
+            
+        Returns:
+            Dict with comment details
+            
+        Raises:
+            ValueError: If task not found or no permission
+        """
+        from core.services.task_detail_service import TaskDetailService
+        detail_service = TaskDetailService(self.user)
+        return detail_service.add_comment(task_id, content)
+    
     def list_tasks(
         self,
         status_filter: Optional[str] = None,
@@ -35,7 +53,8 @@ class TaskService:
         search_query: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
-        order_by: str = "-created_at"
+        order_by: str = "-created_at",
+        workspace_id: Optional[str] = None
     ) -> Dict:
         """
         Get tasks with filters and pagination.
@@ -48,6 +67,7 @@ class TaskService:
             page: Page number
             page_size: Items per page
             order_by: Ordering field
+            workspace_id: Optional workspace UUID to filter by
             
         Returns:
             Dict with results, count, page, total_pages
@@ -55,7 +75,7 @@ class TaskService:
         page_size = min(page_size, 100)
         
         # Try cache first
-        cache_key = f"tasks:{self.user.id}:{page}:{status_filter}:{priority_filter}:{assignee_id}:{search_query}:{order_by}"
+        cache_key = f"tasks:{self.user.id}:{page}:{status_filter}:{priority_filter}:{assignee_id}:{search_query}:{order_by}:{workspace_id}"
         cached = CacheService.get(cache_key)
         if cached:
             return cached
@@ -64,10 +84,19 @@ class TaskService:
         tasks = Task.objects.filter(
             Q(created_by=self.user) | Q(assignee=self.user) | Q(user=self.user)
         ).select_related(
-            "assignee", "created_by", "business_profile", "user"
+            "assignee", "created_by", "business_profile", "user", "workspace"
         ).prefetch_related(
             "subtasks"
         )
+        
+        # Filter by workspace if provided
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                tasks = tasks.filter(workspace_id=workspace_id)
+            except (ValueError, TypeError):
+                tasks = Task.objects.none()
         
         # Apply filters
         if status_filter:
@@ -118,8 +147,8 @@ class TaskService:
             "total_pages": paginator.num_pages,
         }
         
-        # Cache for 1 minute
-        CacheService.set(cache_key, result, timeout=60)
+        # Cache for 10 seconds to minimize stale data
+        CacheService.set(cache_key, result, timeout=10)
         
         return result
     
@@ -159,11 +188,33 @@ class TaskService:
         except BusinessProfile.DoesNotExist:
             business_profile = BusinessProfile.objects.create(user=self.user)
         
+        # Handle workspace
+        workspace_id = data.get("workspace_id")
+        if workspace_id:
+            # Validate workspace access
+            from core.models import Workspace, WorkspaceMember
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                if not WorkspaceMember.objects.filter(workspace_id=workspace_id, user=self.user).exists():
+                    raise ValueError("You don't have access to this workspace")
+            except (ValueError, TypeError) as e:
+                if "Invalid UUID" in str(e) or "does not match" in str(e):
+                    raise ValueError("Invalid workspace ID")
+                raise
+        else:
+            # Default to user's Personal workspace
+            from core.models import Workspace
+            workspace = Workspace.objects.filter(owner=self.user, is_personal=True).first()
+            if workspace:
+                workspace_id = str(workspace.id)
+        
         # Create task
         task = Task.objects.create(
             user=self.user,
             created_by=self.user,
             business_profile=business_profile,
+            workspace_id=workspace_id,
             title=title,
             description=data.get("description", ""),
             status=data.get("status", "todo"),
@@ -186,6 +237,55 @@ class TaskService:
         document_ids = data.get("document_ids", [])
         for doc_id in document_ids:
             TaskAttachment.objects.create(task=task, document_id=doc_id)
+        
+        # Add collaborators
+        collaborator_ids = data.get("collaborator_ids", [])
+        if isinstance(collaborator_ids, str):
+            collaborator_ids = [c.strip() for c in collaborator_ids.split(",") if c.strip()]
+        for collab_id in collaborator_ids:
+            try:
+                collab_user = User.objects.get(id=collab_id)
+                task.collaborators.add(collab_user)
+            except User.DoesNotExist:
+                pass
+        
+        # Log activity
+        TaskActivity.objects.create(
+            task=task,
+            user=self.user,
+            activity_type="created",
+            new_value=f"Task created: {title}"
+        )
+        
+        # Send assignment notification if assignee is different from creator
+        assignee = task.assignee
+        if assignee and assignee != self.user:
+            from core.models import Notification
+            Notification.objects.create(
+                user=assignee,
+                notification_type='task_assigned',
+                title=f"Task assigned: {title}",
+                message=f"{self.user.username} assigned you to task: {title}",
+                priority='normal',
+                action_url=f"/tasks/{task.id}",
+                task=task,
+                actor=self.user,
+            )
+        
+        # Notify collaborators
+        for collab in task.collaborators.all():
+            if collab != self.user:
+                from core.models import Notification
+                Notification.objects.create(
+                    user=collab,
+                    notification_type='task_assigned',
+                    title=f"Added as collaborator: {title}",
+                    message=f"{self.user.username} added you as a collaborator on task: {title}",
+                    priority='normal',
+                    action_url=f"/tasks/{task.id}",
+                    task=task,
+                    actor=self.user,
+                )
         
         # Log activity
         TaskActivity.objects.create(
@@ -352,10 +452,26 @@ class TaskService:
             changes.append(("due_date", "updated", data["due_date"]))
         
         if "assignee_id" in data:
-            old_assignee = task.assignee.username if task.assignee else "Unassigned"
+            old_assignee = task.assignee
+            old_assignee_name = old_assignee.username if old_assignee else "Unassigned"
             task.assignee_id = data["assignee_id"]
-            new_assignee = User.objects.get(id=data["assignee_id"]).username
-            changes.append(("assignee", old_assignee, new_assignee))
+            new_assignee = User.objects.get(id=data["assignee_id"])
+            new_assignee_name = new_assignee.username
+            changes.append(("assignee", old_assignee_name, new_assignee_name))
+            
+            # Send notification to new assignee
+            if new_assignee != self.user:
+                from core.models import Notification
+                Notification.objects.create(
+                    user=new_assignee,
+                    notification_type='task_assigned',
+                    title=f"Task assigned: {task.title}",
+                    message=f"{self.user.username} assigned you to task: {task.title}",
+                    priority='normal',
+                    action_url=f"/tasks/{task.id}",
+                    task=task,
+                    actor=self.user,
+                )
         
         if "estimated_hours" in data:
             task.estimated_hours = data["estimated_hours"]
@@ -445,51 +561,4 @@ class TaskService:
         
         return True
     
-    def add_comment(self, task_id: str, content: str) -> Dict:
-        """
-        Add a comment to a task.
-        
-        Args:
-            task_id: UUID of the task
-            content: Comment content
-            
-        Returns:
-            Dict with comment details
-            
-        Raises:
-            ValueError: If task not found or no permission
-        """
-        from django.shortcuts import get_object_or_404
-        
-        task = get_object_or_404(Task, id=task_id)
-        
-        # Check permissions
-        if task.user != self.user and task.assignee != self.user and task.created_by != self.user:
-            raise ValueError("You don't have permission to comment on this task")
-        
-        # Sanitize content
-        content = sanitize_rich_text(content, max_length=2000)
-        
-        comment = TaskComment.objects.create(
-            task=task,
-            user=self.user,
-            content=content
-        )
-        
-        # Log activity
-        TaskActivity.objects.create(
-            task=task,
-            user=self.user,
-            activity_type="commented",
-            new_value=f"Comment added: {content[:50]}..."
-        )
-        
-        return {
-            "id": str(comment.id),
-            "content": comment.content,
-            "created_at": comment.created_at.isoformat(),
-            "user": {
-                "id": comment.user.id,
-                "username": comment.user.username,
-            }
-        }
+    

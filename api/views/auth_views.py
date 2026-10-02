@@ -267,11 +267,13 @@ def logout(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([ScopedRateThrottle])
 def token_refresh(request):
     """
     Refresh access token using httpOnly cookie.
     Returns new access token (15 min) and rotates refresh token.
     """
+    token_refresh.throttle_scope = "auth_refresh"
     refresh_token = request.COOKIES.get("refresh_token")
 
     if not refresh_token:
@@ -283,6 +285,7 @@ def token_refresh(request):
     try:
         from rest_framework_simplejwt.tokens import RefreshToken as RefreshTokenClass
         from django.contrib.auth.models import User as UserModel
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
         
         refresh = RefreshTokenClass(refresh_token)
         
@@ -290,10 +293,19 @@ def token_refresh(request):
         user_id = refresh.payload.get('user_id')
         user = UserModel.objects.get(id=user_id)
         
-        # Generate a new pair. Do not blacklist on every refresh: direct
-        # navigation, React Strict Mode, and multi-tab restores can otherwise
-        # rotate the same cookie in parallel and kick valid users to login.
-        # Logout still blacklists the current refresh token.
+        # Blacklist the old refresh token (rotate)
+        try:
+            # Get the outstanding token and blacklist it
+            outstanding = OutstandingToken.objects.get(token=str(refresh))
+            BlacklistedToken.objects.get_or_create(token=outstanding)
+        except OutstandingToken.DoesNotExist:
+            # Token might not be in outstanding tokens (e.g., manually created)
+            pass
+        except Exception:
+            # If blacklisting fails, log but don't fail the refresh
+            logger.warning("Failed to blacklist old refresh token", exc_info=True)
+        
+        # Generate a new pair
         new_refresh = RefreshTokenClass.for_user(user)
         access_token = str(new_refresh.access_token)
 

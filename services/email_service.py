@@ -178,12 +178,27 @@ def _render_otp_block(code: str, color: str = "#4F46E5") -> str:
 
 
 def _send_email(subject: str, text_body: str, html_body: str, to_email: str, from_email: str) -> bool:
-    """Low-level send with structured error logging."""
+    """Low-level send with structured error logging.
+
+    Adds deliverability-friendly headers so replies reach a monitored inbox
+    and every message carries a unique Message-ID (helps SPF/DKIM alignment
+    and spam-filter scoring).
+    """
     try:
-        msg = EmailMultiAlternatives(subject, text_body, from_email, [to_email])
+        reply_to = getattr(settings, "DEFAULT_REPLY_EMAIL", "AEIOU AI <support@aeiou.ai>")
+        msg = EmailMultiAlternatives(
+            subject,
+            text_body,
+            from_email,
+            [to_email],
+            headers={
+                "Reply-To": reply_to,
+                "Message-ID": f"<{secrets.token_hex(16)}@{getattr(settings, 'EMAIL_MESSAGE_DOMAIN', 'aeiou.ai')}>",
+            },
+        )
         msg.attach_alternative(html_body, "text/html")
         msg.send(fail_silently=False)
-        logger.info("✅ Email sent | to=%s | subject=%s", to_email, subject)
+        logger.info("✅ Email sent | to=%s | subject=%s | from=%s", to_email, subject, from_email)
         return True
     except Exception as exc:
         logger.error("❌ Email failed | to=%s | subject=%s | error=%s", to_email, subject, exc, exc_info=True)

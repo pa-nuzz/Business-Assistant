@@ -18,8 +18,17 @@ def _build_prompt(base: str, user_id: int) -> str:
 
 
 from utils.text import extract_keywords as _extract_keywords
+from utils.circuit_breaker import get_circuit_breaker, CircuitBreakerConfig, CircuitBreakerOpenError
 
 logger = logging.getLogger(__name__)
+
+# Circuit breaker configurations for each provider
+_CIRCUIT_CONFIGS = {
+    "gemini": CircuitBreakerConfig(failure_threshold=3, success_threshold=2, timeout=60.0),
+    "nvidia": CircuitBreakerConfig(failure_threshold=5, success_threshold=2, timeout=60.0),
+    "groq": CircuitBreakerConfig(failure_threshold=5, success_threshold=2, timeout=60.0),
+    "openrouter": CircuitBreakerConfig(failure_threshold=5, success_threshold=2, timeout=60.0),
+}
 
 
 class TaskType(Enum):
@@ -228,20 +237,56 @@ def get_enhanced_user_memory(user_id: int) -> Dict[str, Any]:
     }
 
 
-def _get_context_brief(user_id: int) -> str:
+def _get_personal_workspace_id(user_id: int) -> Optional[str]:
+    """
+    Resolve the user's Personal workspace UUID (their private scope).
+    Returns None if the user has no Personal workspace yet.
+    """
+    try:
+        from core.models import Workspace
+        ws = Workspace.objects.filter(
+            owner_id=user_id, is_personal=True
+        ).values_list("id", flat=True).first()
+        return str(ws) if ws else None
+    except Exception as e:
+        logger.warning(f"Failed to resolve personal workspace for user {user_id}: {e}")
+        return None
+
+
+def _get_context_brief(user_id: int, workspace_id: Optional[str] = None) -> str:
     """
     Synthesizes a rich context brief from workspace memory, 
     business profile, and conversation history.
+
+    Args:
+        user_id: The authenticated user's ID.
+        workspace_id: Optional explicit workspace scope (UUID). If not provided,
+            the user's Personal workspace is used. The user must be a member of
+            the requested workspace — membership is validated by WorkspaceService.
     """
-    from core.services.workspace_service import WorkspaceService
+    from core.services.workspace_service import WorkspaceService, WorkspaceAccessError
     from django.contrib.auth.models import User
     
     try:
         user = User.objects.get(id=user_id)
         ws = WorkspaceService(user)
-        # Default workspace_id is usually 'personal' or 'default'
-        # Check if we have any workspace, otherwise use default
-        ctx = ws.get_workspace_context("default")
+
+        # Resolve the scope: explicit workspace_id if given, else Personal.
+        # If the user isn't a member of the requested workspace, fall back to
+        # their Personal scope rather than leaking data (WorkspaceService
+        # enforces the membership invariant).
+        effective_workspace_id = workspace_id or _get_personal_workspace_id(user_id)
+
+        ctx = None
+        if effective_workspace_id:
+            try:
+                ctx = ws.get_workspace_context(effective_workspace_id)
+            except WorkspaceAccessError:
+                logger.warning(
+                    f"User {user_id} denied access to workspace {workspace_id}; "
+                    f"falling back to personal scope"
+                )
+                ctx = None
         
         brief = ["--- WORKSPACE CONTEXT ---"]
 
@@ -311,15 +356,20 @@ def call_model(
     store_memory: bool = False,
     conversation_history: List[Dict] = None,
     tool_definitions: List[Dict] = None,
+    context_brief: str = None,
 ) -> ModelResponse:
     """
     Advanced Model Entry Point.
     Handles semantic context injection, provider fallbacks, and agentic tool use.
+
+    `context_brief` may be provided by the caller to avoid rebuilding the brief
+    (several DB queries) once per LLM call within a single user turn.
     """
     start = time.time()
 
     # 1. Synthesize Context
-    context_brief = _get_context_brief(user_id)
+    if context_brief is None:
+        context_brief = _get_context_brief(user_id)
     system_prompt = f"{base_system_prompt}\n\n{context_brief}".strip()
     
     # 2. Prepare Messages
@@ -338,9 +388,14 @@ def call_model(
     last_error = None
     
     if settings.AI_CONFIG["gemini"].get("chat_enabled"):
+        cb = get_circuit_breaker("gemini", _CIRCUIT_CONFIGS["gemini"])
         try:
             from services.gemini import call as gemini_call
-            resp = gemini_call(messages, system_prompt, tool_definitions)
+            
+            def _call_gemini():
+                return gemini_call(messages, system_prompt, tool_definitions)
+            
+            resp = cb.call(_call_gemini)
             if resp:
                 model_res = ModelResponse(
                     text=resp.get("text"),
@@ -352,14 +407,22 @@ def call_model(
                 if use_cache:
                     _to_cache(user_id, user_message, task_type.value, model_res.text or "", model_res.model_used)
                 return model_res
+        except CircuitBreakerOpenError as e:
+            logger.warning(f"Gemini circuit breaker open: {e}")
+            last_error = e
         except Exception as e:
             logger.warning(f"Gemini failed: {e}")
             last_error = e
 
     # NVIDIA NIM (Powerful Hosted LLM Fallback)
+    cb = get_circuit_breaker("nvidia", _CIRCUIT_CONFIGS["nvidia"])
     try:
         from services.nvidia import call as nvidia_call
-        resp = nvidia_call(messages, system_prompt, tool_definitions)
+        
+        def _call_nvidia():
+            return nvidia_call(messages, system_prompt, tool_definitions)
+        
+        resp = cb.call(_call_nvidia)
         if resp:
             return ModelResponse(
                 text=resp.get("text"),
@@ -368,14 +431,22 @@ def call_model(
                 finish_reason=resp.get("stop_reason", "stop"),
                 latency_ms=(time.time() - start) * 1000
             )
+    except CircuitBreakerOpenError as e:
+        logger.warning(f"NVIDIA circuit breaker open: {e}")
+        last_error = e
     except Exception as e:
         logger.warning(f"NVIDIA failed: {e}")
         last_error = e
 
     # Groq (Fast Fallback)
+    cb = get_circuit_breaker("groq", _CIRCUIT_CONFIGS["groq"])
     try:
         from services.groq_service import call as groq_call
-        resp = groq_call(messages, system_prompt, tool_definitions)
+        
+        def _call_groq():
+            return groq_call(messages, system_prompt, tool_definitions)
+        
+        resp = cb.call(_call_groq)
         if resp:
             model_res = ModelResponse(
                 text=resp.get("text"),
@@ -385,14 +456,22 @@ def call_model(
                 latency_ms=(time.time() - start) * 1000
             )
             return model_res
+    except CircuitBreakerOpenError as e:
+        logger.warning(f"Groq circuit breaker open: {e}")
+        last_error = e
     except Exception as e:
         logger.warning(f"Groq failed: {e}")
         last_error = e
 
     # OpenRouter (Safety Net)
+    cb = get_circuit_breaker("openrouter", _CIRCUIT_CONFIGS["openrouter"])
     try:
         from services.openrouter import call as or_call
-        resp = or_call(messages, system_prompt, tool_definitions)
+        
+        def _call_openrouter():
+            return or_call(messages, system_prompt, tool_definitions)
+        
+        resp = cb.call(_call_openrouter)
         if resp:
             return ModelResponse(
                 text=resp.get("text"),
@@ -400,6 +479,9 @@ def call_model(
                 model_used=resp.get("model", "openrouter"),
                 latency_ms=(time.time() - start) * 1000
             )
+    except CircuitBreakerOpenError as e:
+        logger.warning(f"OpenRouter circuit breaker open: {e}")
+        last_error = e
     except Exception as e:
         logger.error(f"All providers failed: {e}")
         last_error = e
@@ -412,6 +494,7 @@ def call_model_stream(
     user_message: str,
     base_system_prompt: str = "You are a helpful AI assistant.",
     task_type: TaskType = TaskType.CHAT,
+    context_brief: str = None,
 ):
     """
     Streaming version. Consistently uses _get_context_brief for semantic memory.
@@ -419,37 +502,59 @@ def call_model_stream(
     Yields string tokens.
     """
     # 1. Emit Thinking Steps based on task
-    context_brief = _get_context_brief(user_id)
+    if context_brief is None:
+        context_brief = _get_context_brief(user_id)
     system_prompt = f"{base_system_prompt}\n\n{context_brief}".strip()
 
     # Try Gemini streaming first
+    cb = get_circuit_breaker("gemini", _CIRCUIT_CONFIGS["gemini"])
     try:
         from services.gemini import call_gemini_stream
+        
+        def _call_gemini_stream():
+            yield from call_gemini_stream(system_prompt, user_message)
+        
         yielded_anything = False
-        for token in call_gemini_stream(system_prompt, user_message):
+        for token in cb.call(_call_gemini_stream):
             yield token
             yielded_anything = True
         if yielded_anything:
             return
+    except CircuitBreakerOpenError as e:
+        logger.warning(f"Gemini streaming circuit breaker open: {e}")
     except Exception as e:
         logger.warning(f"Gemini streaming failed, trying Groq: {e}")
 
     # Try Groq streaming
+    cb = get_circuit_breaker("groq", _CIRCUIT_CONFIGS["groq"])
     try:
         from services.groq_service import call_stream as groq_stream
         messages = [{"role": "user", "content": user_message}]
-        for token in groq_stream(messages, system_prompt, []):
+        
+        def _call_groq_stream():
+            yield from groq_stream(messages, system_prompt, [])
+        
+        for token in cb.call(_call_groq_stream):
             yield token
         return
+    except CircuitBreakerOpenError as e:
+        logger.warning(f"Groq streaming circuit breaker open: {e}")
     except Exception as e:
         logger.warning(f"Groq streaming failed, trying OpenRouter: {e}")
 
     # Try OpenRouter streaming
+    cb = get_circuit_breaker("openrouter", _CIRCUIT_CONFIGS["openrouter"])
     try:
         from services.openrouter import call_openrouter_stream
-        for token in call_openrouter_stream(system_prompt, user_message):
+        
+        def _call_openrouter_stream():
+            yield from call_openrouter_stream(system_prompt, user_message)
+        
+        for token in cb.call(_call_openrouter_stream):
             yield token
         return
+    except CircuitBreakerOpenError as e:
+        logger.warning(f"OpenRouter streaming circuit breaker open: {e}")
     except Exception as e:
         logger.error(f"All streaming providers failed: {e}")
         yield f"[Error: AI providers temporarily unavailable. Please try again.]"

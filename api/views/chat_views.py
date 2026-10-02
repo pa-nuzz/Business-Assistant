@@ -30,10 +30,11 @@ def chat(request):
     chat.throttle_scope = "chat"
     user_message = request.data.get("message", "").strip()
     conversation_id = request.data.get("conversation_id")
+    workspace_id = request.data.get("workspace_id")
 
     try:
         chat_service = ChatService(request.user)
-        result = chat_service.send_message(user_message, conversation_id)
+        result = chat_service.send_message(user_message, conversation_id, workspace_id=workspace_id)
         return Response(result)
     except ValueError as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -53,12 +54,17 @@ def chat_stream(request):
     chat_stream.throttle_scope = "chat"
     user_message = request.data.get("message", "").strip()
     conversation_id = request.data.get("conversation_id")
+    workspace_id = request.data.get("workspace_id")
 
     try:
         chat_service = ChatService(request.user)
         
         def event_stream():
-            for sse_data in chat_service.send_message_stream(user_message, conversation_id):
+            # Emit the first event immediately so the network stream is visibly
+            # alive while the pre-LLM pipeline (context brief, intent, planning)
+            # runs. The client treats it as the initial thinking pulse.
+            yield 'data: {"type":"thinking","content":"Thinking..."}\n\n'
+            for sse_data in chat_service.send_message_stream(user_message, conversation_id, workspace_id):
                 yield sse_data
         
         response = StreamingHttpResponse(
@@ -85,10 +91,11 @@ def conversation_list(request):
     """Get user's chats with pagination."""
     page = int(request.GET.get("page", 1))
     page_size = int(request.GET.get("page_size", 20))
+    workspace_id = request.GET.get("workspace_id")
 
     try:
         conversation_service = ConversationService(request.user)
-        result = conversation_service.list_conversations(page, page_size)
+        result = conversation_service.list_conversations(page, page_size, workspace_id=workspace_id)
         return Response(result)
     except Exception as e:
         logger.exception("Failed to list conversations")

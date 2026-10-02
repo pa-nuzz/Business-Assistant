@@ -21,9 +21,10 @@ def document_list(request):
     service = DocumentService(request.user)
     page = int(request.GET.get("page", 1))
     page_size = int(request.GET.get("page_size", 20))
+    workspace_id = request.GET.get("workspace_id")
 
     try:
-        result = service.list_documents(page, page_size)
+        result = service.list_documents(page, page_size, workspace_id)
         return Response(result)
     except Exception as e:
         logger.exception("Failed to list documents")
@@ -43,9 +44,10 @@ def upload_document(request):
     service = DocumentService(request.user)
     file = request.FILES.get("file")
     title = request.data.get("title")
+    workspace_id = request.data.get("workspace_id")
 
     try:
-        result = service.upload_document(file, title)
+        result = service.upload_document(file, title, workspace_id)
         return Response({
             "message": "Document uploaded and processing started.",
             **result

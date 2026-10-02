@@ -57,6 +57,7 @@ export default function ChatPage() {
   } = useChat();
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [thinkingStep, setThinkingStep] = useState("Aiden is thinking");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -74,6 +75,7 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isStreamingRef = useRef(isStreaming);
   const skipNextFetchRef = useRef(false);
+  const hasFetchedRef = useRef<string | false>(false);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -82,6 +84,27 @@ export default function ChatPage() {
 
   useEffect(() => {
     isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  // Rotate the placeholder step text so the thinking area stays visibly alive
+  // while the backend is blocked in pre-token LLM/router work. Real step text
+  // from the stream is preserved (it replaces the placeholder entirely).
+  useEffect(() => {
+    if (!isStreaming) return;
+    const placeholders = [
+      "Gathering context...",
+      "Consulting my providers...",
+      "Structuring my response...",
+    ];
+    let i = 0;
+    const id = setInterval(() => {
+      setThinkingStep((prev) =>
+        prev === "Aiden is thinking" || prev === "Thinking..." || prev === ""
+          ? placeholders[i++ % placeholders.length]
+          : prev
+      );
+    }, 2600);
+    return () => clearInterval(id);
   }, [isStreaming]);
 
   // Fetch user info on mount
@@ -134,31 +157,31 @@ export default function ChatPage() {
 
   // Fetch conversation history when id changes
   useEffect(() => {
-    const id = searchParams.get("id");
+    const id = urlConversationId;
     const query = searchParams.get("query");
-    setCurrentConversationId(id || undefined);
 
     if (id) {
+      setCurrentConversationId(id);
       // Skip fetch if we just created this conversation via streaming
       if (skipNextFetchRef.current) {
         skipNextFetchRef.current = false;
-      } else {
+      } else if (!hasFetchedRef.current || hasFetchedRef.current !== id) {
+        // Fetch if we haven't fetched yet, or if conversation ID changed
+        hasFetchedRef.current = id;
         fetchConversation(id);
       }
     } else {
-      // No ID in URL - show fresh chat on startup
-      // Don't auto-load recent conversation - user wants fresh start
-      setMessages([]);
-      setError(null);
-      // Clear any stored conversation ID
+      // No ID in URL - keep ChatContext state (persisted from localStorage)
+      // This allows chat to resume when navigating back to /chat
       setCurrentConversationId(undefined);
+      hasFetchedRef.current = false;
       if (query) {
         setInputValue(query);
       }
     }
 
     setHasInitialized(true);
-  }, [searchParams, fetchConversation, setCurrentConversationId, setInputValue, setMessages]);
+  }, [urlConversationId, fetchConversation, setCurrentConversationId, setInputValue, searchParams]);
 
   // Auto-scroll to bottom only when streaming new messages
   useEffect(() => {
@@ -210,6 +233,7 @@ export default function ChatPage() {
       setInputValue("");
     }
     setIsStreaming(true);
+    setThinkingStep("Thinking...");
     setError(null);
     setIsReconnecting(false);
     setRetryCount(0);
@@ -230,23 +254,6 @@ export default function ChatPage() {
           (token) => {
             setRetryCount(0);
             setIsReconnecting(false);
-            
-            // Check for specialized thinking tokens: [THINK:Action...]
-            if (token.startsWith('[THINK:') && token.endsWith(']')) {
-              const step = token.substring(7, token.length - 1);
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const lastMessage = newMessages[newMessages.length - 1];
-                if (lastMessage?.role === "assistant") {
-                  if (!lastMessage.thinkingSteps) lastMessage.thinkingSteps = [];
-                  if (!lastMessage.thinkingSteps.includes(step)) {
-                    lastMessage.thinkingSteps = [...lastMessage.thinkingSteps, step];
-                  }
-                }
-                return newMessages;
-              });
-              return;
-            }
 
             streamingContentRef.current += token;
             setMessages((prev) => {
@@ -266,10 +273,12 @@ export default function ChatPage() {
               router.replace(`/chat?id=${metadata.conversation_id}`, { scroll: false });
             }
           },
+          (content) => setThinkingStep(content),
           () => {
             setIsStreaming(false);
             setIsReconnecting(false);
             setRetryCount(0);
+            setThinkingStep("Aiden is thinking");
             setMessages((prev) => {
               const newMessages = [...prev];
               const lastMessage = newMessages[newMessages.length - 1];
@@ -293,6 +302,7 @@ export default function ChatPage() {
               setIsStreaming(false);
               setIsReconnecting(false);
               setRetryCount(0);
+              setThinkingStep("Aiden is thinking");
               setMessages((prev) => {
                 const newMessages = [...prev];
                 const lastMessage = newMessages[newMessages.length - 1];
@@ -319,6 +329,7 @@ export default function ChatPage() {
           setIsStreaming(false);
           setIsReconnecting(false);
           setRetryCount(0);
+          setThinkingStep("Aiden is thinking");
           setMessages((prev) => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
@@ -424,9 +435,9 @@ export default function ChatPage() {
       {/* Messages Area */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 pl-14 lg:pl-8 py-6 scroll-smooth"
+        className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-5 scroll-smooth"
       >
-        <div className="max-w-3xl mx-auto pb-40">
+        <div className="max-w-3xl mx-auto pb-32">
           {isLoading ? (
             // Clean loading skeleton
             <div className="space-y-6">
@@ -512,64 +523,79 @@ export default function ChatPage() {
             </div>
           ) : (
             // Messages list with premium styling
-            <div className="space-y-6">
+            <div className="space-y-5">
               <AnimatePresence initial={false}>
-                {messages.map((message, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-                    className={`flex flex-col ${
-                      message.role === "user" ? "items-end" : "items-start"
-                    }`}
-                  >
-                    {/* Sender label */}
-                    <div className="flex items-center gap-1 mb-1">
-                      {message.role === "assistant" && (
-                        <span className="text-[10px] font-semibold text-[var(--brand-primary)] uppercase tracking-wide">Aiden</span>
+                {messages.map((message, index) => {
+                  const isPendingBubble =
+                    message.role === "assistant" && message.isStreaming && !message.content;
+
+                  return (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+                      className={`flex flex-col ${
+                        message.role === "user" ? "items-end" : "items-start"
+                      }`}
+                    >
+                      {/* Assistant label */}
+                      {message.role === "assistant" && !isPendingBubble && (
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <img
+                            src="/logos/core.svg"
+                            alt="Aiden"
+                            width={16}
+                            height={16}
+                            className="opacity-90 shrink-0"
+                          />
+                          <span className="text-[10px] font-semibold text-[var(--brand-primary)] uppercase tracking-wider">
+                            Aiden
+                          </span>
+                        </div>
                       )}
-                    </div>
-                    <div className="relative group max-w-[85%] sm:max-w-[75%]">
-                      <div
-                        className={`shadow-sm border border-[var(--border-subtle)] ${
-                          message.role === "user"
-                            ? "bg-linear-to-br from-[var(--brand-primary)] to-[var(--brand-accent)] text-[var(--text-inverse)] rounded-2xl rounded-tr-sm px-5 py-3.5"
-                            : "bg-[var(--bg-overlay)]/70 backdrop-blur-xl text-[var(--text-primary)] rounded-2xl rounded-tl-sm px-5 py-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.02)]"
-                        }`}
-                      >
-                        {message.role === "assistant" ? (
-                          <ChatMessage message={message} />
-                        ) : (
-                          <div className="text-[15px] leading-relaxed font-medium">{message.content}</div>
+                      <div className="relative group max-w-[85%] sm:max-w-[75%]">
+                        {!isPendingBubble && (
+                          <>
+                            <div
+                              className={
+                                message.role === "user"
+                                  ? "bg-[var(--brand-primary-dim)] text-[var(--text-primary)] rounded-2xl rounded-br-md px-4 py-2.5"
+                                  : ""
+                              }
+                            >
+                              {message.role === "assistant" ? (
+                                <ChatMessage message={message} />
+                              ) : (
+                                <div className="text-[15px] leading-relaxed">{message.content}</div>
+                              )}
+                            </div>
+                            {/* Copy button for assistant messages */}
+                            {message.role === "assistant" && !message.isStreaming && message.content && (
+                              <button
+                                onClick={() => handleCopy(message.content, index)}
+                                className="absolute -top-1 -right-1 p-1.5 text-slate-400 hover:text-slate-700 transition-all opacity-0 group-hover:opacity-100 hover:bg-slate-100 rounded-lg"
+                                title="Copy to clipboard"
+                              >
+                                {copiedIndex === index ? (
+                                  <Check className="w-3.5 h-3.5 text-[var(--brand-success)]" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
-                      {/* Copy button for assistant messages */}
-                      {message.role === "assistant" && !message.isStreaming && message.content && (
-                        <motion.button
-                          onClick={() => handleCopy(message.content, index)}
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 0, scale: 0.8 }}
-                          whileHover={{ opacity: 1, scale: 1 }}
-                          className="absolute -top-2 -right-2 p-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-[var(--bg-subtle)]"
-                          title="Copy to clipboard"
-                        >
-                          {copiedIndex === index ? (
-                            <Check className="w-3.5 h-3.5 text-[var(--brand-success)]" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
-                          )}
-                        </motion.button>
+                      {/* Timestamp */}
+                      {message.created_at && (
+                        <span className="text-[11px] text-slate-400 mt-1 px-1">
+                          {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       )}
-                    </div>
-                    {/* Timestamp */}
-                    {message.created_at && (
-                      <span className="text-[11px] text-slate-400 mt-1 px-1">
-                        {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    )}
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
 
               {/* Reconnecting indicator */}
@@ -584,54 +610,53 @@ export default function ChatPage() {
                 </motion.div>
               )}
 
-              {/* Typing indicator with animated logo and thinking steps */}
-              {isStreaming && messages[messages.length - 1]?.role === "assistant" && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col items-start gap-1"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] font-semibold text-[var(--brand-primary)] uppercase tracking-wide">Aiden is working</span>
-                    <div className="flex gap-0.5">
-                       <span className="w-1 h-1 bg-[var(--brand-primary)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                       <span className="w-1 h-1 bg-[var(--brand-primary)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                       <span className="w-1 h-1 bg-[var(--brand-primary)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col gap-2 w-full">
-                    {/* Thinking Steps */}
-                    <AnimatePresence>
-                      {messages[messages.length - 1]?.thinkingSteps?.map((step, idx) => (
-                        <motion.div
-                          key={idx}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center gap-3 px-4 py-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-xl"
-                        >
-                          <div className="w-4 h-4 rounded-full bg-[var(--brand-primary-dim)] flex items-center justify-center">
-                            <div className="w-1.5 h-1.5 bg-[var(--brand-primary)] rounded-full animate-pulse" />
-                          </div>
-                          <span className="text-xs text-[var(--text-secondary)] font-medium">{step}</span>
-                          <Check className="w-3 h-3 text-[var(--brand-success)] ml-auto" />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-
-                    <div className="flex items-center gap-3 mt-1">
-                      <div className="w-6 h-6 shrink-0">
-                        <img src="/logos/core.svg" alt="" width={24} height={24} />
+              {/* Unified "Aiden is thinking" state */}
+              {isStreaming &&
+                messages[messages.length - 1]?.role === "assistant" &&
+                !messages[messages.length - 1]?.content && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-start gap-3"
+                  >
+                    <div className="relative h-10 w-10 shrink-0">
+                      <span
+                        className="absolute inset-0 rounded-full bg-[var(--brand-accent-light)] animate-ping"
+                        style={{ animationDuration: "2.2s" }}
+                      />
+                      <span
+                        className="absolute inset-1 rounded-full bg-[var(--brand-primary-light)] animate-pulse"
+                        style={{ animationDuration: "1.6s" }}
+                      />
+                      <div className="relative flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-[var(--brand-primary)] to-[var(--brand-accent)] shadow-sm">
+                        <img
+                          src="/logos/core.svg"
+                          alt="Aiden"
+                          width={22}
+                          height={22}
+                          className="opacity-95"
+                        />
                       </div>
-                      {!messages[messages.length - 1]?.content && (
-                        <div className="bg-slate-100 rounded-2xl rounded-bl-sm px-4 py-2.5">
-                          <span className="text-xs text-slate-400 italic">Synthesizing response...</span>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                </motion.div>
-              )}
+                    <div className="flex min-w-0 flex-col gap-1 pt-0.5">
+                      <span className="text-sm font-medium text-[var(--text-primary)]">
+                        Aiden is thinking
+                      </span>
+                      <AnimatePresence mode="wait">
+                        <motion.span
+                          key={thinkingStep}
+                          initial={{ opacity: 0, y: 2 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="truncate text-xs italic text-[var(--text-secondary)]"
+                        >
+                          {thinkingStep}
+                        </motion.span>
+                      </AnimatePresence>
+                    </div>
+                  </motion.div>
+                )}
               
               {/* Error display with retry */}
               {error && (
@@ -659,11 +684,11 @@ export default function ChatPage() {
       </div>
 
       {/* Input Area - Sticky dock design, auto-adjusts to sidebar width */}
-      <div className="sticky bottom-0 bg-linear-to-t from-white via-white/90 to-transparent pt-12 pb-6 px-4 sm:px-6 lg:px-8 pl-14 lg:pl-8 z-10 pointer-events-none">
+      <div className="sticky bottom-0 bg-linear-to-t from-white via-white/90 to-transparent pt-8 pb-4 px-4 sm:px-6 lg:px-8 z-10 pointer-events-none">
         <div className="max-w-3xl mx-auto pointer-events-auto">
           <div className="bg-[var(--bg-overlay)]/70 backdrop-blur-2xl border border-[var(--border-subtle)] shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-3xl overflow-hidden transition-all duration-300 focus-within:shadow-[0_8px_30px_rgb(108,99,255,0.12)] focus-within:border-[var(--brand-primary)]/30">
             {/* Text input */}
-            <div className="px-4 pt-4">
+            <div className="px-4 pt-3">
               <textarea
                 ref={inputRef}
                 value={inputValue}
@@ -677,7 +702,7 @@ export default function ChatPage() {
             </div>
 
             {/* Controls */}
-            <div className="px-3 py-3 flex items-center justify-between">
+            <div className="px-3 py-2.5 flex items-center justify-between">
               {/* Source toggles */}
               <div className="flex items-center gap-2">
                 <button

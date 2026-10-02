@@ -39,6 +39,7 @@ def list_tasks(request):
     page = int(request.GET.get("page", 1))
     page_size = int(request.GET.get("page_size", 20))
     order_by = request.query_params.get("order_by", "-created_at")
+    workspace_id = request.query_params.get("workspace_id")
     
     try:
         result = service.list_tasks(
@@ -48,7 +49,8 @@ def list_tasks(request):
             search_query=search_query,
             page=page,
             page_size=page_size,
-            order_by=order_by
+            order_by=order_by,
+            workspace_id=workspace_id
         )
         return Response(result)
     except Exception as e:
@@ -68,7 +70,9 @@ def create_task(request):
     service = TaskService(request.user)
     
     try:
-        result = service.create_task(request.data)
+        # Pass workspace_id from request data
+        data = request.data.copy()
+        result = service.create_task(data)
         return Response({
             "message": "Task created successfully",
             **result
@@ -233,7 +237,8 @@ def list_comments(request, task_id):
 def create_comment(request, task_id):
     create_comment.throttle_scope = "task_write"
     """Add a comment to a task."""
-    service = TaskService(request.user)
+    from core.services.task_detail_service import TaskDetailService
+    service = TaskDetailService(request.user)
     
     try:
         result = service.add_comment(task_id, request.data.get("content", ""))
@@ -265,6 +270,172 @@ def delete_comment(request, task_id, comment_id):
     
     comment.delete()
     return Response({"message": "Comment deleted"})
+
+
+# =============================================================================
+# TASK COLLABORATOR ENDPOINTS
+# =============================================================================
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
+def list_collaborators(request, task_id):
+    """List all collaborators on a task."""
+    task = get_object_or_404(Task, id=task_id)
+    
+    # Check permissions - user must be task owner, assignee, or collaborator
+    user = request.user
+    if task.user != user and task.assignee != user and not task.collaborators.filter(id=user.id).exists():
+        return Response(
+            {"error": "You don't have permission to view this task"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    collaborators = task.collaborators.select_related('user').all()
+    
+    data = []
+    for collab in collaborators:
+        data.append({
+            "id": collab.id,
+            "username": collab.username,
+            "email": collab.email,
+            "first_name": collab.first_name,
+            "last_name": collab.last_name,
+        })
+    
+    # Also include assignee if not already in collaborators
+    if task.assignee and not task.collaborators.filter(id=task.assignee.id).exists():
+        data.insert(0, {
+            "id": task.assignee.id,
+            "username": task.assignee.username,
+            "email": task.assignee.email,
+            "first_name": task.assignee.first_name,
+            "last_name": task.assignee.last_name,
+            "is_assignee": True,
+        })
+    
+    return Response(data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
+def add_collaborator(request, task_id):
+    """Add a collaborator to a task."""
+    task = get_object_or_404(Task, id=task_id)
+    
+    # Only task owner or assignee can add collaborators
+    user = request.user
+    if task.user != user and task.assignee != user:
+        return Response(
+            {"error": "Only task owner or assignee can add collaborators"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    user_id = request.data.get("user_id")
+    if not user_id:
+        return Response(
+            {"error": "user_id is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    try:
+        collaborator = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"error": "User not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Can't add owner or assignee as collaborator
+    if collaborator == task.user:
+        return Response(
+            {"error": "Task owner is already the owner"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if task.assignee and collaborator == task.assignee:
+        return Response(
+            {"error": "Assignee is already assigned to this task"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Add collaborator
+    task.collaborators.add(collaborator)
+    
+    # Log activity
+    from core.models import TaskActivity
+    TaskActivity.objects.create(
+        task=task,
+        user=request.user,
+        activity_type="assigned",
+        old_value="",
+        new_value=f"Added collaborator: {collaborator.username}"
+    )
+    
+    return Response({
+        "message": "Collaborator added successfully",
+        "collaborator": {
+            "id": collaborator.id,
+            "username": collaborator.username,
+            "email": collaborator.email,
+        }
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
+def remove_collaborator(request, task_id, user_id):
+    """Remove a collaborator from a task."""
+    task = get_object_or_404(Task, id=task_id)
+    
+    # Only task owner can remove collaborators
+    if task.user != request.user:
+        return Response(
+            {"error": "Only task owner can remove collaborators"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    try:
+        collaborator = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response(
+            {"error": "User not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if collaborator == task.user:
+        return Response(
+            {"error": "Cannot remove task owner"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if task.assignee and collaborator == task.assignee:
+        return Response(
+            {"error": "Cannot remove assignee (use unassign instead)"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    task.collaborators.remove(collaborator)
+    
+    # Log activity
+    from core.models import TaskActivity
+    TaskActivity.objects.create(
+        task=task,
+        user=request.user,
+        activity_type="assigned",
+        old_value=f"Collaborator: {collaborator.username}",
+        new_value="Removed collaborator"
+    )
+    
+    return Response({"message": "Collaborator removed successfully"})
 
 
 @api_view(["GET"])

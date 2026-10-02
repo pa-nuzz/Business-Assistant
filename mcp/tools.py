@@ -185,6 +185,7 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "integer"},
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to filter documents."},
             },
             "required": ["user_id"],
         },
@@ -220,6 +221,7 @@ TOOL_DEFINITIONS = [
                     "type": "string",
                     "description": "Optional: limit search to one specific document UUID."
                 },
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to filter documents."},
             },
             "required": ["query", "user_id"],
         },
@@ -284,6 +286,7 @@ TOOL_DEFINITIONS = [
                     "type": "string",
                     "description": "ISO format date e.g. 2026-04-05. Optional."
                 },
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to create task in."},
             },
             "required": ["user_id", "title"],
         },
@@ -304,6 +307,7 @@ TOOL_DEFINITIONS = [
                     "enum": ["low", "medium", "high", "urgent"],
                 },
                 "limit": {"type": "integer", "default": 50},
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to filter tasks."},
             },
             "required": ["user_id"],
         },
@@ -320,6 +324,7 @@ TOOL_DEFINITIONS = [
                     "type": "string",
                     "enum": ["todo", "in_progress", "review", "done", "archived"]
                 },
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to scope the task."},
             },
             "required": ["task_id", "user_id", "status"],
         },
@@ -332,6 +337,7 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "task_id": {"type": "string"},
                 "user_id": {"type": "integer"},
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to scope the task."},
             },
             "required": ["task_id", "user_id"],
         },
@@ -343,6 +349,7 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "integer"},
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to scope the insights."},
             },
             "required": ["user_id"],
         },
@@ -372,6 +379,7 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "task_id": {"type": "string"},
                 "user_id": {"type": "integer"},
+                "workspace_id": {"type": "string", "description": "Optional workspace UUID to scope the task."},
             },
             "required": ["task_id", "user_id"],
         },
@@ -673,11 +681,21 @@ def get_followup_items(user_id: int) -> dict:
 
 
 @cached_tool(ttl=300)   # 5 minutes
-def list_documents(user_id: int) -> dict:
+def list_documents(user_id: int, workspace_id: str = None) -> dict:
     """List user's uploaded documents."""
     try:
         from core.models import Document
-        docs = Document.objects.filter(user_id=user_id).values(
+        docs = Document.objects.filter(user_id=user_id)
+        
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                docs = docs.filter(workspace_id=workspace_id)
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
+        
+        docs = docs.values(
             "id", "title", "file_type", "status", "page_count", "created_at"
         )
         result = [
@@ -695,11 +713,21 @@ def list_documents(user_id: int) -> dict:
         return {"error": str(e)}
 
 
-def get_document_summary(doc_id: str, user_id: int) -> dict:
+def get_document_summary(doc_id: str, user_id: int, workspace_id: str = None) -> dict:
     """Get the pre-generated summary of a document."""
     try:
         from core.models import Document
         doc = Document.objects.get(id=doc_id, user_id=user_id, status="ready")
+        
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                if str(doc.workspace_id) != workspace_id:
+                    return {"error": "Document does not belong to this workspace"}
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
+        
         if not doc.summary:
             return {"error": "Document is still processing or has no summary yet."}
         return {
@@ -720,6 +748,7 @@ def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
     """
     Hybrid search across document titles and content chunks.
     Combines Semantic (Vector) search with Keyword matching for top-notch precision.
+    Includes reranking for improved relevance.
     """
     try:
         from core.models import DocumentChunk, Document
@@ -771,11 +800,34 @@ def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
                     kw_score = sum(1 for kw in keywords if kw in content_lower)
                     normalized_kw = min(kw_score / 5.0, 1.0)
 
-                    combined_score = (semantic_score * 0.7) + (normalized_kw * 0.3)
+                    # Reranking: boost exact phrase matches and key phrase proximity
+                    phrase_boost = 0.0
+                    query_lower = query.lower()
+                    if query_lower in content_lower:
+                        phrase_boost = 0.15
+                    # Boost for multiple keyword proximity
+                    proximity_boost = 0.0
+                    for kw in keywords:
+                        if kw in content_lower:
+                            # Check if other keywords appear nearby (within 50 chars)
+                            for other_kw in keywords:
+                                if other_kw != kw and other_kw in content_lower:
+                                    pos1 = content_lower.index(kw)
+                                    pos2 = content_lower.index(other_kw)
+                                    if abs(pos1 - pos2) < 50:
+                                        proximity_boost += 0.03
+                                        break
+                    
+                    combined_score = (
+                        semantic_score * 0.65 + 
+                        normalized_kw * 0.25 + 
+                        phrase_boost + 
+                        min(proximity_boost, 0.1)
+                    )
 
                     if combined_score > 0.2:
                         scored_chunks.append({
-                            "score": combined_score,
+                            "score": round(combined_score, 4),
                             "doc_title": chunk.document.title,
                             "doc_id": str(chunk.document.id),
                             "content": chunk.content[:1000],
@@ -796,7 +848,7 @@ def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
                 )
                 if kw_score > 0:
                     scored_chunks.append({
-                        "score": min(kw_score / 5.0, 1.0) * 0.5,
+                        "score": round(min(kw_score / 5.0, 1.0) * 0.5, 4),
                         "doc_title": chunk.document.title,
                         "doc_id": str(chunk.document.id),
                         "content": chunk.content[:1000],
@@ -829,6 +881,27 @@ def search_documents(query: str, user_id: int, doc_id: str = None) -> dict:
     except Exception as e:
         logger.exception("search_documents hybrid error")
         return {"error": f"Search failed: {str(e)}"}
+
+
+@cached_tool(ttl=3600)  # 1 hour
+def search_user_memory(query: str, user_id: int, category: str = None, top_k: int = 5) -> dict:
+    """
+    Search user's memory facts using semantic vector search.
+    Falls back to keyword search if embeddings unavailable.
+    """
+    from core.services.semantic_service import SemanticMemoryService
+    
+    try:
+        result = SemanticMemoryService.search_by_text(
+            query=query,
+            user_id=user_id,
+            category=category,
+            top_k=top_k
+        )
+        return result
+    except Exception as e:
+        logger.exception("search_user_memory error")
+        return {"error": f"Memory search failed: {str(e)}"}
 
 
 @cached_tool(ttl=3600)  # 1 hour
@@ -919,7 +992,8 @@ def send_notification(user_id: int, message: str, priority: str = "normal", acti
 
 def create_task(user_id: int, title: str, description: str = "", 
                 priority: str = "medium", due_date: str = None,
-                assignee_id: int = None, tags: list = None) -> dict:
+                assignee_id: int = None, tags: list = None,
+                workspace_id: str = None) -> dict:
     """
     Create a new task for the user.
     
@@ -931,9 +1005,10 @@ def create_task(user_id: int, title: str, description: str = "",
         due_date: ISO format date string (optional)
         assignee_id: User ID to assign task to (optional, defaults to creator)
         tags: List of tag strings (optional)
+        workspace_id: Optional workspace UUID to create task in
     """
     try:
-        from core.models import Task, TaskTag, BusinessProfile
+        from core.models import Task, TaskTag, BusinessProfile, Workspace, WorkspaceMember
         from django.contrib.auth.models import User
         from utils.sanitization import sanitize_plain_text, sanitize_rich_text
         
@@ -944,6 +1019,23 @@ def create_task(user_id: int, title: str, description: str = "",
         # Validate required fields
         if not title:
             return {"error": "Task title is required"}
+        
+        # Handle workspace
+        if workspace_id:
+            # Validate workspace access
+            from core.models import Workspace, WorkspaceMember
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                if not WorkspaceMember.objects.filter(workspace_id=workspace_id, user_id=user_id).exists():
+                    return {"error": "You don't have access to this workspace"}
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
+        else:
+            # Default to user's Personal workspace
+            workspace = Workspace.objects.filter(owner_id=user_id, is_personal=True).first()
+            if workspace:
+                workspace_id = str(workspace.id)
         
         # Get or create business profile
         try:
@@ -971,6 +1063,7 @@ def create_task(user_id: int, title: str, description: str = "",
             user_id=user_id,
             created_by_id=user_id,
             business_profile=business_profile,
+            workspace_id=workspace_id,
             title=title,
             description=description,
             priority=priority,
@@ -1000,7 +1093,8 @@ def create_task(user_id: int, title: str, description: str = "",
 
 
 def list_tasks(user_id: int, status: str = None, priority: str = None,
-               assignee_id: int = None, limit: int = 50) -> dict:
+               assignee_id: int = None, limit: int = 50,
+               workspace_id: str = None) -> dict:
     """
     List tasks for a user with optional filters.
     
@@ -1010,6 +1104,7 @@ def list_tasks(user_id: int, status: str = None, priority: str = None,
         priority: Filter by priority (optional)
         assignee_id: Filter by assignee (optional)
         limit: Maximum number of results (default: 50)
+        workspace_id: Optional workspace UUID to filter tasks
     """
     try:
         from core.models import Task
@@ -1019,6 +1114,15 @@ def list_tasks(user_id: int, status: str = None, priority: str = None,
         tasks = Task.objects.filter(
             Q(created_by_id=user_id) | Q(assignee_id=user_id) | Q(user_id=user_id)
         ).exclude(status="archived")
+        
+        # Filter by workspace if provided
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                tasks = tasks.filter(workspace_id=workspace_id)
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
         
         # Apply filters
         if status:
@@ -1048,7 +1152,7 @@ def list_tasks(user_id: int, status: str = None, priority: str = None,
         return {"error": str(e)}
 
 
-def update_task_status(task_id: str, user_id: int, status: str) -> dict:
+def update_task_status(task_id: str, user_id: int, status: str, workspace_id: str = None) -> dict:
     """
     Update task status.
     
@@ -1056,12 +1160,23 @@ def update_task_status(task_id: str, user_id: int, status: str) -> dict:
         task_id: UUID of the task
         user_id: User making the update
         status: New status (todo, in_progress, review, done, archived)
+        workspace_id: Optional workspace UUID to scope the task
     """
     try:
         from core.models import Task, TaskActivity
         from datetime import datetime
         
         task = Task.objects.get(id=task_id)
+        
+        # Validate workspace if provided
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                if str(task.workspace_id) != workspace_id:
+                    return {"error": "Task does not belong to this workspace"}
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
         
         # Check permissions using shared utility
         from utils.task_permissions import can_modify_task
@@ -1105,13 +1220,14 @@ def update_task_status(task_id: str, user_id: int, status: str) -> dict:
         return {"error": str(e)}
 
 
-def get_task_details(task_id: str, user_id: int) -> dict:
+def get_task_details(task_id: str, user_id: int, workspace_id: str = None) -> dict:
     """
     Get detailed information about a specific task.
     
     Args:
         task_id: UUID of the task
         user_id: User requesting the details
+        workspace_id: Optional workspace UUID to scope the task
     """
     try:
         from core.models import Task
@@ -1121,6 +1237,16 @@ def get_task_details(task_id: str, user_id: int) -> dict:
             Q(id=task_id),
             Q(created_by_id=user_id) | Q(assignee_id=user_id) | Q(user_id=user_id)
         )
+        
+        # Validate workspace if provided
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                if str(task.workspace_id) != workspace_id:
+                    return {"error": "Task does not belong to this workspace"}
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
         
         # Get subtasks
         subtasks = []
@@ -1164,12 +1290,13 @@ def get_task_details(task_id: str, user_id: int) -> dict:
         return {"error": str(e)}
 
 
-def get_task_insights(user_id: int) -> dict:
+def get_task_insights(user_id: int, workspace_id: str = None) -> dict:
     """
     Get productivity insights for the user.
     
     Args:
         user_id: The user to get insights for
+        workspace_id: Optional workspace UUID to scope the insights
     """
     try:
         from core.models import Task
@@ -1180,6 +1307,14 @@ def get_task_insights(user_id: int) -> dict:
         tasks = Task.objects.filter(
             Q(created_by_id=user_id) | Q(assignee_id=user_id)
         )
+        
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                tasks = tasks.filter(workspace_id=workspace_id)
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
         
         # Status counts
         status_counts = tasks.values("status").annotate(count=Count("id"))
@@ -1288,18 +1423,29 @@ If no actionable tasks found, return empty suggestions array."""
         return {"error": str(e)}
 
 
-def delete_task(user_id: int, task_id: str) -> dict:
+def delete_task(user_id: int, task_id: str, workspace_id: str = None) -> dict:
     """
     Delete a task permanently.
     
     Args:
         user_id: The user who owns the task
         task_id: UUID of the task to delete
+        workspace_id: Optional workspace UUID to scope the task
     """
     try:
         from core.models import Task, TaskActivity
         
         task = Task.objects.get(id=task_id, user_id=user_id)
+        
+        # Validate workspace if provided
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                if str(task.workspace_id) != workspace_id:
+                    return {"error": "Task does not belong to this workspace"}
+            except (ValueError, TypeError):
+                return {"error": "Invalid workspace ID"}
         title = task.title
         
         # Log the deletion for audit trail
@@ -1340,6 +1486,7 @@ TOOL_MAP: dict[str, callable] = {
     "list_documents": list_documents,
     "get_document_summary": get_document_summary,
     "search_documents": search_documents,
+    "search_user_memory": search_user_memory,
     "duckduckgo_search": duckduckgo_search,
     "searxng_search": searxng_search,
     # Web scraper (lazy import to avoid circular dependency)

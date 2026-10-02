@@ -14,6 +14,7 @@ from typing import Literal, Dict, List, Optional, Any
 import logging
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from services.model_layer import (
@@ -29,19 +30,32 @@ from agents.tool_decision import ToolDecisionEngine
 
 logger = logging.getLogger(__name__)
 
-SYNTHESIS_SYSTEM_PROMPT = """You are AEIOU, a business assistant. You have strict rules:
-
-1. BASE YOUR RESPONSE ONLY ON THE TOOL RESULTS PROVIDED BELOW.
-2. NEVER invent, estimate, or calculate numbers not present in tool results.
-3. If a specific piece of information is missing from tool results, say exactly:
-   "I don't have that information available right now."
+SYNTHESIS_SYSTEM_PROMPT = """## Grounding Rules
+1. Base your response only on the tool results and conversation context provided.
+2. NEVER invent, estimate, or calculate numbers not present in the data.
+3. If a specific piece of information is missing, say exactly: "I don't have that information available right now."
 4. NEVER use your training knowledge to fill in business data (revenue, task counts, dates).
 5. If tool results are empty, say so clearly and offer to help the user set up that data.
 6. Keep responses concise and actionable.
 7. If the user asks about something you just told them, refer back to what you said — don't re-fetch.
-
-Tool results are provided below. Respond based ONLY on these.
 """
+
+def _build_chat_system_prompt(user_name: Optional[str] = None) -> str:
+    """Combine the Aiden persona with grounding rules for response synthesis."""
+    from agents.prompts import get_system_prompt
+    return f"{get_system_prompt(user_name)}\n\n{SYNTHESIS_SYSTEM_PROMPT}"
+
+def _format_recent_history(conversation_history: List[Dict], max_turns: int = 3) -> str:
+    """Format recent user/assistant turns so the final answer keeps continuity."""
+    filtered = [
+        {"role": m.get("role"), "content": m.get("content", "")}
+        for m in conversation_history
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
+    if not filtered:
+        return "No prior conversation."
+    recent = filtered[-max_turns * 2:]
+    return "\n".join(f"{m['role']}: {str(m['content'])[:400]}" for m in recent)
 
 QueryIntent = Literal["chat", "search", "document", "analytics", "memory", "action", "task"]
 
@@ -101,7 +115,8 @@ def _update_context(user_id: int, query: str, intent: str, tools_used: List[str]
 
 from utils.text import extract_keywords as _extract_keywords
 
-def classify_intent_advanced(user_message: str, user_id: int, history: List[Dict] = None) -> QueryIntent:
+def classify_intent_advanced(user_message: str, user_id: int, history: List[Dict] = None,
+                             context_brief: str = None) -> QueryIntent:
     """
     Semantic intent classification.
     Uses fast keyword matching for obvious cases, falls back to LLM for complex/ambiguous ones.
@@ -112,10 +127,12 @@ def classify_intent_advanced(user_message: str, user_id: int, history: List[Dict
     # --- Level 1: Fast Direct Signal Matching ---
     signals = {
         "document": ["document", "pdf", "file", "upload", "summary of", "in my docs", 
-                     "contract", "report", "spreadsheet", "cv", "resume", "what does my"],
+                     "contract", "report", "spreadsheet", "cv", "resume", "what does my",
+                     "what is in my", "what does the document", "what is in the document",
+                     "analyze the document", "search the document", "in the pdf", "in the doc"],
         "analytics": ["revenue", "metrics", "kpi", "dashboard", "how much", "how many",
                       "growth", "performance", "sales", "profit", "statistics"],
-        "search": ["search", "find out", "latest", "current", "news", "research", "what is"],
+        "search": ["search", "find out", "latest", "current", "news", "research"],
         "task": ["create task", "add task", "new task", "todo", "remind me to", "schedule", "deadline", "my tasks", "update task", "delete task"],
     }
     
@@ -156,7 +173,8 @@ Respond with ONLY the category name."""
                 base_system_prompt="You are an intent classifier. Be precise.",
                 task_type=TaskType.QUICK,
                 priority=Priority.HIGH,
-                use_cache=True
+                use_cache=True,
+                context_brief=context_brief,
             )
             
             cleaned_intent = result.text.lower().strip()
@@ -170,8 +188,62 @@ Respond with ONLY the category name."""
 
     return "chat"
 
+def _fast_task_routing(user_message: str):
+    """Rule-based task routing for the most common command phrasings.
+
+    Returns (tool_calls, reasoning_chain) when a confident match is found,
+    otherwise None so the caller falls back to the LLM router.
+    """
+    msg = user_message.strip().strip("?!.")
+
+    # CREATE: "add/create/new task: <title>", "create a task to <title>", "remind me to <title>"
+    create = re.search(
+        r"\b(?:add|create|schedule|remind me to|make|set)\b.*\btask\b\s*[:#]?\s*(.+)",
+        msg,
+        re.IGNORECASE,
+    ) or re.search(
+        r"\b(?:add|create|make|set)\s+(?:a\s+)?new\s+task\s*[:#]?\s*(.+)",
+        msg,
+        re.IGNORECASE,
+    ) or re.search(
+        r"^remind\s+me\s+to\s+(.+)$",
+        msg,
+        re.IGNORECASE,
+    )
+    if create:
+        title = create.group(1).strip(" .,")
+        if not title:
+            return None
+        args = {"title": title, "priority": "medium"}
+        low = re.search(r"\b(?:low|minor)\b", msg, re.IGNORECASE)
+        high = re.search(r"\b(?:urgent|high|asap|important)\b", msg, re.IGNORECASE)
+        if high:
+            args["priority"] = "urgent" if re.search(r"\burgent\b|asap", msg, re.IGNORECASE) else "high"
+        elif low:
+            args["priority"] = "low"
+        due = re.search(r"\b(?:by|due|before)\s+(today|tonight|tomorrow)", msg, re.IGNORECASE)
+        if due:
+            from datetime import date, timedelta
+            offset = {"today": 0, "tonight": 0, "tomorrow": 1}[due.group(1).lower()]
+            args["due_date"] = (date.today() + timedelta(days=offset)).isoformat()
+        tool_calls = [{"name": "create_task", "args": args, "reason": "Create task from user request"}]
+        tool_calls.append({"name": "list_tasks", "args": {}, "reason": "Show updated task list"})
+        return tool_calls, ["Understood as task creation", "Create the task and confirm the updated list"]
+
+    # LIST: "my tasks", "show tasks", "what do I have due"
+    if re.search(r"\b(?:my|all|the|open|due)\s+tasks?\b|list\s+tasks?|show\s+(?:me\s+)?tasks?|what.{0,30}tasks?\b", msg, re.IGNORECASE):
+        return [{"name": "list_tasks", "args": {}, "reason": "List current tasks"}], ["User asked to see tasks", "Fetch task list"]
+
+    # DELETE: "delete/remove task X"
+    delete = re.search(r"\b(?:delete|remove|clear)\s+task\s*[:#]?\s*(.+)", msg, re.IGNORECASE)
+    if delete and len(delete.group(1).strip()) < 60:
+        return [{"name": "list_tasks", "args": {}, "reason": "Find the task to delete"}], ["User asked to delete a task", "List tasks so the right one can be chosen"]
+
+    return None
+
+
 def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
-                           conversation_history: List[Dict]) -> ExecutionPlan:
+                           conversation_history: List[Dict], context_brief: str = None) -> ExecutionPlan:
     """Build an execution plan using rule-based logic (no AI call)."""
     
     # --- Entity resolution ---
@@ -239,48 +311,56 @@ def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
         
         task_tools = [t for t in TOOL_DEFINITIONS if "task" in t["name"] or t["name"] == "get_business_profile"]
         
-        prompt = f"User wants to manage tasks. Message: '{user_message}'\n\nPick the right tool(s) to fulfill this request. If they want to create a task, extract the title, priority, etc. If they want to update, extract the status. If they want to list, use list_tasks."
-        
-        try:
-            res = call_model(
-                user_id=user_id,
-                user_message=prompt,
-                base_system_prompt="You are a task routing assistant. Call the appropriate tools to handle the user's task request.",
-                task_type=TaskType.QUICK,
-                priority=Priority.HIGH,
-                use_cache=False,
-                tool_definitions=task_tools,
-                conversation_history=conversation_history[-4:] if conversation_history else []
-            )
+        # Fast rule-based routing for common task commands — avoids an LLM
+        # round-trip for the phrases people actually type most.
+        fast = _fast_task_routing(user_message)
+        if fast is not None:
+            tool_calls, reasoning_chain = fast
+        else:
+            prompt = f"User wants to manage tasks. Message: '{user_message}'\n\nPick the right tool(s) to fulfill this request. If they want to create a task, extract the title, priority, etc. If they want to update, extract the status. If they want to list, use list_tasks."
             
-            if res.tool_calls:
-                for tc in res.tool_calls:
-                    # Enforce user_id
-                    if "args" not in tc:
-                        tc["args"] = {}
-                    tc["args"]["user_id"] = user_id
-                    tc["reason"] = "LLM intent parsing"
-                    tool_calls.append(tc)
+            try:
+                res = call_model(
+                    user_id=user_id,
+                    user_message=prompt,
+                    base_system_prompt="You are a task routing assistant. Call the appropriate tools to handle the user's task request.",
+                    task_type=TaskType.QUICK,
+                    priority=Priority.HIGH,
+                    use_cache=False,
+                    tool_definitions=task_tools,
+                    conversation_history=conversation_history[-4:] if conversation_history else [],
+                    context_brief=context_brief,
+                )
                 
-                # If modifying, add a list_tasks to see the result
-                if any(tc["name"] in ["create_task", "update_task_status", "delete_task"] for tc in tool_calls):
-                    tool_calls.append({"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Show updated task list"})
-                
-                reasoning_chain = ["Used AI to determine task actions"]
-            else:
+                if res.tool_calls:
+                    for tc in res.tool_calls:
+                        # Enforce user_id
+                        if "args" not in tc:
+                            tc["args"] = {}
+                        tc["args"]["user_id"] = user_id
+                        tc["reason"] = "LLM intent parsing"
+                        tool_calls.append(tc)
+                    
+                    # If modifying, add a list_tasks to see the result
+                    if any(tc["name"] in ["create_task", "update_task_status", "delete_task"] for tc in tool_calls):
+                        tool_calls.append({"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Show updated task list"})
+                    
+                    reasoning_chain = ["Used AI to determine task actions"]
+                else:
+                    tool_calls = [{"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Fallback: show current tasks"}]
+                    reasoning_chain = ["Could not determine specific task action, showing tasks"]
+            except Exception as e:
+                logger.error(f"Task tool routing failed: {e}")
                 tool_calls = [{"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Fallback: show current tasks"}]
-                reasoning_chain = ["Could not determine specific task action, showing tasks"]
-        except Exception as e:
-            logger.error(f"Task tool routing failed: {e}")
-            tool_calls = [{"name": "list_tasks", "args": {"user_id": user_id, "limit": 5}, "reason": "Fallback: show current tasks"}]
-            reasoning_chain = ["Error in task routing, showing tasks"]
+                reasoning_chain = ["Error in task routing, showing tasks"]
     
     elif intent == "memory":
         tool_calls = [
             {"name": "get_user_memory", "args": {"user_id": user_id}, "reason": "Retrieve user memory/context"},
-            {"name": "get_followup_items", "args": {"user_id": user_id}, "reason": "Check for follow-up items"}
+            {"name": "get_followup_items", "args": {"user_id": user_id}, "reason": "Check for follow-up items"},
+            {"name": "search_user_memory", "args": {"query": user_message, "user_id": user_id}, "reason": "Search user memory for relevant facts"}
         ]
-        reasoning_chain = ["User referenced previous context", "Fetch user memory and follow-ups"]
+        reasoning_chain = ["User referenced previous context", "Fetch user memory, follow-ups, and search memory for relevant facts"]
     
     elif intent == "chat":
         tool_calls = [
@@ -304,47 +384,103 @@ def build_intelligent_plan(intent: QueryIntent, user_message: str, user_id: int,
         expected_outcome="Relevant data for response synthesis"
     )
 
-def execute_intelligent_plan(plan: ExecutionPlan, user_id: int) -> List[Dict]:
-    """Execute plan with self-correction and result enrichment."""
+def execute_intelligent_plan(plan: ExecutionPlan, user_id: int, workspace_id: str = None) -> List[Dict]:
+    """Execute plan with self-correction and result enrichment.
+
+    Independent tool calls run in parallel (bounded worker pool) to cut the
+    pre-synthesis latency for plans that fetch several sources at once.
+    """
     from utils.security import enforce_user_id
-    results = []
-    
-    for tc in plan.tool_calls:
+
+    # Tools that should receive workspace_id
+    WORKSPACE_SCOPED_TOOLS = {
+        "list_documents",
+        "search_documents",
+        "get_document_summary",
+        "list_tasks",
+        "create_task",
+        "get_task_details",
+        "update_task",
+        "delete_task",
+        "get_task_insights",
+        "get_user_memory",
+        "search_user_memory",
+        "save_memory",
+        "get_business_profile",
+        "get_revenue_data",
+        "get_conversation_insights",
+        "get_followup_items",
+    }
+
+    def run_tool(tc: Dict, index: int) -> Dict:
+        from django.db import close_old_connections
+        close_old_connections()
         tool_name = tc["name"]
         tool_args = tc.get("args", {})
         reason = tc.get("reason", "No reason provided")
-        
+
         # Sanitize tool args to enforce correct user_id
         tool_args = enforce_user_id(tool_name, tool_args, user_id)
         
+        # Inject workspace_id into tool args if provided
+        if workspace_id and tool_name in WORKSPACE_SCOPED_TOOLS:
+            tool_args["workspace_id"] = workspace_id
+
         max_retries = 2
         result = None
         error = None
-        
-        for attempt in range(max_retries):
-            try:
-                result = execute_tool(tool_name, tool_args)
-                if "error" not in result:
-                    break
-                error = result.get("error")
-            except Exception as e:
-                error = str(e)
-                logger.warning(f"Tool {tool_name} attempt {attempt + 1} failed: {e}")
-        
-        if result and "error" not in result:
-            formatted = _format_tool_result(tool_name, result)
-        else:
-            formatted = f"[{tool_name} failed: {error or 'Unknown error'}]"
-        
-        results.append({
-            "tool": tool_name, 
+
+        try:
+            for attempt in range(max_retries):
+                close_old_connections()
+                try:
+                    result = execute_tool(tool_name, tool_args)
+                    if "error" not in result:
+                        break
+                    error = result.get("error")
+                except Exception as e:
+                    error = str(e)
+                    logger.warning(f"Tool {tool_name} attempt {attempt + 1} failed: {e}")
+
+            if result and "error" not in result:
+                formatted = _format_tool_result(tool_name, result)
+            else:
+                formatted = f"[{tool_name} failed: {error or 'Unknown error'}]"
+        finally:
+            close_old_connections()
+
+        logger.info(f"Tool executed: {tool_name}")
+        return {
+            "tool": tool_name,
             "result": formatted,
             "reason": reason,
-            "success": "error" not in (result or {})
-        })
-        
-        logger.info(f"Tool executed: {tool_name}")
-    
+            "success": "error" not in (result or {}),
+            "_order": index,
+        }
+
+    results = []
+    if not plan.tool_calls:
+        return results
+
+    max_workers = min(len(plan.tool_calls), 4)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(run_tool, tc, i): i for i, tc in enumerate(plan.tool_calls)}
+        for future in as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception as e:
+                logger.warning(f"Tool task crashed unexpectedly: {e}")
+                results.append({
+                    "tool": plan.tool_calls[futures[future]].get("name", "unknown"),
+                    "result": f"[tool crashed: {e}]",
+                    "reason": "worker exception",
+                    "success": False,
+                    "_order": futures[future],
+                })
+
+    results.sort(key=lambda r: r["_order"])
+    for r in results:
+        r.pop("_order", None)
     return results
 
 
@@ -410,6 +546,18 @@ def _format_tool_result(tool_name: str, result: Dict) -> str:
     if tool_name == "search_documents":
         if isinstance(data, str) and "No relevant" in data:
             return f"[{tool_name}] No matching documents found."
+        # Extract source citations for the response
+        sources = []
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict) and item.get("doc_title"):
+                    sources.append({
+                        "doc_id": item.get("doc_id"),
+                        "doc_title": item.get("doc_title"),
+                        "page": item.get("page"),
+                        "match_type": item.get("match_type"),
+                        "score": item.get("score"),
+                    })
         return f"[{tool_name}] Found in your documents:\n{json.dumps(data, indent=2, default=str)}"
     
     elif tool_name == "get_business_profile":
@@ -422,11 +570,9 @@ def _format_tool_result(tool_name: str, result: Dict) -> str:
         return f"[{tool_name} result]\n{json.dumps(data, indent=2, default=str)}"
 
 def synthesize_response(user_message: str, plan: ExecutionPlan, tool_results: List[Dict], 
-                       user_id: int, user_name: Optional[str]) -> str:
+                       user_id: int, user_name: Optional[str], context_brief: str = None) -> str:
     """Synthesize a comprehensive, intelligent response."""
-    from agents.prompts import get_system_prompt
-    
-    system_prompt = SYNTHESIS_SYSTEM_PROMPT
+    system_prompt = _build_chat_system_prompt(user_name)
     
     # --- Extract user context from already-fetched tool_results ---
     user_context_parts = []
@@ -447,6 +593,22 @@ def synthesize_response(user_message: str, plan: ExecutionPlan, tool_results: Li
         if docs_result and docs_result.get("success", False):
             user_context_parts.append(f"[Available Documents]\n{docs_result['result']}")
     
+    # Extract document sources from search_documents results for citations
+    doc_sources = []
+    for r in tool_results:
+        if r.get("tool") == "search_documents" and r.get("success", True):
+            data = r.get("result", r)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get("doc_title"):
+                        doc_sources.append({
+                            "doc_id": item.get("doc_id"),
+                            "doc_title": item.get("doc_title"),
+                            "page": item.get("page"),
+                            "match_type": item.get("match_type"),
+                            "score": item.get("score"),
+                        })
+    
     user_context_block = "\n\n".join(user_context_parts) if user_context_parts else ""
     
     successful_results = [r for r in tool_results if r.get("success", True)]
@@ -459,6 +621,24 @@ def synthesize_response(user_message: str, plan: ExecutionPlan, tool_results: Li
     if failed_results:
         failure_note = f"\n\nNote: Some data sources were unavailable ({len(failed_results)} tools failed)."
     
+    # Build citation block for document sources
+    citation_block = ""
+    if doc_sources:
+        # Deduplicate by doc_id
+        seen_ids = set()
+        unique_sources = []
+        for src in doc_sources:
+            if src["doc_id"] not in seen_ids:
+                seen_ids.add(src["doc_id"])
+                unique_sources.append(src)
+        
+        citation_lines = ["\n--- DOCUMENT SOURCES (cite these in your response) ---"]
+        for i, src in enumerate(unique_sources, 1):
+            page_info = f", page {src['page']}" if src.get('page') else ""
+            match_info = f" ({src['match_type']})" if src.get('match_type') else ""
+            citation_lines.append(f"[{i}] {src['doc_title']}{page_info}{match_info} (relevance: {src['score']:.2f})")
+        citation_block = "\n".join(citation_lines) + "\n"
+    
     # Build synthesis prompt with user context at the top
     user_context_section = f"""
 User Context (the user's background and what they have):
@@ -470,7 +650,7 @@ User Context (the user's background and what they have):
 
 {user_context_section}Here's what I found from tools:
 {context_block}
-{failure_note}
+{citation_block}{failure_note}
 
 Instructions for AEIOU AI:
 1. Respond conversationally, like a helpful colleague
@@ -487,6 +667,7 @@ Instructions for AEIOU AI:
    - Never reference documents or tasks that don't appear in the tool results
    - If you need to search for something not found, say "I couldn't find that - would you like me to search differently?"
 10. If the data shows "No [items] found", clearly state that rather than being vague
+11. CITATIONS: When referencing information from documents, cite the source using the format [1], [2], etc. corresponding to the DOCUMENT SOURCES section above. Only cite sources that are actually listed there.
 
 Just give a natural, helpful response:"""
 
@@ -499,6 +680,7 @@ Just give a natural, helpful response:"""
             priority=Priority.HIGH,
             use_cache=True,
             store_memory=True,
+            context_brief=context_brief,
         )
         return result.text or "I couldn't process that request."
     except Exception as e:
@@ -506,22 +688,23 @@ Just give a natural, helpful response:"""
         return "I'm having trouble processing your request. Please try again."
 
 def run_intelligent(user_message: str, user_id: int, conversation_history: List[Dict], 
-                   user_name: str = None) -> OrchestratorResult:
+                   user_name: str = None, workspace_id: str = None) -> OrchestratorResult:
     """Main entry point for intelligent orchestration with context-first responses."""
-    from services.model_layer import extract_and_store_memory
+    from services.model_layer import extract_and_store_memory, _get_context_brief
     
+    context_brief = _get_context_brief(user_id, workspace_id)
     _update_context(user_id, user_message, "", [])
     
-    intent = classify_intent_advanced(user_message, user_id)
+    intent = classify_intent_advanced(user_message, user_id, context_brief=context_brief)
     _update_context(user_id, user_message, intent, [])
     
-    plan = build_intelligent_plan(intent, user_message, user_id, conversation_history)
+    plan = build_intelligent_plan(intent, user_message, user_id, conversation_history, context_brief=context_brief)
     
-    tool_results = execute_intelligent_plan(plan, user_id)
+    tool_results = execute_intelligent_plan(plan, user_id, workspace_id)
     tools_used = [r["tool"] for r in tool_results if r.get("success", False)]
     
     response_text = synthesize_response(
-        user_message, plan, tool_results, user_id, user_name
+        user_message, plan, tool_results, user_id, user_name, context_brief=context_brief
     )
     
     # Defer memory extraction to background task (avoids extra LLM call per message)
@@ -548,14 +731,15 @@ def run_intelligent(user_message: str, user_id: int, conversation_history: List[
     }
 
 def run_stream_intelligent(user_message: str, user_id: int, conversation_history: List[Dict], 
-                          user_name: str = None, conversation_id: str = None):
+                           user_name: str = None, conversation_id: str = None, workspace_id: str = None):
     """Streaming version of intelligent orchestration with thinking indicators and automatic memory extraction."""
     import json as _json
-    from services.model_layer import extract_and_store_memory
+    from services.model_layer import extract_and_store_memory, _get_context_brief
     
+    context_brief = _get_context_brief(user_id, workspace_id)
     _update_context(user_id, user_message, "", [])
-    intent = classify_intent_advanced(user_message, user_id)
-    plan = build_intelligent_plan(intent, user_message, user_id, conversation_history)
+    intent = classify_intent_advanced(user_message, user_id, context_brief=context_brief)
+    plan = build_intelligent_plan(intent, user_message, user_id, conversation_history, context_brief=context_brief)
     
     meta = {
         "metadata": {
@@ -571,7 +755,7 @@ def run_stream_intelligent(user_message: str, user_id: int, conversation_history
     thinking_msg = _get_thinking_message(plan.tool_calls, intent)
     yield f"data: {_json.dumps({'type': 'thinking', 'content': thinking_msg})}\n\n"
     
-    tool_results = execute_intelligent_plan(plan, user_id)
+    tool_results = execute_intelligent_plan(plan, user_id, workspace_id)
     tools_used = [r["tool"] for r in tool_results if r.get("success", False)]
     
     # Update thinking message before synthesis
@@ -582,14 +766,66 @@ def run_stream_intelligent(user_message: str, user_id: int, conversation_history
     
     context_parts = [r["result"] for r in tool_results]
     context_block = "\n\n".join(context_parts)
+    recent_history = _format_recent_history(conversation_history)
+    
+    # Extract document sources from search_documents results for citations
+    doc_sources = []
+    for r in tool_results:
+        if r.get("tool") == "search_documents" and r.get("success", True):
+            data = r.get("result", r)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get("doc_title"):
+                        doc_sources.append({
+                            "doc_id": item.get("doc_id"),
+                            "doc_title": item.get("doc_title"),
+                            "page": item.get("page"),
+                            "match_type": item.get("match_type"),
+                            "score": item.get("score"),
+                        })
+    
+    # Build citation block for document sources
+    citation_block = ""
+    if doc_sources:
+        # Deduplicate by doc_id
+        seen_ids = set()
+        unique_sources = []
+        for src in doc_sources:
+            if src["doc_id"] not in seen_ids:
+                seen_ids.add(src["doc_id"])
+                unique_sources.append(src)
+        
+        citation_lines = ["\n--- DOCUMENT SOURCES (cite these in your response) ---"]
+        for i, src in enumerate(unique_sources, 1):
+            page_info = f", page {src['page']}" if src.get('page') else ""
+            match_info = f" ({src['match_type']})" if src.get('match_type') else ""
+            citation_lines.append(f"[{i}] {src['doc_title']}{page_info}{match_info} (relevance: {src['score']:.2f})")
+        citation_block = "\n".join(citation_lines) + "\n"
     
     synthesis_message = f"""Original question: {user_message}
 
-Reasoning: {chr(10).join(plan.reasoning_chain)}
+Intent: {plan.intent or "chat"}
+Reasoning:
+{chr(10).join(plan.reasoning_chain)}
 
-Data: {context_block}
+Data (from tools):
+{context_block}
+{citation_block}
 
-Provide a helpful, actionable response:"""
+Prior conversation:
+{recent_history}
+
+How to respond:
+- Answer the user's actual question directly and conversationally, as Aiden, their business partner.
+- Adapt the format to the question and intent: a short direct answer for simple questions, a brief summary plus key points for analysis, a short list or table when it genuinely helps. Don't force a structure.
+- Be concise. Simple questions get 2-4 sentences.
+- Don't pad with generic filler, canned "action steps", or "best practices" advice.
+- Reference the user's real data (company name, document titles, task names, numbers) only when it appears in the Data above.
+- If the Data is empty or a tool failed, say plainly what you don't have and offer one concrete next step.
+- Use the Prior conversation only for continuity — don't repeat it verbatim.
+- CITATIONS: When referencing information from documents, cite the source using the format [1], [2], etc. corresponding to the DOCUMENT SOURCES section above. Only cite sources that are actually listed there.
+
+Reply now:"""
 
     # Collect response for memory extraction
     collected_response = []
@@ -598,8 +834,9 @@ Provide a helpful, actionable response:"""
         for token in call_model_stream(
             user_id=user_id,
             user_message=synthesis_message,
-            base_system_prompt=SYNTHESIS_SYSTEM_PROMPT,
+            base_system_prompt=_build_chat_system_prompt(user_name),
             task_type=TaskType.ANALYSIS,
+            context_brief=context_brief,
         ):
             collected_response.append(token)
             yield f"data: {_json.dumps({'token': token})}\n\n"

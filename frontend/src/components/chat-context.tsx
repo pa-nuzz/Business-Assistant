@@ -21,6 +21,7 @@ interface ChatContextType {
   clearState: () => void;
   saveState: () => void;
   loadState: () => void;
+  isHydrated: boolean;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -29,6 +30,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState<string | undefined>();
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // Save state to localStorage
   const saveState = useCallback(() => {
@@ -43,7 +45,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [messages, inputValue, currentConversationId]);
 
-  // Load state from localStorage
+  // Load state from localStorage - only if no conversation ID in URL
   const loadState = useCallback(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -60,6 +62,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         // Silently fail - localStorage might be disabled or corrupted
         console.warn('Failed to load chat state:', error);
+      } finally {
+        setIsHydrated(true);
       }
     }
   }, []);
@@ -70,9 +74,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timeoutId);
   }, [saveState]);
 
-  // Load state on mount
+  // Load state on mount - only if no conversation ID in URL
   useEffect(() => {
-    loadState();
+    const params = new URLSearchParams(window.location.search);
+    const hasConversationId = params.get('id');
+    if (!hasConversationId) {
+      loadState();
+    } else {
+      setIsHydrated(true);
+    }
   }, [loadState]);
 
   const clearState = useCallback(() => {
@@ -83,6 +93,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('aeiou-chat-state');
     }
   }, []);
+
+  // Listen for global "new chat" event from sidebar
+  useEffect(() => {
+    const handleNewChat = () => clearState();
+    window.addEventListener('aeiou-new-chat', handleNewChat);
+    return () => window.removeEventListener('aeiou-new-chat', handleNewChat);
+  }, [clearState]);
 
   return (
     <ChatContext.Provider
@@ -96,6 +113,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         clearState,
         saveState,
         loadState,
+        isHydrated,
       }}
     >
       {children}

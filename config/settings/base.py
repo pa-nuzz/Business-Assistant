@@ -176,6 +176,8 @@ REST_FRAMEWORK = {
         "strict": "10/min",
         "upload": "5/min",
         "auth": "20/min",
+        "auth_login": "20/min",
+        "auth_refresh": "120/min",
         "chat": "20/min",
         "task": "60/min",
         "task_write": "30/min",
@@ -235,7 +237,7 @@ AI_CONFIG = {
         "chat_enabled": config("GEMINI_CHAT_ENABLED", default=False, cast=bool),
         "model": config("GEMINI_MODEL", default="gemini-1.5-flash"),
         "embedding_model": config("GEMINI_EMBEDDING_MODEL", default="models/gemini-embedding-001"),
-        "timeout": config("GEMINI_TIMEOUT", default=15, cast=int),
+        "timeout": config("GEMINI_TIMEOUT", default=10, cast=int),
     },
     "groq": {
         "api_key": config("GROQ_API_KEY", default=""),

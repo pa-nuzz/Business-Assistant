@@ -169,7 +169,8 @@ class TestTaskService:
         """Test adding a comment to a task."""
         user = User.objects.create_user(username='testuser', password='testpass123')
         business_profile = BusinessProfile.objects.create(user=user, company_name='Test Co')
-        service = TaskService(user)
+        from core.services.task_detail_service import TaskDetailService
+        service = TaskDetailService(user)
         
         task = Task.objects.create(
             user=user,

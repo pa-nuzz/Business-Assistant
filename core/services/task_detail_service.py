@@ -18,6 +18,12 @@ class TaskDetailService:
 
     def get_task_details(self, task_id: str) -> Dict[str, Any]:
         """Get full task details with all related data."""
+        # Try cache first
+        cache_key = f"task_details:{self.user.id}:{task_id}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+        
         try:
             task = Task.objects.select_related('user').get(id=task_id)
         except Task.DoesNotExist:
@@ -58,32 +64,39 @@ class TaskDetailService:
 
     def _get_comments(self, task: Task) -> List[Dict[str, Any]]:
         """Get comments for a task, including replies."""
-        comments = TaskComment.objects.filter(task=task, parent_comment=None).select_related('user').order_by('-created_at')
+        # Fetch all comments (including replies) in a single query with prefetch
+        comments = TaskComment.objects.filter(task=task).select_related('user', 'parent_comment').order_by('-created_at')
         
-        result = []
+        # Build comment tree
+        comment_map = {}
+        root_comments = []
+        
         for comment in comments:
-            replies = TaskComment.objects.filter(parent_comment=comment).select_related('user').order_by('created_at')
-            
-            result.append({
+            comment_data = {
                 'id': str(comment.id),
                 'content': comment.content,
                 'author': comment.user.username,
                 'created_at': comment.created_at.isoformat(),
                 'is_edited': comment.is_edited,
                 'mentions': comment.mentions,
-                'replies': [
-                    {
-                        'id': str(reply.id),
-                        'content': reply.content,
-                        'author': reply.user.username,
-                        'created_at': reply.created_at.isoformat(),
-                        'is_edited': reply.is_edited,
-                    }
-                    for reply in replies
-                ]
-            })
+                'replies': [],
+            }
+            comment_map[str(comment.id)] = comment_data
+            
+            if comment.parent_comment is None:
+                root_comments.append(comment_data)
+            else:
+                parent = comment_map.get(str(comment.parent_comment_id))
+                if parent:
+                    parent['replies'].append({
+                        'id': str(comment.id),
+                        'content': comment.content,
+                        'author': comment.user.username,
+                        'created_at': comment.created_at.isoformat(),
+                        'is_edited': comment.is_edited,
+                    })
         
-        return result
+        return root_comments
 
     def _get_subtasks(self, task: Task) -> List[Dict[str, Any]]:
         """Get subtasks for a task."""

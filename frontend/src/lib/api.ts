@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
+// SAME-ORIGIN API. Requests go to /api/v1/* on this origin; Next rewrites
+// them to the Django backend (see next.config.ts rewrites). No CORS, no
+// preflight OPTIONS, and the httpOnly refresh cookie is same-origin too.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.startsWith('/')
+  ? process.env.NEXT_PUBLIC_API_BASE_URL
+  : '/api/v1';
 
 // SECURITY: Access token stored in memory only (never localStorage)
 let accessToken: string | null = null;
@@ -32,6 +37,48 @@ export const getAccessToken = () => accessToken;
 export const clearAuth = () => {
   accessToken = null;
 };
+
+// Single deduped refresh entry point shared by the 401 interceptor and
+// auth.refreshSession. Guarantees only one /auth/token/refresh/ call at a
+// time (React Strict Mode, multi-tab restores, and bursts of 401s must not
+// race and each burn a refresh against the backend).
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshSessionPromise) {
+    try {
+      await refreshSessionPromise;
+    } catch {
+      // fall through, return current token state below
+    }
+    return accessToken;
+  }
+
+  refreshSessionPromise = (async () => {
+    try {
+      // IMPORTANT: Use raw axios, NOT the intercepted `api` instance.
+      // The intercepted instance has a 401 handler that calls
+      // refreshSession(), which would cause an infinite loop.
+      const response = await axios.post(`${API_BASE}/auth/token/refresh/`, {}, {
+        withCredentials: true,
+      });
+      accessToken = response.data.access;
+      setSessionCookie();
+      return true;
+    } catch (error) {
+      accessToken = null;
+      clearSessionCookie();
+      throw error;
+    } finally {
+      refreshSessionPromise = null;
+    }
+  })();
+
+  try {
+    await refreshSessionPromise;
+    return accessToken;
+  } catch {
+    return null;
+  }
+}
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -105,25 +152,13 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true;
 
-      try {
-        // Refresh token is automatically sent in httpOnly cookie
-        const response = await axios.post(`${API_BASE}/auth/token/refresh/`, {}, {
-          withCredentials: true,
-        });
-
-        // Store new access token in memory only
-        accessToken = response.data.access;
-        setSessionCookie();
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        originalRequest.headers.Authorization = `Bearer ${refreshed}`;
         return api(originalRequest);
-      } catch (refreshError) {
-        // Clear memory token on refresh failure
-        accessToken = null;
-        clearSessionCookie();
-        triggerAuthRedirect();
-        return Promise.reject(refreshError);
       }
+      triggerAuthRedirect();
+      return Promise.reject(error);
     }
 
     // Handle 401 after refresh failed (but not for auth routes)
@@ -232,34 +267,16 @@ export const auth = {
     return !!accessToken;
   },
 
-  // Restore session from httpOnly cookie on page reload
-  // Deduplicate token refresh requests to prevent React Strict Mode / parallel request token rotation race conditions
+  // Restore session from httpOnly cookie on page reload.
+  // Delegates to the shared, deduped refreshAccessToken() so it can't race
+  // the 401 interceptor's refresh.
   refreshSession: async () => {
-    if (refreshSessionPromise) {
-      return refreshSessionPromise;
+    const token = await refreshAccessToken();
+    if (!token) {
+      // Refresh cookie missing/expired/rate-limited: caller should redirect.
+      throw new Error('Session could not be restored. Please login again.');
     }
-    
-    refreshSessionPromise = (async () => {
-      try {
-        // IMPORTANT: Use raw axios, NOT the intercepted `api` instance.
-        // The intercepted instance has a 401 handler that calls refreshSession(),
-        // which would cause an infinite loop.
-        const response = await axios.post(`${API_BASE}/auth/token/refresh/`, {}, {
-          withCredentials: true,
-        });
-        accessToken = response.data.access;
-        setSessionCookie();
-        return true;
-      } catch (error) {
-        accessToken = null;
-        clearSessionCookie();
-        throw error;
-      } finally {
-        refreshSessionPromise = null;
-      }
-    })();
-    
-    return refreshSessionPromise;
+    return true;
   },
 };
 
@@ -278,23 +295,41 @@ export const chat = {
     conversationId: string | undefined,
     onToken: (token: string) => void,
     onMetadata: (metadata: { conversation_id?: string; title?: string; [key: string]: unknown }) => void,
+    onThinking: (content: string) => void,
     onDone: () => void,
     onError: (error: string) => void
   ) => {
     // SECURITY: Access token from memory only (not localStorage)
-    const response = await fetch(`${API_BASE}/chat/stream/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken || ''}`,
-      },
-      // SECURITY: Include credentials for httpOnly cookie
-      credentials: 'include',
-      body: JSON.stringify({
-        message,
-        conversation_id: conversationId,
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/chat/stream/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken || ''}`,
+        },
+        // SECURITY: Include credentials for httpOnly cookie
+        credentials: 'include',
+        signal: controller.signal,
+        body: JSON.stringify({
+          message,
+          conversation_id: conversationId,
+        }),
+      });
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        onError('Request timed out. Please try again.');
+      } else {
+        onError(error instanceof Error ? error.message : 'Network error');
+      }
+      return;
+    }
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const error = await response.text();
@@ -335,6 +370,8 @@ export const chat = {
                 onToken(parsed.token);
               } else if (parsed.metadata) {
                 onMetadata(parsed.metadata);
+              } else if (parsed.type === 'thinking' && parsed.content) {
+                onThinking(parsed.content);
               } else if (parsed.error) {
                 onError(parsed.error);
                 return;

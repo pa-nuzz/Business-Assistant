@@ -57,7 +57,7 @@ export default function AnimatedSignupPage() {
           />
         </div>
 
-        <div className="relative z-20 flex items-center gap-8 text-sm text-white/80">
+        <div className="relative z-20 flex items-center gap-8 text-[11px] font-bold text-white/60 uppercase tracking-widest">
           <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
         </div>
@@ -67,9 +67,9 @@ export default function AnimatedSignupPage() {
       </div>
 
       {/* Form on Right */}
-      <div className="flex items-center justify-center p-8 bg-background">
+      <div className="flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 50%, #e0f2fe 100%)' }}>
         <div className="w-full max-w-[420px]">
-          <Link href="/" className="inline-flex items-center gap-2 text-slate-400 hover:text-slate-900 transition-colors mb-8 text-sm font-bold uppercase tracking-widest">
+          <Link href="/" className="inline-flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors mb-8 text-sm font-medium">
             <ArrowLeft className="w-4 h-4" />
             Back Home
           </Link>
@@ -78,34 +78,34 @@ export default function AnimatedSignupPage() {
             <p className="text-muted-foreground text-sm">Join us and get started today</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2"><Label htmlFor="username" className="text-sm font-bold text-slate-400 uppercase tracking-widest">Username</Label><Input id="username" placeholder="Choose a username" value={username} onChange={(e) => setUsername(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60" /></div>
-            <div className="space-y-2"><Label htmlFor="email" className="text-sm font-bold text-slate-400 uppercase tracking-widest">Email</Label><Input id="email" type="email" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60" /></div>
+            <div className="space-y-2"><Label htmlFor="username" className="text-sm font-medium">Username</Label><Input id="username" placeholder="Choose a username" value={username} onChange={(e) => setUsername(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60 focus:border-primary" /></div>
+            <div className="space-y-2"><Label htmlFor="email" className="text-sm font-medium">Email</Label><Input id="email" type="email" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60 focus:border-primary" /></div>
             
             <div className="space-y-2">
-              <Label htmlFor="password" title="Password" className="text-sm font-bold text-slate-400 uppercase tracking-widest">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium">Password</Label>
               <div className="relative">
-                <Input id="password" type={showPassword ? "text" : "password"} placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60 pr-10" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                <Input id="password" type={showPassword ? "text" : "password"} placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60 focus:border-primary pr-10" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
                   {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
                 </button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirm" className="text-sm font-bold text-slate-400 uppercase tracking-widest">Confirm Password</Label>
+              <Label htmlFor="confirm" className="text-sm font-medium">Confirm Password</Label>
               <div className="relative">
-                <Input id="confirm" type={showConfirmPassword ? "text" : "password"} placeholder="Confirm your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60 pr-10" />
-                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                <Input id="confirm" type={showConfirmPassword ? "text" : "password"} placeholder="Confirm your password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} required className="h-12 bg-background border-border/60 focus:border-primary pr-10" />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
                   {showConfirmPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-start space-x-2"><Checkbox id="terms" checked={agreedToTerms} onCheckedChange={(c) => setAgreedToTerms(c as boolean)} /><Label htmlFor="terms" className="text-sm font-normal cursor-pointer leading-normal">I agree to the <Link href="/terms" className="text-indigo-600 font-bold hover:underline">Terms</Link> and <Link href="/privacy" className="text-indigo-600 font-bold hover:underline">Privacy</Link></Label></div>
+            <div className="flex items-start space-x-2"><Checkbox id="terms" checked={agreedToTerms} onCheckedChange={(c) => setAgreedToTerms(c as boolean)} /><Label htmlFor="terms" className="text-sm font-normal cursor-pointer leading-normal">I agree to the <Link href="/terms" className="text-primary font-medium hover:underline">Terms</Link> and <Link href="/privacy" className="text-primary font-medium hover:underline">Privacy</Link></Label></div>
             {error && <div className="p-3 text-sm text-red-400 bg-red-950/20 border border-red-900/30 rounded-lg">{error}</div>}
-            <Button type="submit" className="w-full h-12 text-base font-medium bg-indigo-600 hover:bg-indigo-700 shadow-lg" size="lg" disabled={isLoading}>{isLoading ? "Creating account..." : "Sign up"}</Button>
+            <Button type="submit" className="w-full h-12 text-base font-medium" size="lg" disabled={isLoading}>{isLoading ? "Creating account..." : "Sign up"}</Button>
           </form>
-          <div className="text-center text-sm text-muted-foreground mt-8">Already have an account? <Link href="/login" className="text-indigo-600 font-bold hover:underline">Log in</Link></div>
+          <div className="text-center text-sm text-muted-foreground mt-8">Already have an account? <Link href="/login" className="text-foreground font-medium hover:underline">Log in</Link></div>
         </div>
       </div>
     </div>

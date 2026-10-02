@@ -379,17 +379,46 @@ def perform_visual_analysis(file_path: str, file_type: str) -> dict:
             
         mime_type = f"image/{file_type}" if file_type != "pdf" else "application/pdf"
         
-        prompt = """Identify and describe any charts, graphs, diagrams, or tables in this document. 
-        Extract key data points from these visuals. 
-        What strategic business insights can be derived from these visuals?
-        Be specific about numbers and trends.
-        """
+        prompt = """Analyze this document/image for visual business intelligence content.
+
+Identify and describe:
+1. Charts, graphs, diagrams, or tables
+2. Key data points, numbers, and trends from these visuals
+3. Document structure elements (headers, footers, page numbers, etc.)
+4. Any forms, signatures, stamps, or annotations
+5. Layout and formatting insights
+
+For each visual element found, provide:
+- Type (chart/table/diagram/form/etc.)
+- Description of what it shows
+- Key numbers/data points extracted
+- Business relevance/insights
+
+Be specific and quantitative. Return findings as structured text."""
+
+        try:
+            analysis_text = call_vision(data, mime_type, prompt)
+        except Exception as e:
+            logger.warning(f"Vision API call failed: {e}")
+            # Try fallback with simpler prompt
+            fallback_prompt = "Describe any charts, graphs, tables, or visual data in this document. Extract key numbers and insights."
+            analysis_text = call_vision(data, mime_type, fallback_prompt)
         
-        analysis_text = call_vision(data, mime_type, prompt)
+        # Detect visual types
+        has_charts = any(kw in analysis_text.lower() for kw in ["chart", "graph", "plot", "trend"])
+        has_tables = any(kw in analysis_text.lower() for kw in ["table", "tabular", "row", "column"])
+        has_forms = any(kw in analysis_text.lower() for kw in ["form", "field", "signature", "checkbox"])
+        has_diagrams = any(kw in analysis_text.lower() for kw in ["diagram", "flowchart", "flow chart", "architecture"])
         
         return {
             "insights": analysis_text,
-            "detected_visuals": True if "chart" in analysis_text.lower() or "graph" in analysis_text.lower() else False
+            "detected_visuals": has_charts or has_tables or has_forms or has_diagrams,
+            "visual_types": {
+                "charts_graphs": has_charts,
+                "tables": has_tables,
+                "forms_signatures": has_forms,
+                "diagrams": has_diagrams,
+            }
         }
     except Exception as e:
         logger.error(f"Visual analysis failed: {e}")

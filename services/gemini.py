@@ -139,48 +139,64 @@ def call_stream(
     import google.generativeai as genai_module
     from google.generativeai.types import GenerationConfig
 
-    model = genai_module.GenerativeModel(
-        model_name=cfg["model"],
-        system_instruction=system_prompt,
-        tools=_build_gemini_tools(tool_definitions) if tool_definitions else None,
-        generation_config=GenerationConfig(
-            temperature=0.3,
-            max_output_tokens=2048,
-        ),
-    )
+    api_keys = _get_api_keys()
+    if not api_keys:
+        yield {"error": "GEMINI_API_KEY is not configured"}
+        return
 
-    # Convert messages to Gemini format
-    gemini_history = []
-    for msg in messages[:-1]:  # all except last
-        role = "model" if msg["role"] == "assistant" else "user"
-        gemini_history.append({"role": role, "parts": [msg["content"]]})
+    last_error = None
+    for api_key in api_keys:
+        try:
+            # Must configure the key BEFORE building the model, otherwise the
+            # SDK falls back to ADC discovery and stalls for seconds, then
+            # raises "No API_KEY or ADC found".
+            _configure_key(genai, api_key)
+            model = genai_module.GenerativeModel(
+                model_name=cfg["model"],
+                system_instruction=system_prompt,
+                tools=_build_gemini_tools(tool_definitions) if tool_definitions else None,
+                generation_config=GenerationConfig(
+                    temperature=0.3,
+                    max_output_tokens=2048,
+                ),
+            )
 
-    chat = model.start_chat(history=gemini_history)
-    last_msg = messages[-1]["content"]
+            # Convert messages to Gemini format
+            gemini_history = []
+            for msg in messages[:-1]:  # all except last
+                role = "model" if msg["role"] == "assistant" else "user"
+                gemini_history.append({"role": role, "parts": [msg["content"]]})
 
-    try:
-        response = _call_with_timeout(lambda: chat.send_message(last_msg, stream=True), timeout)
-        
-        for chunk in response:
-            if hasattr(chunk, 'text') and chunk.text:
-                yield {"token": chunk.text}
-            
-            # Check if this chunk has function calls (tool use)
-            if hasattr(chunk, 'candidates') and chunk.candidates:
-                candidate = chunk.candidates[0]
-                if hasattr(candidate, 'content') and candidate.content:
-                    for part in candidate.content.parts:
-                        if hasattr(part, 'function_call') and part.function_call.name:
-                            # Tool call detected - can't stream this
-                            yield {"error": "Tool calls detected during streaming - use non-streaming endpoint"}
-                            return
-        
-        yield {"done": True}
-        
-    except TimeoutError:
-        yield {"error": "Stream timed out"}
-    except Exception as e:
-        yield {"error": str(e)}
+            chat = model.start_chat(history=gemini_history)
+            last_msg = messages[-1]["content"]
+
+            response = _call_with_timeout(lambda: chat.send_message(last_msg, stream=True), timeout)
+
+            for chunk in response:
+                if hasattr(chunk, 'text') and chunk.text:
+                    yield {"token": chunk.text}
+
+                # Check if this chunk has function calls (tool use)
+                if hasattr(chunk, 'candidates') and chunk.candidates:
+                    candidate = chunk.candidates[0]
+                    if hasattr(candidate, 'content') and candidate.content:
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'function_call') and part.function_call.name:
+                                # Tool call detected - can't stream this
+                                yield {"error": "Tool calls detected during streaming - use non-streaming endpoint"}
+                                return
+
+            yield {"done": True}
+            return
+
+        except TimeoutError:
+            yield {"error": "Stream timed out"}
+            return
+        except Exception as e:
+            last_error = e
+
+    yield {"error": f"Gemini stream unavailable: {last_error}"}
+    return
 
 
 # Simple wrappers for Model Abstraction Layer
@@ -221,7 +237,9 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
                 lambda: genai.embed_content(
                     model=cfg["embedding_model"],
                     content=texts,
-                    task_type="retrieval_document"
+                    task_type="retrieval_document",
+                    output_dimensionality=768,
+
                 ),
                 timeout=timeout
             )

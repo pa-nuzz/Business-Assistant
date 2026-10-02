@@ -9,6 +9,7 @@ from api.views import (
     list_tasks, create_task, get_task, update_task, delete_task,
     complete_task, reopen_task, list_comments, create_comment, delete_comment,
     list_activities, task_dashboard, task_stats,
+    list_collaborators, add_collaborator, remove_collaborator,
     # Analytics
     get_analytics, get_user_engagement, get_ai_usage,
     get_workspace_analytics, get_admin_dashboard, get_retention_report,
@@ -50,7 +51,11 @@ from api.views import (
     # Smart Actions
     smart_action_view,
     # Document Versioning
-    list_document_versions, get_version_diff, compare_versions, create_version
+    list_document_versions, get_version_diff, compare_versions, create_version,
+    # User Memory Management
+    list_memories, create_memory, get_memory, update_memory, delete_memory, regenerate_embeddings,
+    # Workspace Invitations
+    create_invitation, list_invitations, accept_invitation, revoke_invitation
 )
 app_name = "api_v1"
 
@@ -116,6 +121,10 @@ urlpatterns = [
     path("tasks/<uuid:task_id>/comments/", list_comments, name="task-comments"),
     path("tasks/<uuid:task_id>/comments/create/", create_comment, name="task-comment-create"),
     path("tasks/<uuid:task_id>/comments/<uuid:comment_id>/delete/", delete_comment, name="task-comment-delete"),
+    # Task Collaborators
+    path("tasks/<uuid:task_id>/collaborators/", list_collaborators, name="task-collaborators"),
+    path("tasks/<uuid:task_id>/collaborators/add/", add_collaborator, name="task-collaborator-add"),
+    path("tasks/<uuid:task_id>/collaborators/<uuid:user_id>/remove/", remove_collaborator, name="task-collaborator-remove"),
     path("tasks/<uuid:task_id>/activities/", list_activities, name="task-activities"),
 
     # Task Detail Panel (Comments, Subtasks, Time Tracking)
@@ -213,6 +222,13 @@ urlpatterns = [
     path("workspaces/<uuid:workspace_id>/members/invite/", invite_member, name="workspace-invite"),
     path("workspaces/<uuid:workspace_id>/members/<uuid:member_id>/role/", update_member_role, name="member-role-update"),
     path("workspaces/<uuid:workspace_id>/members/<uuid:member_id>/remove/", remove_member, name="member-remove"),
+    
+    # Workspace Invitations
+    path("workspaces/<uuid:workspace_id>/invitations/", list_invitations, name="workspace-invitations"),
+    path("workspaces/<uuid:workspace_id>/invitations/create/", create_invitation, name="workspace-invitation-create"),
+    path("invitations/<str:token>/accept/", accept_invitation, name="invitation-accept"),
+    path("workspaces/<uuid:workspace_id>/invitations/<uuid:invitation_id>/revoke/", revoke_invitation, name="invitation-revoke"),
+    
     path("workspaces/<uuid:workspace_id>/check-permission/", check_permission, name="check-permission"),
     path("permissions/resource-check/", check_resource_permission, name="resource-permission-check"),
     path("permissions/grant/", grant_permission, name="permission-grant"),
@@ -244,13 +260,21 @@ urlpatterns = [
     path("documents/<uuid:document_id>/versions/compare/", compare_versions, name="document-versions-compare"),
     path("documents/<uuid:document_id>/versions/create/", create_version, name="document-version-create"),
 
-    # Workspace Context & AI Memory
-    path("workspaces/<str:workspace_id>/context/", get_workspace_context, name="workspace-context"),
-    path("workspaces/<str:workspace_id>/context/update/", update_business_context, name="workspace-context-update"),
-    path("workspaces/<str:workspace_id>/memories/", get_memories, name="workspace-memories"),
-    path("workspaces/<str:workspace_id>/memories/add/", add_memory, name="workspace-memory-add"),
-    path("workspaces/<str:workspace_id>/memories/<int:memory_index>/delete/", delete_memory, name="workspace-memory-delete"),
-    path("workspaces/<str:workspace_id>/conversations/summarize/", add_conversation_summary, name="workspace-conversation-summarize"),
-    path("workspaces/<str:workspace_id>/preferences/", update_preferences, name="workspace-preferences"),
-    path("workspaces/<str:workspace_id>/archive/", archive_workspace, name="workspace-archive"),
+    # Workspace Context & AI Memory (UUID workspace IDs, membership-validated)
+    path("workspaces/<uuid:workspace_id>/context/", get_workspace_context, name="workspace-context"),
+    path("workspaces/<uuid:workspace_id>/context/update/", update_business_context, name="workspace-context-update"),
+    path("workspaces/<uuid:workspace_id>/memories/", get_memories, name="workspace-memories"),
+    path("workspaces/<uuid:workspace_id>/memories/add/", add_memory, name="workspace-memory-add"),
+    path("workspaces/<uuid:workspace_id>/memories/<int:memory_index>/delete/", delete_memory, name="workspace-memory-delete"),
+    path("workspaces/<uuid:workspace_id>/conversations/summarize/", add_conversation_summary, name="workspace-conversation-summarize"),
+    path("workspaces/<uuid:workspace_id>/preferences/", update_preferences, name="workspace-preferences"),
+    path("workspaces/<uuid:workspace_id>/archive/", archive_workspace, name="workspace-archive"),
+
+    # User Memory Management
+    path("memories/", list_memories, name="memory-list"),
+    path("memories/create/", create_memory, name="memory-create"),
+    path("memories/<uuid:memory_id>/", get_memory, name="memory-detail"),
+    path("memories/<uuid:memory_id>/update/", update_memory, name="memory-update"),
+    path("memories/<uuid:memory_id>/delete/", delete_memory, name="memory-delete"),
+    path("memories/regenerate-embeddings/", regenerate_embeddings, name="memory-regenerate-embeddings"),
 ]

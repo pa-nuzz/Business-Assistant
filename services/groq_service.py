@@ -16,12 +16,12 @@ _groq_client = None
 
 def _get_client():
     global _groq_client
+    cfg = settings.AI_CONFIG["groq"]
+    if not cfg.get("api_key"):
+        raise ValueError("GROQ_API_KEY is not configured")
     if _groq_client is None:
         from groq import Groq
         import httpx
-        cfg = settings.AI_CONFIG["groq"]
-        # Disable proxies to avoid "unexpected keyword argument 'proxies'" error
-        # in newer httpx versions used by Groq SDK
         http_client = httpx.Client(trust_env=False)
         _groq_client = Groq(api_key=cfg["api_key"], http_client=http_client)
     return _groq_client

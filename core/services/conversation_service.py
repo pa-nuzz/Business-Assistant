@@ -21,7 +21,8 @@ class ConversationService:
     def list_conversations(
         self,
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
+        workspace_id: Optional[str] = None
     ) -> Dict:
         """
         Get user's conversations with pagination.
@@ -29,6 +30,7 @@ class ConversationService:
         Args:
             page: Page number (1-indexed)
             page_size: Number of items per page (max 100)
+            workspace_id: Optional workspace UUID to filter by
             
         Returns:
             Dict with results, count, page, total_pages
@@ -42,6 +44,16 @@ class ConversationService:
         ).annotate(
             message_count=Count("messages")
         ).order_by("-updated_at")
+        
+        if workspace_id:
+            # Filter by workspace - validate membership first
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                convos = convos.filter(workspace_id=workspace_id)
+            except (ValueError, TypeError):
+                # Invalid UUID, return empty results
+                convos = Conversation.objects.none()
         
         paginator = Paginator(convos, page_size)
         page_obj = paginator.get_page(page)

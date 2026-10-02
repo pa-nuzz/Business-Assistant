@@ -29,7 +29,8 @@ class DocumentService:
     def list_documents(
         self,
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
+        workspace_id: Optional[str] = None
     ) -> Dict:
         """
         Get user's documents with pagination.
@@ -37,6 +38,7 @@ class DocumentService:
         Args:
             page: Page number
             page_size: Items per page
+            workspace_id: Optional workspace UUID to filter by
             
         Returns:
             Dict with results, count, page, total_pages
@@ -45,6 +47,14 @@ class DocumentService:
         
         # Simple query without cache to avoid issues
         docs = Document.objects.filter(user=self.user).order_by("-created_at")
+        
+        if workspace_id:
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                docs = docs.filter(workspace_id=workspace_id)
+            except (ValueError, TypeError):
+                docs = Document.objects.none()
         
         paginator = Paginator(docs, page_size)
         page_obj = paginator.get_page(page)
@@ -71,13 +81,14 @@ class DocumentService:
         
         return result
     
-    def upload_document(self, file, title: Optional[str] = None) -> Dict:
+    def upload_document(self, file, title: Optional[str] = None, workspace_id: Optional[str] = None) -> Dict:
         """
         Upload and process a document.
         
         Args:
             file: Uploaded file object
             title: Optional title for the document
+            workspace_id: Optional workspace UUID
             
         Returns:
             Dict with document details
@@ -87,6 +98,32 @@ class DocumentService:
         """
         if not file:
             raise ValueError("No file provided")
+        
+        # Validate file upload
+        try:
+            validate_file_upload(file)
+        except ValidationError as e:
+            raise ValueError(str(e))
+        
+        # Handle workspace
+        if workspace_id:
+            # Validate workspace access
+            from core.models import Workspace, WorkspaceMember
+            try:
+                import uuid
+                uuid.UUID(workspace_id)
+                if not WorkspaceMember.objects.filter(workspace_id=workspace_id, user=self.user).exists():
+                    raise ValueError("You don't have access to this workspace")
+            except (ValueError, TypeError) as e:
+                if "Invalid UUID" in str(e) or "does not match" in str(e):
+                    raise ValueError("Invalid workspace ID")
+                raise
+        else:
+            # Default to user's Personal workspace
+            from core.models import Workspace
+            workspace = Workspace.objects.filter(owner=self.user, is_personal=True).first()
+            if workspace:
+                workspace_id = str(workspace.id)
         
         # Validate file upload
         try:
@@ -115,6 +152,7 @@ class DocumentService:
         
         doc = Document.objects.create(
             user=self.user,
+            workspace_id=workspace_id,
             title=title or safe_filename,
             file=file,
             file_type=file_type,
@@ -234,6 +272,7 @@ class DocumentService:
                 "stage": stage,
                 "progress": progress,
                 "chunk_count": chunk_count,
+                "page_count": doc.page_count,
                 "estimated_time_remaining": estimated_time,
                 "created_at": doc.created_at.isoformat(),
                 "updated_at": doc.updated_at.isoformat(),

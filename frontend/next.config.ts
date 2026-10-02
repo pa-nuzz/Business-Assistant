@@ -85,6 +85,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  productionBrowserSourceMaps: false,
+  // Django runs with APPEND_SLASH=True (POST bodies can't be redirected), so
+  // preserve trailing slashes end-to-end instead of letting Next 308-canonicalize
+  // them before the API proxy route handles them.
+  trailingSlash: true,
   images: {
     remotePatterns: [
       {
@@ -93,6 +98,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // NOTE: The same-origin API proxy is implemented as a Route Handler at
+  // src/app/api/v1/[...path]/route.ts (streams SSE, appends the trailing slash
+  // Django's APPEND_SLASH expects, and works identically in dev/start/
+  // standalone). If an API path is ever served from this origin directly,
+  // declare it here instead.
     // Security headers applied to all routes
   async headers() {
     return [

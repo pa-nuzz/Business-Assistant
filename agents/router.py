@@ -40,7 +40,7 @@ def call_with_fallback(
     """
     cfg = settings.AI_CONFIG
 
-    # ── 1. Try Gemini ──────────────────────────────────────────────────────────
+    # ── 1. Try Gemini ────────────────────────────────────────────────────────
     if cfg["gemini"]["api_key"]:
         try:
             result = gemini.call(

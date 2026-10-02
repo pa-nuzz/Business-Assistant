@@ -6,7 +6,6 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { Copy, Check, Link2 } from "lucide-react";
-import { motion } from "framer-motion";
 
 interface Message {
   id?: string;
@@ -75,17 +74,13 @@ export default function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}
-    >
+    <div className={`w-full ${isUser ? "flex justify-end" : ""}`}>
       <div
-        className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 ${
+        className={
           isUser
-            ? "bg-primary text-primary-foreground rounded-br-md"
-            : "bg-muted text-foreground rounded-bl-md"
-        }`}
+            ? "max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-md px-4 py-2.5 bg-[var(--brand-primary-dim)] text-[var(--text-primary)]"
+            : "w-full"
+        }
       >
         {isUser ? (
           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
@@ -182,6 +177,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
               {message.content || "\u00A0"}
             </ReactMarkdown>
 
+            {/* Streaming caret */}
+            {message.isStreaming && message.content && (
+              <span className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-[var(--brand-primary)] align-text-bottom" />
+            )}
+
             {/* Citations */}
             {message.citations && message.citations.length > 0 && (
               <div className="mt-3 pt-2 border-t border-border/50 flex flex-wrap gap-1.5">
@@ -190,20 +190,10 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                 ))}
               </div>
             )}
-
-            {/* Streaming indicator */}
-            {message.isStreaming && (
-              <div className="mt-2 flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                <span className="text-xs text-muted-foreground">
-                  Generating response...
-                </span>
-              </div>
-            )}
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 

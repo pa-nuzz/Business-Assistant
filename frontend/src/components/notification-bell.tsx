@@ -164,7 +164,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 15, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className="absolute right-0 top-full mt-3 w-[380px] bg-white/80 backdrop-blur-2xl rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50 overflow-hidden"
+              className="absolute right-0 top-full mt-3 w-[380px] max-w-[calc(100vw-1.5rem)] bg-white/80 backdrop-blur-2xl rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50 overflow-hidden"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/50 bg-white/50">

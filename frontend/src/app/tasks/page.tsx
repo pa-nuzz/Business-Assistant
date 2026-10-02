@@ -369,9 +369,9 @@ export default function TasksPage() {
 
         {/* Empty State */}
         {dashboardData && 
-         dashboardData.today.length === 0 && 
-         dashboardData.upcoming.length === 0 && 
-         dashboardData.overdue.length === 0 && (
+         dashboardData.today?.length === 0 && 
+         dashboardData.upcoming?.length === 0 && 
+         dashboardData.overdue?.length === 0 && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -576,7 +576,7 @@ function TaskCard({
                 <span>{mode.icon}</span>
                 <span>{mode.label}</span>
              </div>
-             {task.tags.length > 0 && (
+             {task.tags?.length > 0 && (
                 <div className="flex gap-1">
                   {task.tags.slice(0, 2).map((tag) => (
                     <span key={tag} className="text-[9px] text-[var(--text-muted)] font-bold uppercase">#{tag}</span>

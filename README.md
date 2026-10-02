@@ -51,7 +51,10 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your settings
 python manage.py migrate
-python manage.py runserver
+# Serve with uvicorn (not runserver): it streams SSE live and serves the
+# channels WebSockets, and binds IPv4+IPv6 so http://localhost:8000 works in
+# Chrome, Firefox, and Safari (Firefox resolves `localhost` to ::1).
+python -m uvicorn config.asgi:application --host :: --port 8000
 
 # Frontend (new terminal)
 cd frontend
@@ -59,7 +62,36 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:3000
+Then open http://localhost:3000. The Next.js app proxies all `/api/v1/*`
+requests to the backend same-origin (see `frontend/src/app/api/v1/[...path]/route.ts`),
+so the browser only ever talks to `localhost:3000`.
+
+### Email deliverability (why automated mail goes to spam)
+
+Transactional email (verification codes, password resets, login alerts) is built
+in `services/email_service.py`. Every message already carries a `Reply-To`
+(so replies reach a monitored inbox) and a unique `Message-ID`. What decides
+deliverability is DNS + the `From` header:
+
+1. **Align `DEFAULT_FROM_EMAIL` with the SMTP account you actually send from.**
+   When `EMAIL_HOST=smtp.gmail.com`, the envelope sender is your Gmail account,
+   so `From:` must be that same address (a custom display name is fine, e.g.
+   `AEIOU AI <sent-from@gmail.com>`). Sending `From: noreply@aeiou.ai` through
+   Gmail fails SPF/DKIM alignment because the domain isn't the one Gmail signed.
+2. **SPF** — publish the Google TXT record for `yourdomain.com`:
+   `v=spf1 include:_spf.google.com ~all`
+3. **DKIM** — Gmail: Settings → Accounts → "Sign in with Google" → Enable DKIM
+   for the sending Gmail account (auto-signs all mail). For ESMTP/Postfix or
+   SendGrid/Mailgun, generate a DKIM key and publish it as a TXT record.
+4. **DMARC** — publish so receivers know how to treat spoofed mail:
+   `v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com` while monitoring,
+   then tighten `p=quarantine` once legitimate mail passes.
+5. **Watch bounces/spam-feedback** — Gmail suppressions appear in Google Admin;
+   keep complaint rate < 0.1%. Warm up a new sender address before volume.
+
+Verification of deliverability: send a test login alert with the SMTP backend
+and check the raw headers for `Authentication-Results: spf=pass`, `dkim=pass`,
+`dmarc=pass`, plus `Reply-To` and `Message-ID`.
 
 ### Configuration
 
